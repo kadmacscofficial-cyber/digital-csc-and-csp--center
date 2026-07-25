@@ -1119,12 +1119,23 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
     ),
 
     bankingTab === 'ledger' && e('div', { className: 'space-y-4' },
-    e('div', { className: 'flex flex-wrap justify-between items-center gap-3' },
+    e('div', { className: 'flex flex-wrap justify-between items-start gap-3' },
       e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Banking Ledger'), e('p', { className: 'text-sm text-gray-500' }, 'CSP cash deposit / withdrawal — daily ledger')),
-      e('div', { className: 'flex items-center gap-3' },
+      e('div', { className: 'flex flex-wrap items-center gap-2' },
         e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Date'), e('input', { type: 'date', value: selectedDate, onChange: ev => setSelectedDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
-        e('button', { onClick: exportLedger, className: 'flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm self-end' }, e(Icon, { name: 'Download', size: 16 }), ' Export Excel'),
-        currentUser.role === 'admin' && e('button', { onClick: () => setShowArchive(!showArchive), className: 'flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm self-end' }, e(Icon, { name: 'Trash2', size: 16 }), ' Archive Old Data')
+        e('button', { onClick: exportLedger, className: 'flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Download', size: 16 }), ' Export'),
+        currentUser.role === 'admin' && e('button', { onClick: () => setShowArchive(!showArchive), className: 'flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Trash2', size: 16 }), ' Archive'),
+        currentUser.role === 'admin' && e('button', {
+          onClick: () => {
+            const ok = window.confirm('Are you sure you want to RESET all Banking data?\n\nThis will clear:\n\u2022 All Banking transactions\n\u2022 All Opening Balances\n\u2022 Add More Balance history\n\u2022 Account Balance\n\nThis action cannot be undone!');
+            if (!ok) return;
+            setBankTransactions([]);
+            setOpeningBalances({});
+            setAddMoreHistory({});
+            showMessage('Banking data reset to zero!', 'error');
+          },
+          className: 'flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm'
+        }, e(Icon, { name: 'RefreshCw', size: 16 }), ' Reset All')
       )
     ),
 
