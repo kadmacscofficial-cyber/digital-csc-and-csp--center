@@ -346,6 +346,7 @@ const defaultData = {
   salaryData: {},
   onlineTransactions: [],
   accountBalanceExpenses: [],
+  accountBalanceOverrides: {},
   businessProfile: {
     name: 'Digital CSC Center', cscId: 'CSC-WB-98765',
     address: 'Durgapur, West Bengal', phone: '+91 98765 43210', email: 'contact@digitalcsc.in'
@@ -980,8 +981,70 @@ function Expenses({ expenses, setExpenses, currentUser, showMessage }) {
   );
 }
 
+
+// ── NOTE COUNTER ──
+function NoteCounter({ selectedDate, baseInput, setBaseInput, saveBase, onCancel }) {
+  const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const [counts, setCounts] = useState({});
+
+  const total = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
+
+  const updateCount = (note, val) => {
+    const updated = { ...counts, [note]: val };
+    setCounts(updated);
+    const newTotal = NOTES.reduce((s, n) => s + n * (Number(updated[n]) || 0), 0);
+    setBaseInput(String(newTotal));
+  };
+
+  const reset = () => { setCounts({}); setBaseInput('0'); };
+
+  return e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-indigo-200 space-y-4' },
+    e('div', { className: 'flex justify-between items-center' },
+      e('div', null,
+        e('h4', { className: 'font-semibold text-gray-800' }, 'Set Opening Balance — ' + selectedDate),
+        e('p', { className: 'text-xs text-gray-400 mt-0.5' }, 'Enter note counts to auto-calculate, or type amount directly')
+      ),
+      e('button', { onClick: reset, className: 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 px-2 py-1 rounded' }, 'Reset')
+    ),
+    e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
+      ...NOTES.map(note =>
+        e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
+          e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '\u20B9' + note),
+          e('input', {
+            type: 'number', min: '0',
+            value: counts[note] || '',
+            onChange: ev => updateCount(note, ev.target.value),
+            className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-400',
+            placeholder: '0'
+          }),
+          e('p', { className: 'text-xs text-indigo-500 mt-1 font-medium' },
+            (Number(counts[note]) || 0) > 0 ? '\u20B9' + (note * (Number(counts[note]) || 0)) : '\u2014'
+          )
+        )
+      )
+    ),
+    e('div', { className: 'flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100' },
+      e('div', { className: 'flex-1' },
+        e('p', { className: 'text-xs text-gray-500 mb-1' }, 'Total from notes: \u20B9' + total.toLocaleString('en-IN')),
+        e('div', { className: 'flex items-center gap-2' },
+          e('label', { className: 'text-xs text-gray-500 whitespace-nowrap' }, 'Or enter directly:'),
+          e('input', { type: 'number', value: baseInput,
+            onChange: ev => { setBaseInput(ev.target.value); setCounts({}); },
+            className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 w-36 text-sm',
+            placeholder: '0'
+          })
+        )
+      ),
+      e('div', { className: 'flex gap-2' },
+        e('button', { onClick: saveBase, className: 'bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium' }, 'Save \u20B9' + (Number(baseInput) || 0).toLocaleString('en-IN')),
+        e('button', { onClick: onCancel, className: 'text-gray-500 bg-gray-100 px-4 py-2 rounded-lg text-sm hover:bg-gray-200' }, 'Cancel')
+      )
+    )
+  );
+}
+
 // ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank' });
   const [editingBase, setEditingBase] = useState(false);
@@ -989,6 +1052,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const [showArchive, setShowArchive] = useState(false);
   const [archFrom, setArchFrom] = useState('');
   const [archTo, setArchTo] = useState('');
+  const [showSetAccBal, setShowSetAccBal] = useState(false);
+  const [accBalInput, setAccBalInput] = useState('');
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
   const [bankingTab, setBankingTab] = useState('ledger');
@@ -1029,7 +1094,10 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const allTimeDeposit    = allTxns.reduce((s, t) => s + (t.cashIn  || 0), 0) + allOnlineTransfer;
   const allTimeAddMore    = Object.values((addMoreHistory && typeof addMoreHistory === 'object') ? addMoreHistory : {}).flat().filter(x => typeof x === 'number').reduce((s, a) => s + (Number(a) || 0), 0);
   const allAccExpenses    = (accountBalanceExpenses || []).reduce((s, x) => s + (x.cost || 0), 0);
-  const accountBalance    = allTimeWithdrawal - allTimeDeposit - allTimeAddMore - allAccExpenses;
+  const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore - allAccExpenses;
+  // Use daily override if set for selectedDate, else use auto calculation
+  const safeOverrides = (accountBalanceOverrides && typeof accountBalanceOverrides === 'object') ? accountBalanceOverrides : {};
+  const accountBalance = safeOverrides[selectedDate] !== undefined ? safeOverrides[selectedDate] : autoAccountBalance;
 
   const handleAdd = () => {
     if (!form.customerName) return showMessage('Please enter Customer Name / Details.', 'error');
@@ -1141,7 +1209,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
 
     e('div', { className: 'bg-gradient-to-r from-purple-600 to-indigo-700 rounded-xl p-4 text-white flex items-center justify-between shadow-md' },
       e('div', null,
-        e('p', { className: 'text-purple-200 text-xs font-medium uppercase tracking-widest mb-1' }, 'Account Balance'),
+        e('p', { className: 'text-purple-200 text-xs font-medium uppercase tracking-widest mb-1' }, 'Account Balance' + (safeOverrides[selectedDate] !== undefined ? ' (Manual — ' + selectedDate + ')' : ' (Auto)')),
         e('p', { className: 'text-3xl font-bold' }, '₹' + accountBalance.toLocaleString('en-IN')),
         e('p', { className: 'text-purple-200 text-xs mt-1.5' },
           'Withdrawal ₹' + allTimeWithdrawal.toLocaleString('en-IN') +
@@ -1162,7 +1230,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
             className: 'text-green-500 hover:text-green-700 p-1.5 rounded hover:bg-green-50'
           }, e(Icon, { name: 'PlusCircle', size: 15 })),
           e('button', {
-            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setEditingBase(true); setShowAddMore(false); },
+            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setEditingBase(true); setShowAddMore(false); setShowSetAccBal(false); },
             title: 'Edit Opening Balance',
             className: 'text-gray-400 hover:text-indigo-600 p-1.5 rounded hover:bg-indigo-50'
           }, e(Icon, { name: 'Edit3', size: 15 }))
@@ -1173,14 +1241,43 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
       e(StatCard, { title: 'Current Balance', value: fmtR(currentBalance), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: 'bg-blue-50 text-blue-600' })
     ),
 
-    editingBase && e('div', { className: 'bg-white p-4 rounded-xl shadow-sm border border-indigo-200 flex flex-wrap items-end gap-3' },
+    editingBase && e(NoteCounter, {
+      selectedDate, baseInput, setBaseInput, saveBase,
+      onCancel: () => setEditingBase(false)
+    }),
+
+    showSetAccBal && currentUser.role === 'admin' && e('div', { className: 'bg-purple-50 p-4 rounded-xl shadow-sm border border-purple-300 flex flex-wrap items-end gap-4' },
       e('div', null,
-        e('label', { className: 'block text-sm font-medium mb-1 text-gray-700' }, 'Set Opening Balance — ' + selectedDate),
-        e('p', { className: 'text-xs text-gray-400 mb-2' }, 'Whatever you enter will replace the previous balance'),
-        e('input', { type: 'number', value: baseInput, onChange: ev => setBaseInput(ev.target.value), className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 w-48', placeholder: '0' })
+        e('label', { className: 'block text-sm font-semibold text-purple-800 mb-1' }, 'Set Account Balance — ' + selectedDate),
+        e('p', { className: 'text-xs text-purple-600 mb-3' }, 'Manually set the Account Balance for this date. Auto-calc: ₹' + autoAccountBalance.toLocaleString('en-IN')),
+        e('div', { className: 'flex items-center gap-2' },
+          e('span', { className: 'text-purple-700 font-bold' }, '₹'),
+          e('input', { type: 'number', value: accBalInput, onChange: ev => setAccBalInput(ev.target.value),
+            className: 'border border-purple-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500 w-44 text-sm', placeholder: '0' })
+        )
       ),
-      e('button', { onClick: saveBase, className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium' }, 'Save'),
-      e('button', { onClick: () => setEditingBase(false), className: 'text-gray-500 px-4 py-2 text-sm' }, 'Cancel')
+      e('div', { className: 'flex gap-2' },
+        e('button', {
+          onClick: () => {
+            const val = Number(accBalInput);
+            setAccountBalanceOverrides({ ...safeOverrides, [selectedDate]: val });
+            setShowSetAccBal(false); setAccBalInput('');
+            showMessage('Account Balance set to ₹' + val + ' for ' + selectedDate);
+          },
+          className: 'bg-purple-600 text-white px-5 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium'
+        }, 'Set Balance'),
+        safeOverrides[selectedDate] !== undefined && e('button', {
+          onClick: () => {
+            const updated = { ...safeOverrides };
+            delete updated[selectedDate];
+            setAccountBalanceOverrides(updated);
+            setShowSetAccBal(false);
+            showMessage('Manual override removed — using auto calculation');
+          },
+          className: 'bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 text-sm font-medium'
+        }, 'Remove Override'),
+        e('button', { onClick: () => { setShowSetAccBal(false); setAccBalInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm' }, 'Cancel')
+      )
     ),
 
     showAddMore && e('div', { className: 'bg-green-50 p-4 rounded-xl shadow-sm border border-green-300 flex flex-wrap items-end gap-4' },
@@ -1529,7 +1626,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
 // (CSP deposit/withdraw) and expenses — does NOT write to any of those lists, so the
 // Service Tracking / Pending Amount / Banking / Expenses menus are completely unaffected.
 // Only writes to its own new field: cashClosingLogs.
-function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, customers, currentUser, showMessage, businessProfile }) {
+function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [actualInput, setActualInput] = useState('');
   const [noteInput, setNoteInput] = useState('');
@@ -1549,10 +1646,14 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
   const expenseTotal = todaysExpenses.reduce((s, x) => s + x.cost, 0);
   // 3) Net Profit — exactly the Dashboard's "Net Profit" card formula, for this single day.
   const netProfit = totalIncome - expenseTotal;
-  // 4) Banking Current Balance — exactly the Banking Ledger's own "Current Balance" for this date
-  //    (that day's manually-set Opening Balance + that day's deposits/withdrawals).
-  const bankDeposit = todaysBankTxns.reduce((s, t) => s + (t.cashIn || 0), 0);
-  const bankWithdraw = todaysBankTxns.reduce((s, t) => s + (t.cashOut || 0), 0);
+  // 4) Banking Current Balance — Banking Ledger's "Current Balance" for this date
+  //    includes online transactions (received → withdrawal side, transfer → deposit side)
+  const safeOnlineTxns = Array.isArray(onlineTransactions) ? onlineTransactions : [];
+  const todaysOnline = safeOnlineTxns.filter(t => t.date === selectedDate);
+  const onlineReceivedToday = todaysOnline.filter(t => t.type === 'received').reduce((s, t) => s + (t.amount || 0), 0);
+  const onlineTransferToday = todaysOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (t.amount || 0), 0);
+  const bankDeposit = todaysBankTxns.reduce((s, t) => s + (t.cashIn || 0), 0) + onlineTransferToday;
+  const bankWithdraw = todaysBankTxns.reduce((s, t) => s + (t.cashOut || 0), 0) + onlineReceivedToday;
   const bankingOpening = bankingOpeningBalances[selectedDate] || 0;
   const bankingCurrentBalance = bankingOpening + bankDeposit - bankWithdraw;
 
@@ -2731,6 +2832,8 @@ function App() {
   const onlineTransactions = gl('onlineTransactions') || [];
   const setOnlineTransactions = v => persist({ ...appData, onlineTransactions: typeof v === 'function' ? v(gl('onlineTransactions')) : v });
   const setAccountBalanceExpenses = v => persist({ ...appData, accountBalanceExpenses: typeof v === 'function' ? v(appData.accountBalanceExpenses || []) : v });
+  const accountBalanceOverrides = appData.accountBalanceOverrides || {};
+  const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
   // Archives (removes) Banking-Ledger transactions in a date range. Since each day's Opening Balance
   // is now set independently per date (not auto-summed from history), archiving old transactions has
   // zero effect on any other day's balance. Touches ONLY bankTransactions —
@@ -2830,10 +2933,10 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, currentUser, showMessage, businessProfile }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
-        activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, customers, currentUser, showMessage, businessProfile }),
+        activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
         activeTab === 'performance' && currentUser.role === 'admin' && e(StaffPerformance, { tasks, users, expenses }),
         activeTab === 'salary'      && activeTab === 'salary' && e(StaffSalary, { users, appData, persist, showMessage, currentUser, businessProfile }),
         activeTab === 'settings' && e(SystemSettings, { currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage })
