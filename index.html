@@ -2832,7 +2832,7 @@ function App() {
   const onlineTransactions = gl('onlineTransactions') || [];
   const setOnlineTransactions = v => persist({ ...appData, onlineTransactions: typeof v === 'function' ? v(gl('onlineTransactions')) : v });
   const setAccountBalanceExpenses = v => persist({ ...appData, accountBalanceExpenses: typeof v === 'function' ? v(appData.accountBalanceExpenses || []) : v });
-  const accountBalanceOverrides = appData.accountBalanceOverrides || {};
+  const accountBalanceOverrides = (appData && appData.accountBalanceOverrides) || {};
   const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
   // Archives (removes) Banking-Ledger transactions in a date range. Since each day's Opening Balance
   // is now set independently per date (not auto-summed from history), archiving old transactions has
