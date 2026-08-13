@@ -2850,7 +2850,7 @@ function App() {
   const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
   // Net (Withdrawal − Deposit) of every archived transaction ever removed, kept forever so the
   // all-time Account Balance auto-calculation stays correct even after old entries are archived out.
-  const accountBalanceArchivedOffset = appData.accountBalanceArchivedOffset || 0;
+  const accountBalanceArchivedOffset = (appData && appData.accountBalanceArchivedOffset) || 0;
   // Archives (removes) Banking-Ledger transactions in a date range. Since each day's Opening Balance
   // is now set independently per date (not auto-summed from history), archiving old transactions has
   // zero effect on any other day's balance. Touches ONLY bankTransactions —
