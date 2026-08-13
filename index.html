@@ -1281,18 +1281,19 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
             // are touched, so daily ledger history stays exactly as it was.
             const delta = val - autoAccountBalance;
             setAccountBalanceArchivedOffset((prev) => (Number(prev) || 0) + delta);
+            // Clear every manual override (including any older ones left over from before) so the
+            // display always falls through to the now-corrected auto calculation, on every date.
+            setAccountBalanceOverrides({});
             setShowSetAccBal(false); setAccBalInput('');
-            showMessage('Account Balance permanently set to ₹' + val);
+            showMessage('Account Balance permanently set to ₹' + val + ' — auto calculation resumed.');
           },
           className: 'bg-purple-600 text-white px-5 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium'
         }, 'Set Balance'),
-        safeOverrides[selectedDate] !== undefined && e('button', {
+        Object.keys(safeOverrides).length > 0 && e('button', {
           onClick: () => {
-            const updated = { ...safeOverrides };
-            delete updated[selectedDate];
-            setAccountBalanceOverrides(updated);
+            setAccountBalanceOverrides({});
             setShowSetAccBal(false);
-            showMessage('Manual override removed — using auto calculation');
+            showMessage('All manual overrides removed — using auto calculation');
           },
           className: 'bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 text-sm font-medium'
         }, 'Remove Override'),
