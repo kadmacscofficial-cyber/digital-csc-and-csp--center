@@ -1045,7 +1045,7 @@ function NoteCounter({ selectedDate, baseInput, setBaseInput, saveBase, onCancel
 }
 
 // ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank' });
   const [editingBase, setEditingBase] = useState(false);
@@ -1276,14 +1276,11 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
         e('button', {
           onClick: () => {
             const val = Number(accBalInput);
-            // Fold the correction permanently into the archived offset so the auto-calculation
-            // itself becomes correct going forward (not just for selectedDate) — no transactions
-            // are touched, so daily ledger history stays exactly as it was.
+            // Fold the correction permanently into the archived offset AND clear all overrides
+            // in a single atomic write, so the auto-calculation itself becomes correct going
+            // forward — no transactions are touched, so daily ledger history stays exactly as it was.
             const delta = val - autoAccountBalance;
-            setAccountBalanceArchivedOffset((prev) => (Number(prev) || 0) + delta);
-            // Clear every manual override (including any older ones left over from before) so the
-            // display always falls through to the now-corrected auto calculation, on every date.
-            setAccountBalanceOverrides({});
+            setAccountBalancePermanent(delta);
             setShowSetAccBal(false); setAccBalInput('');
             showMessage('Account Balance permanently set to ₹' + val + ' — auto calculation resumed.');
           },
@@ -2856,6 +2853,15 @@ function App() {
   const accountBalanceOverrides = (appData && appData.accountBalanceOverrides) || {};
   const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
   const setAccountBalanceArchivedOffset = v => persist({ ...appData, accountBalanceArchivedOffset: typeof v === 'function' ? v(appData.accountBalanceArchivedOffset || 0) : v });
+  // Combined, atomic update used by the "Set Balance" action — folding the offset delta AND
+  // clearing all overrides in a SINGLE persist() call, so one write doesn't clobber the other
+  // (two separate persist() calls back-to-back would each spread the same stale appData and
+  // the second call would silently wipe out the first one's change).
+  const setAccountBalancePermanent = (offsetDelta) => persist({
+    ...appData,
+    accountBalanceArchivedOffset: (appData.accountBalanceArchivedOffset || 0) + offsetDelta,
+    accountBalanceOverrides: {}
+  });
   // Net (Withdrawal − Deposit) of every archived transaction ever removed, kept forever so the
   // all-time Account Balance auto-calculation stays correct even after old entries are archived out.
   const accountBalanceArchivedOffset = (appData && appData.accountBalanceArchivedOffset) || 0;
@@ -2967,7 +2973,7 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, currentUser, showMessage, businessProfile }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
