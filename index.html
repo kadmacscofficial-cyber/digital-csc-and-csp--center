@@ -984,9 +984,8 @@ function Expenses({ expenses, setExpenses, currentUser, showMessage }) {
 
 
 // ── NOTE COUNTER ──
-function NoteCounter({ selectedDate, baseInput, setBaseInput, saveBase, onCancel }) {
+function NoteCounter({ selectedDate, baseInput, setBaseInput, counts, setCounts, saveBase, onCancel }) {
   const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
-  const [counts, setCounts] = useState({});
 
   const total = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
 
@@ -1044,12 +1043,70 @@ function NoteCounter({ selectedDate, baseInput, setBaseInput, saveBase, onCancel
   );
 }
 
+// ── CASH NOTE MODAL (popup shown after a Banking transaction, to log note-wise breakdown into Cash Count) ──
+function CashNoteModal({ noteModal, counts, setCounts, onSave, onSkip }) {
+  const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const total = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
+  const remaining = noteModal.amount - total;
+  const updateCount = (note, val) => setCounts({ ...counts, [note]: val });
+  const canSave = remaining === 0 && total > 0;
+
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4' },
+    e('div', { className: 'bg-white rounded-xl w-full max-w-lg shadow-2xl flex flex-col', style: { maxHeight: '92vh' } },
+      e('div', { className: `flex items-center justify-between px-5 py-3 border-b rounded-t-xl ${noteModal.type === 'deposit' ? 'bg-green-50' : 'bg-red-50'}` },
+        e('div', null,
+          e('p', { className: 'text-sm font-semibold text-gray-800' }, 'New Cash Transaction (note-wise)'),
+          e('p', { className: 'text-xs text-gray-500' }, (noteModal.type === 'deposit' ? 'Cash IN — ' : 'Cash OUT — ') + noteModal.customerName + ' — ₹' + noteModal.amount.toLocaleString('en-IN'))
+        ),
+        e('button', { onClick: onSkip, className: 'text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-200' }, e(Icon, { name: 'X', size: 18 }))
+      ),
+      e('div', { className: 'p-5 space-y-4 overflow-y-auto' },
+        e('p', { className: 'text-xs text-gray-500' }, 'Enter which notes were ' + (noteModal.type === 'deposit' ? 'received from' : 'given to') + ' the customer — this will be saved to Cash Count and totalled automatically.'),
+        e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
+          ...NOTES.map(note =>
+            e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
+              e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
+              e('input', {
+                type: 'number', min: '0',
+                value: counts[note] || '',
+                onChange: ev => updateCount(note, ev.target.value),
+                className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-teal-400',
+                placeholder: '0'
+              }),
+              e('p', { className: 'text-xs text-teal-600 mt-1 font-medium' },
+                (Number(counts[note]) || 0) > 0 ? '₹' + (note * (Number(counts[note]) || 0)) : '—'
+              )
+            )
+          )
+        ),
+        e('div', { className: 'flex justify-between items-center bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm' },
+          e('span', { className: 'text-gray-500' }, 'Transaction Amount:'),
+          e('span', { className: 'font-bold text-gray-800' }, '₹' + noteModal.amount.toLocaleString('en-IN'))
+        ),
+        e('div', { className: `flex justify-between items-center rounded-lg px-4 py-3 text-sm ${remaining === 0 ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}` },
+          e('span', { className: remaining === 0 ? 'text-green-700 font-medium' : 'text-orange-700' }, remaining === 0 ? 'Notes match the amount ✓' : 'Remaining to allocate:'),
+          remaining !== 0 && e('span', { className: 'font-bold text-orange-700' }, '₹' + remaining.toLocaleString('en-IN'))
+        )
+      ),
+      e('div', { className: 'flex justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl' },
+        e('button', { onClick: onSkip, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-100' }, "Skip — Don't Record Notes"),
+        e('button', {
+          onClick: () => canSave && onSave(counts),
+          disabled: !canSave,
+          className: 'text-white px-5 py-2 rounded-lg text-sm font-medium ' + (canSave ? (noteModal.type === 'deposit' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700') : 'bg-gray-300 cursor-not-allowed')
+        }, 'Save to Cash Count')
+      )
+    )
+  );
+}
+
 // ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank' });
   const [editingBase, setEditingBase] = useState(false);
   const [baseInput, setBaseInput] = useState(String(openingBalances[todayStr] || 0));
+  const [baseCounts, setBaseCounts] = useState({});
   const [showArchive, setShowArchive] = useState(false);
   const [archFrom, setArchFrom] = useState('');
   const [archTo, setArchTo] = useState('');
@@ -1057,6 +1114,15 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const [accBalInput, setAccBalInput] = useState('');
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
+  const [addMoreCounts, setAddMoreCounts] = useState({});
+  const [showAddMoreNotes, setShowAddMoreNotes] = useState(false);
+  // Queue of pending "note-wise" popups triggered after adding a Banking transaction —
+  // a queue (not a single value) so a transaction with BOTH Cash IN and Cash OUT shows
+  // two popups one after another instead of losing one.
+  const [noteModalQueue, setNoteModalQueue] = useState([]);
+  const [noteModalCounts, setNoteModalCounts] = useState({});
+  const noteModal = noteModalQueue[0] || null;
+  const closeNoteModal = () => { setNoteModalQueue(q => q.slice(1)); setNoteModalCounts({}); };
   const [bankingTab, setBankingTab] = useState('ledger');
   const [expForm, setExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' }); // 'ledger' | 'reports'
 
@@ -1110,15 +1176,38 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
     const cashOut = Number(form.cashOut) || 0;
     if (cashIn === 0 && cashOut === 0) return showMessage('Please enter a Cash IN or Cash OUT amount.', 'error');
     setBankTransactions([...bankTransactions, { id: Date.now(), date: selectedDate, customerName: form.customerName, cashIn, cashOut, location: form.location, staffId: currentUser.id, staffName: currentUser.name }]);
+    // Queue the "New Cash Transaction (note-wise)" popup so the note breakdown for this
+    // transaction can be logged straight into Cash Count — Banking's own data above is
+    // already saved either way, so skipping the popup never blocks the ledger entry.
+    const queued = [];
+    if (cashIn > 0) queued.push({ type: 'deposit', amount: cashIn, customerName: form.customerName, date: selectedDate, location: form.location });
+    if (cashOut > 0) queued.push({ type: 'withdrawal', amount: cashOut, customerName: form.customerName, date: selectedDate, location: form.location });
+    if (queued.length) setNoteModalQueue(q => [...q, ...queued]);
     setForm(f => ({ ...f, customerName: '', cashIn: '', cashOut: '' }));
     showMessage(`Transaction added (${form.location})!`);
+  };
+
+  const handleSaveNoteModal = (notes) => {
+    const safeCC = Array.isArray(cashCountEntries) ? cashCountEntries : [];
+    setCashCountEntries([...safeCC, {
+      id: Date.now(), date: noteModal.date, type: noteModal.type,
+      customerName: noteModal.customerName, remarks: 'Banking Txn (' + noteModal.location + ')',
+      amount: noteModal.amount, notes, addedBy: currentUser.name
+    }]);
+    showMessage('Note breakdown saved to Cash Count!');
+    closeNoteModal();
   };
 
   const deleteTxn = (id) => { setBankTransactions(bankTransactions.filter(t => t.id !== id)); showMessage('Deleted', 'error'); };
 
   const saveBase = () => {
-    setOpeningBalances({ ...openingBalances, [selectedDate]: Number(baseInput) || 0 });
+    const amount = Number(baseInput) || 0;
+    // Only pass the note breakdown along when the note counter was actually used — a plain
+    // typed-in amount records no note history, exactly as before this feature existed.
+    const notes = (baseCounts && Object.keys(baseCounts).length > 0) ? baseCounts : null;
+    setOpeningBalanceWithNotes(selectedDate, amount, notes);
     setEditingBase(false);
+    setBaseCounts({});
     showMessage(`${selectedDate} এর Opening Balance সেট হয়ে গেছে!`);
   };
 
@@ -1127,11 +1216,26 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
     if (!amt || amt <= 0) return showMessage('Please enter a valid amount.', 'error');
     // Opening Balance + Add-More-history are now written in one atomic persist() call
     // (see addMoreBalance in the App component) so the update can no longer be clobbered.
-    const newBal = addMoreBalance(selectedDate, amt);
+    // Note breakdown (if the note counter was used) is folded into that same call too.
+    const notes = (addMoreCounts && Object.keys(addMoreCounts).length > 0) ? addMoreCounts : null;
+    const newBal = addMoreBalance(selectedDate, amt, notes);
     setAddMoreInput('');
+    setAddMoreCounts({});
+    setShowAddMoreNotes(false);
     setShowAddMore(false);
     showMessage('₹' + amt + ' added! New Opening Balance: ₹' + newBal);
   };
+
+  // Note-counting for Add More Balance — same denominations/logic as the Opening Balance
+  // note counter, kept local to this panel so it doesn't touch NoteCounter's own state.
+  const ADD_MORE_NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const updateAddMoreCount = (note, val) => {
+    const updated = { ...addMoreCounts, [note]: val };
+    setAddMoreCounts(updated);
+    const newTotal = ADD_MORE_NOTES.reduce((s, n) => s + n * (Number(updated[n]) || 0), 0);
+    setAddMoreInput(String(newTotal));
+  };
+  const resetAddMoreCounts = () => { setAddMoreCounts({}); setAddMoreInput('0'); };
 
   const exportLedger = () => {
     const aoa = [
@@ -1237,12 +1341,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
         e(StatCard, { title: `Opening Balance (${selectedDate})`, value: `₹${openingBalance}`, icon: e(Icon, { name: 'Landmark', size: 22 }), color: 'bg-indigo-50 text-indigo-600' }),
         currentUser.role === 'admin' && e('div', { className: 'absolute top-1 right-1 flex gap-0.5' },
           e('button', {
-            onClick: () => { setAddMoreInput(''); setShowAddMore(true); setEditingBase(false); },
+            onClick: () => { setAddMoreInput(''); setAddMoreCounts({}); setShowAddMoreNotes(false); setShowAddMore(true); setEditingBase(false); },
             title: 'Add More Balance',
             className: 'text-green-500 hover:text-green-700 p-1.5 rounded hover:bg-green-50'
           }, e(Icon, { name: 'PlusCircle', size: 15 })),
           e('button', {
-            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setEditingBase(true); setShowAddMore(false); setShowSetAccBal(false); },
+            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setBaseCounts({}); setEditingBase(true); setShowAddMore(false); setShowSetAccBal(false); },
             title: 'Edit Opening Balance',
             className: 'text-gray-400 hover:text-indigo-600 p-1.5 rounded hover:bg-indigo-50'
           }, e(Icon, { name: 'Edit3', size: 15 }))
@@ -1254,8 +1358,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
     ),
 
     editingBase && e(NoteCounter, {
-      selectedDate, baseInput, setBaseInput, saveBase,
-      onCancel: () => setEditingBase(false)
+      selectedDate, baseInput, setBaseInput, counts: baseCounts, setCounts: setBaseCounts, saveBase,
+      onCancel: () => { setEditingBase(false); setBaseCounts({}); }
     }),
 
     showSetAccBal && currentUser.role === 'admin' && e('div', { className: 'bg-purple-50 p-4 rounded-xl shadow-sm border border-purple-300 flex flex-wrap items-end gap-4' },
@@ -1294,34 +1398,65 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
       )
     ),
 
-    showAddMore && e('div', { className: 'bg-green-50 p-4 rounded-xl shadow-sm border border-green-300 flex flex-wrap items-end gap-4' },
-      e('div', null,
-        e('label', { className: 'block text-sm font-semibold text-green-800 mb-1' }, 'Add More Balance — ' + selectedDate),
-        e('p', { className: 'text-xs text-green-600 mb-3' }, 'This amount will be added to the current Opening Balance'),
-        e('div', { className: 'flex items-center gap-2' },
-          e('span', { className: 'text-green-700 font-bold' }, '₹'),
-          e('input', { type: 'number', value: addMoreInput, onChange: ev => setAddMoreInput(ev.target.value), className: 'border border-green-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 w-44 text-sm', placeholder: '0' })
+    showAddMore && e('div', { className: 'bg-green-50 p-4 rounded-xl shadow-sm border border-green-300 space-y-4' },
+      e('div', { className: 'flex flex-wrap items-end gap-4' },
+        e('div', null,
+          e('div', { className: 'flex items-center justify-between gap-3' },
+            e('label', { className: 'block text-sm font-semibold text-green-800 mb-1' }, 'Add More Balance — ' + selectedDate),
+            e('button', {
+              onClick: () => { setShowAddMoreNotes(!showAddMoreNotes); },
+              className: 'text-xs font-medium text-green-700 border border-green-300 bg-white px-2 py-1 rounded hover:bg-green-100 whitespace-nowrap'
+            }, showAddMoreNotes ? 'Hide Note Count' : '🧮 Count Notes')
+          ),
+          e('p', { className: 'text-xs text-green-600 mb-3' }, 'This amount will be added to the current Opening Balance'),
+          e('div', { className: 'flex items-center gap-2' },
+            e('span', { className: 'text-green-700 font-bold' }, '₹'),
+            e('input', { type: 'number', value: addMoreInput, onChange: ev => { setAddMoreInput(ev.target.value); setAddMoreCounts({}); }, className: 'border border-green-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 w-44 text-sm', placeholder: '0' })
+          )
+        ),
+        e('div', { className: 'flex flex-col gap-1.5 text-sm bg-white border border-green-200 rounded-xl px-4 py-3 min-w-44' },
+          e('div', { className: 'flex justify-between gap-4 text-gray-500' },
+            e('span', null, 'Current Balance:'),
+            e('span', { className: 'font-semibold text-gray-700' }, '₹' + openingBalance)
+          ),
+          e('div', { className: 'flex justify-between gap-4 text-green-600' },
+            e('span', null, '+ Adding:'),
+            e('span', { className: 'font-semibold' }, '₹' + (Number(addMoreInput) || 0))
+          ),
+          e('div', { className: 'flex justify-between gap-4 text-indigo-700 border-t border-green-100 pt-1.5 mt-0.5' },
+            e('span', { className: 'font-bold' }, '= New Balance:'),
+            e('span', { className: 'font-bold text-base' }, '₹' + (openingBalance + (Number(addMoreInput) || 0)))
+          )
+        ),
+        e('div', { className: 'flex gap-2' },
+          e('button', { onClick: handleAddMore, className: 'bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-2' },
+            e(Icon, { name: 'Plus', size: 16 }), 'Add Balance'
+          ),
+          e('button', { onClick: () => { setShowAddMore(false); setAddMoreInput(''); setAddMoreCounts({}); setShowAddMoreNotes(false); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel')
         )
       ),
-      e('div', { className: 'flex flex-col gap-1.5 text-sm bg-white border border-green-200 rounded-xl px-4 py-3 min-w-44' },
-        e('div', { className: 'flex justify-between gap-4 text-gray-500' },
-          e('span', null, 'Current Balance:'),
-          e('span', { className: 'font-semibold text-gray-700' }, '₹' + openingBalance)
+      showAddMoreNotes && e('div', { className: 'bg-white border border-green-200 rounded-xl p-4 space-y-3' },
+        e('div', { className: 'flex justify-between items-center' },
+          e('p', { className: 'text-xs text-gray-500' }, 'Enter note counts to auto-calculate the amount to add'),
+          e('button', { onClick: resetAddMoreCounts, className: 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 px-2 py-1 rounded' }, 'Reset')
         ),
-        e('div', { className: 'flex justify-between gap-4 text-green-600' },
-          e('span', null, '+ Adding:'),
-          e('span', { className: 'font-semibold' }, '₹' + (Number(addMoreInput) || 0))
-        ),
-        e('div', { className: 'flex justify-between gap-4 text-indigo-700 border-t border-green-100 pt-1.5 mt-0.5' },
-          e('span', { className: 'font-bold' }, '= New Balance:'),
-          e('span', { className: 'font-bold text-base' }, '₹' + (openingBalance + (Number(addMoreInput) || 0)))
+        e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
+          ...ADD_MORE_NOTES.map(note =>
+            e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
+              e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
+              e('input', {
+                type: 'number', min: '0',
+                value: addMoreCounts[note] || '',
+                onChange: ev => updateAddMoreCount(note, ev.target.value),
+                className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-green-400',
+                placeholder: '0'
+              }),
+              e('p', { className: 'text-xs text-green-600 mt-1 font-medium' },
+                (Number(addMoreCounts[note]) || 0) > 0 ? '₹' + (note * (Number(addMoreCounts[note]) || 0)) : '—'
+              )
+            )
+          )
         )
-      ),
-      e('div', { className: 'flex gap-2' },
-        e('button', { onClick: handleAddMore, className: 'bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-2' },
-          e(Icon, { name: 'Plus', size: 16 }), 'Add Balance'
-        ),
-        e('button', { onClick: () => { setShowAddMore(false); setAddMoreInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel')
       )
     ),
 
@@ -1632,6 +1767,11 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
       )
     ) // end accexpense tab
 
+    ,
+    noteModal && e(CashNoteModal, {
+      noteModal, counts: noteModalCounts, setCounts: setNoteModalCounts,
+      onSave: handleSaveNoteModal, onSkip: closeNoteModal
+    })
   );
 }
 
@@ -2753,6 +2893,208 @@ function ReceiptModal({ receipt, businessProfile, onClose }) {
   );
 }
 
+// ── CASH COUNT (physical note tracker — separate from Banking Ledger) ──
+function CashCount({ noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }) {
+  const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const safeHistory = Array.isArray(noteBreakdownHistory) ? noteBreakdownHistory : [];
+  const safeEntries = Array.isArray(cashCountEntries) ? cashCountEntries : [];
+
+  const [entryType, setEntryType] = useState('deposit');
+  const [entryDate, setEntryDate] = useState(todayStr);
+  const [customerName, setCustomerName] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [counts, setCounts] = useState({});
+
+  const formTotal = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
+  const updateCount = (note, val) => setCounts({ ...counts, [note]: val });
+  const resetForm = () => { setCounts({}); setCustomerName(''); setRemarks(''); };
+
+  const handleSave = () => {
+    if (!formTotal || formTotal <= 0) return showMessage('Please enter at least one note count.', 'error');
+    const entry = {
+      id: Date.now(), date: entryDate || todayStr, type: entryType,
+      customerName: customerName.trim(), remarks: remarks.trim(),
+      amount: formTotal, notes: counts, addedBy: currentUser.name
+    };
+    setCashCountEntries([...safeEntries, entry]);
+    resetForm();
+    showMessage((entryType === 'deposit' ? 'Deposit' : 'Withdrawal') + ' of ₹' + formTotal.toLocaleString('en-IN') + ' recorded!');
+  };
+
+  const handleDeleteEntry = (id) => {
+    if (!window.confirm('Delete this entry? This cannot be undone.')) return;
+    setCashCountEntries(safeEntries.filter(x => x.id !== id));
+    showMessage('Entry deleted.', 'error');
+  };
+
+  const handleDeleteHistory = (id) => {
+    if (!window.confirm('Delete this note-history record? This cannot be undone.')) return;
+    setNoteBreakdownHistory(safeHistory.filter(x => x.id !== id));
+    showMessage('Note-history record deleted.', 'error');
+  };
+
+  const handleResetAll = () => {
+    const ok = window.confirm('Are you sure you want to RESET all Cash Count data?\n\nThis will clear:\n\u2022 All Cash Transactions (Deposit/Withdrawal entries)\n\u2022 All Note History (Opening Balance & Add More Balance breakdowns)\n\nThis only clears Cash Count data — Banking Ledger amounts (Opening Balance, Account Balance, transactions) are NOT affected.\n\nThis action cannot be undone!');
+    if (!ok) return;
+    setCashCountEntries([]);
+    setNoteBreakdownHistory([]);
+    showMessage('Cash Count data reset to zero!', 'error');
+  };
+
+  // ── Current cash-in-hand, denomination-wise ──
+  // Opening Balance / Add More Balance note history ADD to the drawer; Cash Count
+  // Deposit entries ADD, Withdrawal entries SUBTRACT. Purely additive over all recorded
+  // note-breakdowns — does not read or modify any Banking Ledger amount directly.
+  const denomTotals = {};
+  NOTES.forEach(n => { denomTotals[n] = 0; });
+  safeHistory.forEach(h => { NOTES.forEach(n => { denomTotals[n] += Number((h.notes || {})[n]) || 0; }); });
+  safeEntries.forEach(en => {
+    const sign = en.type === 'withdrawal' ? -1 : 1;
+    NOTES.forEach(n => { denomTotals[n] += sign * (Number((en.notes || {})[n]) || 0); });
+  });
+  const grandTotal = NOTES.reduce((s, n) => s + n * denomTotals[n], 0);
+
+  const noteChips = (notes) => NOTES.filter(n => (Number((notes || {})[n]) || 0) > 0)
+    .map(n => '₹' + n + '×' + notes[n]).join('  ');
+
+  const sourceLabel = { opening: 'Opening Balance', addmore: 'Add More Balance' };
+  const sortedHistory = [...safeHistory].sort((a, b) => (b.id || 0) - (a.id || 0));
+  const sortedEntries = [...safeEntries].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+  return e('div', { className: 'space-y-4' },
+    e('div', { className: 'flex flex-wrap justify-between items-start gap-3' },
+      e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Cash Count'), e('p', { className: 'text-sm text-gray-500' }, 'Physical note tracking — Opening/Add-More history, note-wise Deposit & Withdrawal entries, and current cash in hand')),
+      currentUser.role === 'admin' && e('button', {
+        onClick: handleResetAll,
+        className: 'flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm'
+      }, e(Icon, { name: 'RefreshCw', size: 16 }), ' Reset All')
+    ),
+
+    // ── Total cash summary ──
+    e('div', { className: 'bg-gradient-to-r from-teal-600 to-emerald-700 rounded-xl p-4 text-white shadow-md space-y-3' },
+      e('div', null,
+        e('p', { className: 'text-teal-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'Total Cash In Hand (note-wise)'),
+        e('p', { className: 'text-3xl font-bold' }, '₹' + grandTotal.toLocaleString('en-IN'))
+      ),
+      e('div', { className: 'grid grid-cols-3 md:grid-cols-9 gap-2' },
+        ...NOTES.map(note =>
+          e('div', { key: note, className: 'bg-white/10 rounded-lg p-2 text-center' },
+            e('p', { className: 'text-xs font-bold text-teal-100' }, '₹' + note),
+            e('p', { className: `text-sm font-semibold ${denomTotals[note] < 0 ? 'text-red-300' : 'text-white'}` }, denomTotals[note] || 0),
+            e('p', { className: 'text-[10px] text-teal-200' }, '₹' + (note * (denomTotals[note] || 0)).toLocaleString('en-IN'))
+          )
+        )
+      )
+    ),
+
+    // ── Note history from Opening Balance / Add More Balance ──
+    e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100' },
+      e('h4', { className: 'font-semibold text-gray-800 mb-1' }, 'Note History — Opening Balance & Add More Balance'),
+      e('p', { className: 'text-xs text-gray-400 mb-3' }, 'Recorded automatically whenever note counting is used in Banking'),
+      sortedHistory.length === 0
+        ? e('p', { className: 'text-sm text-gray-400 py-4 text-center' }, 'No note-count history yet.')
+        : e('div', { className: 'overflow-x-auto' },
+            e('table', { className: 'w-full text-sm' },
+              e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' },
+                e('th', { className: 'p-2' }, 'Date'), e('th', { className: 'p-2' }, 'Source'), e('th', { className: 'p-2' }, 'Amount'), e('th', { className: 'p-2' }, 'Notes'),
+                currentUser.role === 'admin' && e('th', { className: 'p-2' }, '')
+              )),
+              e('tbody', null,
+                ...sortedHistory.map(h =>
+                  e('tr', { key: h.id, className: 'border-b border-gray-50' },
+                    e('td', { className: 'p-2 whitespace-nowrap' }, h.date),
+                    e('td', { className: 'p-2' }, e('span', { className: `text-xs px-2 py-0.5 rounded-full font-medium ${h.source === 'opening' ? 'bg-indigo-100 text-indigo-700' : 'bg-green-100 text-green-700'}` }, sourceLabel[h.source] || h.source)),
+                    e('td', { className: 'p-2 font-medium' }, '₹' + (h.amount || 0).toLocaleString('en-IN')),
+                    e('td', { className: 'p-2 text-xs text-gray-500' }, noteChips(h.notes)),
+                    currentUser.role === 'admin' && e('td', { className: 'p-2' },
+                      e('button', { onClick: () => handleDeleteHistory(h.id), className: 'text-gray-400 hover:text-red-500 p-1' }, e(Icon, { name: 'Trash2', size: 15 }))
+                    )
+                  )
+                )
+              )
+            )
+          )
+    ),
+
+    // ── New Deposit / Withdrawal entry ──
+    e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4' },
+      e('div', { className: 'flex flex-wrap items-center justify-between gap-3' },
+        e('h4', { className: 'font-semibold text-gray-800' }, 'New Cash Transaction (note-wise)'),
+        e('div', { className: 'flex gap-2' },
+          e('button', { onClick: () => setEntryType('deposit'), className: 'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ' + (entryType === 'deposit' ? 'bg-green-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-green-50') }, 'Deposit (Cash In)'),
+          e('button', { onClick: () => setEntryType('withdrawal'), className: 'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ' + (entryType === 'withdrawal' ? 'bg-red-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-red-50') }, 'Withdrawal (Cash Out)')
+        )
+      ),
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-3' },
+        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Date'),
+          e('input', { type: 'date', value: entryDate, onChange: ev => setEntryDate(ev.target.value), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500' })),
+        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Customer Name (optional)'),
+          e('input', { type: 'text', value: customerName, onChange: ev => setCustomerName(ev.target.value), placeholder: 'e.g. Ramesh Mondal', className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500' })),
+        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Remarks (optional)'),
+          e('input', { type: 'text', value: remarks, onChange: ev => setRemarks(ev.target.value), placeholder: 'e.g. Aadhaar service fee', className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500' }))
+      ),
+      e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
+        ...NOTES.map(note =>
+          e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
+            e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
+            e('input', {
+              type: 'number', min: '0',
+              value: counts[note] || '',
+              onChange: ev => updateCount(note, ev.target.value),
+              className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-teal-400',
+              placeholder: '0'
+            }),
+            e('p', { className: 'text-xs text-teal-600 mt-1 font-medium' },
+              (Number(counts[note]) || 0) > 0 ? '₹' + (note * (Number(counts[note]) || 0)) : '—'
+            )
+          )
+        )
+      ),
+      e('div', { className: 'flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100' },
+        e('p', { className: 'text-sm text-gray-600' }, 'Auto-calculated total: ', e('span', { className: 'font-bold text-gray-800' }, '₹' + formTotal.toLocaleString('en-IN'))),
+        e('div', { className: 'flex gap-2' },
+          e('button', { onClick: () => setCounts({}), className: 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 px-3 py-2 rounded-lg' }, 'Reset Notes'),
+          e('button', {
+            onClick: handleSave,
+            className: 'text-white px-5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ' + (entryType === 'deposit' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')
+          }, e(Icon, { name: 'Plus', size: 16 }), entryType === 'deposit' ? ' Save Deposit' : ' Save Withdrawal')
+        )
+      )
+    ),
+
+    // ── Entries list ──
+    e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100' },
+      e('h4', { className: 'font-semibold text-gray-800 mb-3' }, 'Cash Transactions'),
+      sortedEntries.length === 0
+        ? e('p', { className: 'text-sm text-gray-400 py-6 text-center' }, 'No cash transactions recorded yet.')
+        : e('div', { className: 'overflow-x-auto' },
+            e('table', { className: 'w-full text-sm' },
+              e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' },
+                e('th', { className: 'p-2' }, 'Date'), e('th', { className: 'p-2' }, 'Type'), e('th', { className: 'p-2' }, 'Customer'),
+                e('th', { className: 'p-2' }, 'Amount'), e('th', { className: 'p-2' }, 'Notes'), e('th', { className: 'p-2' }, 'Remarks'),
+                currentUser.role === 'admin' && e('th', { className: 'p-2' }, '')
+              )),
+              e('tbody', null,
+                ...sortedEntries.map(en =>
+                  e('tr', { key: en.id, className: 'border-b border-gray-50' },
+                    e('td', { className: 'p-2 whitespace-nowrap' }, en.date),
+                    e('td', { className: 'p-2' }, e('span', { className: `text-xs px-2 py-0.5 rounded-full font-medium ${en.type === 'deposit' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}` }, en.type === 'deposit' ? 'Deposit' : 'Withdrawal')),
+                    e('td', { className: 'p-2' }, en.customerName || '—'),
+                    e('td', { className: 'p-2 font-medium' }, '₹' + (en.amount || 0).toLocaleString('en-IN')),
+                    e('td', { className: 'p-2 text-xs text-gray-500' }, noteChips(en.notes)),
+                    e('td', { className: 'p-2 text-xs text-gray-500' }, en.remarks || '—'),
+                    currentUser.role === 'admin' && e('td', { className: 'p-2' },
+                      e('button', { onClick: () => handleDeleteEntry(en.id), className: 'text-gray-400 hover:text-red-500 p-1' }, e(Icon, { name: 'Trash2', size: 15 }))
+                    )
+                  )
+                )
+              )
+            )
+          )
+    )
+  );
+}
+
 // ── MAIN APP ──
 function App() {
   const [appData, setAppData] = useState(null);
@@ -2849,6 +3191,12 @@ function App() {
   const accountBalanceOverrides = (appData && appData.accountBalanceOverrides) || {};
   const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
   const setAccountBalanceArchivedOffset = v => persist({ ...appData, accountBalanceArchivedOffset: typeof v === 'function' ? v(appData.accountBalanceArchivedOffset || 0) : v });
+  // ── Cash Count menu data — kept fully separate from Banking's own figures; only reads
+  // note-breakdowns that Banking's Opening Balance / Add More Balance actions record. ──
+  const noteBreakdownHistory = gl('noteBreakdownHistory');
+  const setNoteBreakdownHistory = v => persist({ ...appData, noteBreakdownHistory: typeof v === 'function' ? v(gl('noteBreakdownHistory')) : v });
+  const cashCountEntries = gl('cashCountEntries');
+  const setCashCountEntries = v => persist({ ...appData, cashCountEntries: typeof v === 'function' ? v(gl('cashCountEntries')) : v });
   // Combined, atomic update used by the "Set Balance" action — folding the offset delta AND
   // clearing all overrides in a SINGLE persist() call, so one write doesn't clobber the other
   // (two separate persist() calls back-to-back would each spread the same stale appData and
@@ -2863,17 +3211,35 @@ function App() {
   // the other (two separate persist() calls back-to-back would each spread the same stale
   // appData and the second call would silently wipe out the first one's change — this was the
   // cause of Opening Balance not increasing while Account Balance (Auto) still decreased).
-  const addMoreBalance = (date, amt) => {
+  // Optional 3rd arg `notes` — only passed when the Add More Balance panel's note-counting
+  // was used. When present, it's folded into the SAME atomic persist() call as a
+  // noteBreakdownHistory entry, purely for the separate Cash Count menu to read; it never
+  // affects Opening Balance / Account Balance figures, which are unchanged from before.
+  const addMoreBalance = (date, amt, notes) => {
     const curBalances = appData.bankingOpeningBalances || {};
     const newBal = (curBalances[date] || 0) + amt;
     const curHistory = (appData.addMoreHistory && typeof appData.addMoreHistory === 'object') ? appData.addMoreHistory : {};
     const existing = curHistory[date] || [];
-    persist({
+    const payload = {
       ...appData,
       bankingOpeningBalances: { ...curBalances, [date]: newBal },
       addMoreHistory: { ...curHistory, [date]: [...existing, amt] }
-    });
+    };
+    if (notes && Object.keys(notes).length > 0) {
+      payload.noteBreakdownHistory = [...gl('noteBreakdownHistory'), { id: Date.now(), date, source: 'addmore', amount: amt, notes }];
+    }
+    persist(payload);
     return newBal;
+  };
+  // Same idea for Opening Balance's "Save" action (via the NoteCounter) — atomic single
+  // persist() so the Opening Balance write and the note-history write can't clobber each other.
+  const setOpeningBalanceWithNotes = (date, amount, notes) => {
+    const curBalances = appData.bankingOpeningBalances || {};
+    const payload = { ...appData, bankingOpeningBalances: { ...curBalances, [date]: amount } };
+    if (notes && Object.keys(notes).length > 0) {
+      payload.noteBreakdownHistory = [...gl('noteBreakdownHistory'), { id: Date.now(), date, source: 'opening', amount, notes }];
+    }
+    persist(payload);
   };
   // Net (Withdrawal − Deposit) of every archived transaction ever removed, kept forever so the
   // all-time Account Balance auto-calculation stays correct even after old entries are archived out.
@@ -2927,6 +3293,7 @@ function App() {
     { id: 'reports', label: 'Reports & Invoice', icon: 'FileText' },
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
+    { id: 'cashcount', label: 'Cash Count', icon: 'Wallet' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
@@ -2936,7 +3303,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', performance: 'Staff Performance', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', cashcount: 'Cash Count', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', performance: 'Staff Performance', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen font-sans overflow-hidden bg-gray-50' },
     e('aside', { className: `w-64 text-white flex flex-col transition-colors duration-300 bg-${sideColor}-900` },
@@ -2986,7 +3353,8 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
+        activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
