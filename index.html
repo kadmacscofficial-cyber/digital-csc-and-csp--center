@@ -1045,7 +1045,7 @@ function NoteCounter({ selectedDate, baseInput, setBaseInput, saveBase, onCancel
 }
 
 // ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank' });
   const [editingBase, setEditingBase] = useState(false);
@@ -1125,13 +1125,9 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const handleAddMore = () => {
     const amt = Number(addMoreInput) || 0;
     if (!amt || amt <= 0) return showMessage('Please enter a valid amount.', 'error');
-    const current = openingBalances[selectedDate] || 0;
-    const newBal = current + amt;
-    setOpeningBalances({ ...openingBalances, [selectedDate]: newBal });
-    // Track Add More separately for Account Balance calculation
-    const safeHistory = (addMoreHistory && typeof addMoreHistory === 'object') ? addMoreHistory : {};
-    const existing = safeHistory[selectedDate] || [];
-    setAddMoreHistory({ ...safeHistory, [selectedDate]: [...existing, amt] });
+    // Opening Balance + Add-More-history are now written in one atomic persist() call
+    // (see addMoreBalance in the App component) so the update can no longer be clobbered.
+    const newBal = addMoreBalance(selectedDate, amt);
     setAddMoreInput('');
     setShowAddMore(false);
     showMessage('₹' + amt + ' added! New Opening Balance: ₹' + newBal);
@@ -2862,6 +2858,23 @@ function App() {
     accountBalanceArchivedOffset: (appData.accountBalanceArchivedOffset || 0) + offsetDelta,
     accountBalanceOverrides: {}
   });
+  // Combined, atomic update used by "Add More Balance" — folding the Opening Balance increase
+  // AND the Add-More-history entry into a SINGLE persist() call, so one write doesn't clobber
+  // the other (two separate persist() calls back-to-back would each spread the same stale
+  // appData and the second call would silently wipe out the first one's change — this was the
+  // cause of Opening Balance not increasing while Account Balance (Auto) still decreased).
+  const addMoreBalance = (date, amt) => {
+    const curBalances = appData.bankingOpeningBalances || {};
+    const newBal = (curBalances[date] || 0) + amt;
+    const curHistory = (appData.addMoreHistory && typeof appData.addMoreHistory === 'object') ? appData.addMoreHistory : {};
+    const existing = curHistory[date] || [];
+    persist({
+      ...appData,
+      bankingOpeningBalances: { ...curBalances, [date]: newBal },
+      addMoreHistory: { ...curHistory, [date]: [...existing, amt] }
+    });
+    return newBal;
+  };
   // Net (Withdrawal − Deposit) of every archived transaction ever removed, kept forever so the
   // all-time Account Balance auto-calculation stays correct even after old entries are archived out.
   const accountBalanceArchivedOffset = (appData && appData.accountBalanceArchivedOffset) || 0;
@@ -2973,7 +2986,7 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
