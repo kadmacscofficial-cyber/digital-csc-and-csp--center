@@ -628,13 +628,13 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
 function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newC, setNewC] = useState({ name: '', phone: '', address: '', dob: '' });
-  const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending' }]);
+  const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending', paymentMode: 'Cash' }]);
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
   const allSvcs = [...services, { id: 'others', name: 'Others', price: 0 }];
   const filtered = customers.filter(c => c.lastVisit >= fromDate && c.lastVisit <= toDate);
 
-  const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending' }]);
+  const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending', paymentMode: 'Cash' }]);
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
   const updateServiceRow = (rowId, field, val) => setSelectedServices(selectedServices.map(s => s.id === rowId ? { ...s, [field]: val } : s));
 
@@ -651,6 +651,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   const crmTotal = selectedServices.reduce((sum, row) => sum + getRowPrice(row), 0);
   const crmPaidTotal = selectedServices.reduce((sum, row) => sum + (Number(row.paid) || 0), 0);
   const crmDue = Math.max(0, crmTotal - crmPaidTotal);
+  const crmOnlinePaid = selectedServices.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
 
   const handleAdd = () => {
     if (!newC.name || !newC.phone) return showMessage('Name and Mobile are required.', 'error');
@@ -665,16 +666,22 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const svcPrice = getRowPrice(row);
       const svcName = getRowName(row);
       const paidAmt = Number(row.paid) || 0;
-      return { id: cid + i + 1, groupId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, status: row.status || (paidAmt >= svcPrice ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name };
+      return { id: cid + i + 1, groupId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= svcPrice ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name };
     });
-    persist({ ...appData,
+    // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
+    // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
+    const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
+    const payload = {
+      ...appData,
       customers: [{ id: cid, name: newC.name, phone: newC.phone, address: newC.address, dob: newC.dob, service: allSvcNames, lastVisit: todayStr }, ...customers],
       tasks: [...tasks, ...newTasks]
-    });
+    };
+    if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
+    persist(payload);
     setNewC({ name: '', phone: '', address: '', dob: '' });
-    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending' }]);
+    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending', paymentMode: 'Cash' }]);
     setShowAdd(false);
-    showMessage('Customer added! Total Due: ₹' + crmDue);
+    showMessage('Customer added! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
 
   return e('div', { className: 'space-y-4' },
@@ -721,6 +728,20 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Paid'),
               e('input', { type: 'number', value: row.paid, onChange: ev => updateServiceRow(row.id, 'paid', ev.target.value), className: 'w-24 border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm', placeholder: '₹0' })
             ),
+            e('div', { className: 'flex flex-col' },
+              e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Payment Mode'),
+              e('select', {
+                value: row.paymentMode || 'Cash',
+                onChange: ev => updateServiceRow(row.id, 'paymentMode', ev.target.value),
+                title: 'Online payments are added to Savings Account Balance; Cash works as before',
+                className: 'border rounded-lg px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-400 text-sm ' + (
+                  (row.paymentMode || 'Cash') === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300'
+                )
+              },
+                e('option', { value: 'Cash' }, 'Cash'),
+                e('option', { value: 'Online' }, 'Online')
+              )
+            ),
             selectedServices.length > 1 && e('button', { onClick: () => removeServiceRow(row.id), className: 'text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50' }, e(Icon, { name: 'X', size: 16 }))
           ),
           row.serviceId === 'others' && e('div', { className: 'grid grid-cols-2 gap-2 mt-1 p-2 bg-yellow-50 rounded-lg border border-yellow-200' },
@@ -732,10 +753,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
             e('span', { style: { color: (Number(row.paid) || 0) < getRowPrice(row) ? '#dc2626' : '#16a34a' } }, 'Due: ', e('span', { className: 'font-semibold' }, '₹' + Math.max(0, getRowPrice(row) - (Number(row.paid) || 0))))
           )
         )),
-        selectedServices.some(r => r.serviceId) && e('div', { className: 'flex gap-6 p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-sm' },
+        selectedServices.some(r => r.serviceId) && e('div', { className: 'flex flex-wrap gap-6 p-3 bg-indigo-50 rounded-xl border border-indigo-100 text-sm' },
           e('div', null, e('p', { className: 'text-xs text-indigo-500 mb-0.5' }, 'Total Amount'), e('p', { className: 'text-lg font-bold text-indigo-800' }, '₹' + crmTotal)),
           e('div', null, e('p', { className: 'text-xs text-indigo-500 mb-0.5' }, 'Total Paid'), e('p', { className: 'text-lg font-bold text-green-700' }, '₹' + crmPaidTotal)),
-          e('div', null, e('p', { className: 'text-xs font-medium mb-0.5', style: { color: crmDue > 0 ? '#dc2626' : '#16a34a' } }, 'Total Due'), e('p', { className: 'text-lg font-bold', style: { color: crmDue > 0 ? '#dc2626' : '#16a34a' } }, '₹' + crmDue))
+          e('div', null, e('p', { className: 'text-xs font-medium mb-0.5', style: { color: crmDue > 0 ? '#dc2626' : '#16a34a' } }, 'Total Due'), e('p', { className: 'text-lg font-bold', style: { color: crmDue > 0 ? '#dc2626' : '#16a34a' } }, '₹' + crmDue)),
+          crmOnlinePaid > 0 && e('div', null, e('p', { className: 'text-xs text-teal-600 mb-0.5' }, 'Going to Savings (Online)'), e('p', { className: 'text-lg font-bold text-teal-700' }, '₹' + crmOnlinePaid))
         )
       ),
       e('button', { onClick: handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium' }, 'Save Customer')
@@ -1101,7 +1123,7 @@ function CashNoteModal({ noteModal, counts, setCounts, onSave, onSkip }) {
 }
 
 // ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank' });
   const [editingBase, setEditingBase] = useState(false);
@@ -1112,6 +1134,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const [archTo, setArchTo] = useState('');
   const [showSetAccBal, setShowSetAccBal] = useState(false);
   const [accBalInput, setAccBalInput] = useState('');
+  const [showSetSavings, setShowSetSavings] = useState(false);
+  const [savingsInput, setSavingsInput] = useState('');
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
   const [addMoreCounts, setAddMoreCounts] = useState({});
@@ -1127,8 +1151,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const [expForm, setExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' }); // 'ledger' | 'reports'
 
   // ── Reports tab state ──
-  const oneYearAgo = todayStr.slice(0,4) + '-01-01';
-  const [rptFrom, setRptFrom] = useState(oneYearAgo);
+  const [rptFrom, setRptFrom] = useState(todayStr);
   const [rptTo,   setRptTo]   = useState(todayStr);
 
   const todays = bankTransactions.filter(t => t.date === selectedDate).sort((a, b) => a.id - b.id);
@@ -1333,6 +1356,46 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
           className: 'bg-white bg-opacity-20 hover:bg-opacity-30 p-2.5 rounded-lg text-white transition-colors'
         }, e(Icon, { name: 'Edit3', size: 18 })),
         e('div', { className: 'bg-white bg-opacity-20 p-3 rounded-xl' }, e(Icon, { name: 'Landmark', size: 28 }))
+      )
+    ),
+
+    e('div', { className: 'bg-gradient-to-r from-emerald-600 to-teal-700 rounded-xl p-4 text-white flex items-center justify-between shadow-md' },
+      e('div', null,
+        e('p', { className: 'text-emerald-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'Savings Account Balance'),
+        e('p', { className: 'text-3xl font-bold' }, '₹' + savingsAccountBalance.toLocaleString('en-IN')),
+        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Money in the CSP savings/bank account — editable here, and auto-added when a CRM service is paid Online')
+      ),
+      e('div', { className: 'flex items-center gap-2' },
+        currentUser.role === 'admin' && e('button', {
+          onClick: () => { setSavingsInput(String(savingsAccountBalance)); setShowSetSavings(true); setShowSetAccBal(false); setShowAddMore(false); setEditingBase(false); },
+          title: 'Edit Savings Account Balance',
+          className: 'bg-white bg-opacity-20 hover:bg-opacity-30 p-2.5 rounded-lg text-white transition-colors'
+        }, e(Icon, { name: 'Edit3', size: 18 })),
+        e('div', { className: 'bg-white bg-opacity-20 p-3 rounded-xl' }, e(Icon, { name: 'Wallet', size: 28 }))
+      )
+    ),
+
+    showSetSavings && currentUser.role === 'admin' && e('div', { className: 'bg-emerald-50 p-4 rounded-xl shadow-sm border border-emerald-300 flex flex-wrap items-end gap-4' },
+      e('div', null,
+        e('label', { className: 'block text-sm font-semibold text-emerald-800 mb-1' }, 'Set Savings Account Balance'),
+        e('p', { className: 'text-xs text-emerald-600 mb-3' }, 'Directly set the current amount held in the savings/bank account.'),
+        e('div', { className: 'flex items-center gap-2' },
+          e('span', { className: 'text-emerald-700 font-bold' }, '₹'),
+          e('input', { type: 'number', value: savingsInput, onChange: ev => setSavingsInput(ev.target.value),
+            className: 'border border-emerald-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 w-44 text-sm', placeholder: '0' })
+        )
+      ),
+      e('div', { className: 'flex gap-2' },
+        e('button', {
+          onClick: () => {
+            const val = Number(savingsInput) || 0;
+            setSavingsAccountBalance(val);
+            setShowSetSavings(false); setSavingsInput('');
+            showMessage('Savings Account Balance set to ₹' + val.toLocaleString('en-IN'));
+          },
+          className: 'bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium'
+        }, 'Save'),
+        e('button', { onClick: () => { setShowSetSavings(false); setSavingsInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm' }, 'Cancel')
       )
     ),
 
@@ -3244,6 +3307,11 @@ function App() {
   // Net (Withdrawal − Deposit) of every archived transaction ever removed, kept forever so the
   // all-time Account Balance auto-calculation stays correct even after old entries are archived out.
   const accountBalanceArchivedOffset = (appData && appData.accountBalanceArchivedOffset) || 0;
+  // "Savings Account Balance" — a separate, simple wallet (not date-scoped) tracking money sitting
+  // in the CSP's own savings/bank account. It is (a) directly editable by admin from Banking, and
+  // (b) auto-incremented by Customer CRM whenever a service is paid with Payment Mode = "Online".
+  const savingsAccountBalance = (appData && appData.savingsAccountBalance) || 0;
+  const setSavingsAccountBalance = (newVal) => persist({ ...appData, savingsAccountBalance: newVal });
   // Archives (removes) Banking-Ledger transactions in a date range. Since each day's Opening Balance
   // is now set independently per date (not auto-summed from history), archiving old transactions has
   // zero effect on any other day's balance. Touches ONLY bankTransactions —
@@ -3353,7 +3421,7 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
         activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
