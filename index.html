@@ -475,7 +475,11 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
   // 2. Add paymentHistory entries that fall within the date range (from any task)
   const getInitialPaid = (t) => {
     const laterPayments = (t.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
-    return Math.max(0, (t.paidAmount || 0) - laterPayments);
+    // Portal Cost is deducted right here, once, from the initial payment — so Dashboard
+    // Total Income/Net Profit reflect actual profit (customer paid − Portal Cost), not
+    // the raw amount collected. Every other menu (CRM, Service Tracking, Banking, Pending
+    // Amount, receipts) still uses the untouched paidAmount and is unaffected.
+    return Math.max(0, (t.paidAmount || 0) - laterPayments) - (t.portalCost || 0);
   };
   // Income from tasks whose ENTRY DATE is in range (initial payment only)
   const entryIncome = filtered.reduce((s, t) => s + getInitialPaid(t), 0);
