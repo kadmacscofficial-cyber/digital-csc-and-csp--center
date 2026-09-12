@@ -1995,35 +1995,36 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
 // field, and this component reads nothing from tasks/customers/expenses/banking — so it can
 // never mix with or affect any other menu's numbers.
 const SSS_SCHEMES = [
-  { key: 'pmsby',      label: 'PMSBY',       full: 'Pradhan Mantri Suraksha Bima Yojana', color: 'blue' },
-  { key: 'pmjjby',     label: 'PMJJBY',      full: 'Pradhan Mantri Jeevan Jyoti Bima Yojana', color: 'purple' },
-  { key: 'newAccount', label: 'New Account', full: 'New Bank Account Opened', color: 'green' },
-  { key: 'apy',        label: 'APY',         full: 'Atal Pension Yojana', color: 'orange' },
+  { key: 'pmsby',      label: 'PMSBY',       full: 'Pradhan Mantri Suraksha Bima Yojana',     color: 'blue',   refLabel: 'Policy No' },
+  { key: 'pmjjby',     label: 'PMJJBY',      full: 'Pradhan Mantri Jeevan Jyoti Bima Yojana',  color: 'purple', refLabel: 'Policy No' },
+  { key: 'newAccount', label: 'New Account', full: 'New Bank Account Opened',                  color: 'green',  refLabel: 'Account No' },
+  { key: 'apy',        label: 'APY',         full: 'Atal Pension Yojana',                       color: 'orange', refLabel: 'Account No' },
 ];
 const SSS_COLOR = { blue: ['bg-blue-50','text-blue-600'], purple: ['bg-purple-50','text-purple-600'], green: ['bg-green-50','text-green-600'], orange: ['bg-orange-50','text-orange-600'] };
+const sssScheme = (key) => SSS_SCHEMES.find(s => s.key === key) || SSS_SCHEMES[0];
 
 function SSSReports({ appData, persist, currentUser, showMessage }) {
   const sssEntries = Array.isArray(appData.sssEntries) ? appData.sssEntries : [];
   const isAdmin = currentUser.role === 'admin';
 
-  const blankForm = { date: todayStr, pmsby: '', pmjjby: '', newAccount: '', apy: '', note: '' };
+  const blankForm = { date: todayStr, scheme: 'pmsby', customerName: '', refNo: '', note: '' };
   const [form, setForm] = useState(blankForm);
-  const [view, setView] = useState('datewise'); // 'datewise' | 'monthly'
+  const [view, setView] = useState('entries'); // 'entries' | 'datewise' | 'monthly'
   const [fromDate, setFromDate] = useState(curMonth + '-01');
   const [toDate, setToDate] = useState(todayStr);
+  const [search, setSearch] = useState('');
 
   const handleAdd = () => {
-    const counts = SSS_SCHEMES.map(s => Number(form[s.key]) || 0);
-    if (counts.every(c => c === 0)) return showMessage('Enter at least one count before saving.', 'error');
+    if (!form.customerName.trim()) return showMessage('Please enter the customer name.', 'error');
     if (!form.date) return showMessage('Please pick a date.', 'error');
     const entry = {
-      id: Date.now(), date: form.date,
-      pmsby: counts[0], pmjjby: counts[1], newAccount: counts[2], apy: counts[3],
-      note: form.note, staffId: currentUser.id, staffName: currentUser.name
+      id: Date.now(), date: form.date, scheme: form.scheme,
+      customerName: form.customerName.trim(), refNo: form.refNo.trim(), note: form.note,
+      staffId: currentUser.id, staffName: currentUser.name
     };
     persist({ ...appData, sssEntries: [...sssEntries, entry] });
-    setForm({ ...blankForm, date: form.date });
-    showMessage('SSS entry saved for ' + form.date + '!');
+    setForm({ ...blankForm, date: form.date, scheme: form.scheme });
+    showMessage(sssScheme(form.scheme).label + ' entry saved for ' + entry.customerName + '!');
   };
 
   const deleteEntry = (id) => {
@@ -2032,14 +2033,19 @@ function SSSReports({ appData, persist, currentUser, showMessage }) {
   };
 
   const inRange = sssEntries.filter(x => x.date >= fromDate && x.date <= toDate);
-  const totalsOf = (list) => SSS_SCHEMES.reduce((acc, s) => { acc[s.key] = list.reduce((sum, x) => sum + (Number(x[s.key]) || 0), 0); return acc; }, {});
-  const rangeTotals = totalsOf(inRange);
-  const grandTotal = SSS_SCHEMES.reduce((s, sc) => s + rangeTotals[sc.key], 0);
+  const countsOf = (list) => SSS_SCHEMES.reduce((acc, s) => { acc[s.key] = list.filter(x => x.scheme === s.key).length; return acc; }, {});
+  const rangeCounts = countsOf(inRange);
+  const grandTotal = inRange.length;
+
+  const searchQ = search.trim().toLowerCase();
+  const searchedEntries = inRange
+    .filter(x => !searchQ || [x.customerName, x.refNo, x.staffName].some(v => (v || '').toLowerCase().includes(searchQ)))
+    .slice().sort((a, b) => (b.date + b.id) < (a.date + a.id) ? -1 : 1);
 
   // Date-wise breakdown (within range)
   const dateMap = {};
   inRange.forEach(x => { if (!dateMap[x.date]) dateMap[x.date] = []; dateMap[x.date].push(x); });
-  const dateRows = Object.keys(dateMap).sort((a, b) => b < a ? -1 : 1).map(d => ({ date: d, ...totalsOf(dateMap[d]), entries: dateMap[d] }));
+  const dateRows = Object.keys(dateMap).sort((a, b) => b < a ? -1 : 1).map(d => ({ date: d, ...countsOf(dateMap[d]), entries: dateMap[d] }));
 
   // Monthly breakdown (within range)
   const monthMap = {};
@@ -2047,12 +2053,16 @@ function SSSReports({ appData, persist, currentUser, showMessage }) {
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthRows = Object.keys(monthMap).sort((a, b) => b < a ? -1 : 1).map(m => {
     const [y, mm] = m.split('-');
-    return { month: m, label: monthNames[Number(mm) - 1] + ' ' + y, ...totalsOf(monthMap[m]) };
+    return { month: m, label: monthNames[Number(mm) - 1] + ' ' + y, ...countsOf(monthMap[m]) };
   });
 
   const exportRows = view === 'monthly'
     ? monthRows.map(r => ({ Month: r.label, PMSBY: r.pmsby, PMJJBY: r.pmjjby, 'New Account': r.newAccount, APY: r.apy }))
-    : dateRows.map(r => ({ Date: r.date, PMSBY: r.pmsby, PMJJBY: r.pmjjby, 'New Account': r.newAccount, APY: r.apy }));
+    : view === 'datewise'
+    ? dateRows.map(r => ({ Date: r.date, PMSBY: r.pmsby, PMJJBY: r.pmjjby, 'New Account': r.newAccount, APY: r.apy }))
+    : searchedEntries.map(x => ({ Date: x.date, Scheme: sssScheme(x.scheme).label, 'Customer Name': x.customerName, [sssScheme(x.scheme).refLabel]: x.refNo, Staff: x.staffName, Note: x.note || '' }));
+
+  const currentRefLabel = sssScheme(form.scheme).refLabel;
 
   return e('div', { className: 'space-y-5' },
     e('div', { className: 'bg-white p-4 rounded-xl shadow-sm border border-gray-100' },
@@ -2060,8 +2070,14 @@ function SSSReports({ appData, persist, currentUser, showMessage }) {
       e('p', { className: 'text-sm text-gray-500 mb-4' }, 'Daily log of Social Security Scheme enrolments — kept separate from every other report in the app.'),
       e('div', { className: 'grid grid-cols-1 md:grid-cols-6 gap-3 items-end' },
         e('div', null, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, 'Date'), e('input', { type: 'date', value: form.date, onChange: ev => setForm({ ...form, date: ev.target.value }), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })),
-        ...SSS_SCHEMES.map(s => e('div', { key: s.key }, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, s.label), e('input', { type: 'number', min: '0', value: form[s.key], onChange: ev => setForm({ ...form, [s.key]: ev.target.value }), onKeyDown: ev => ev.key === 'Enter' && handleAdd(), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500', placeholder: '0' }))),
-        e('div', null, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, 'Note (optional)'), e('input', { type: 'text', value: form.note, onChange: ev => setForm({ ...form, note: ev.target.value }), onKeyDown: ev => ev.key === 'Enter' && handleAdd(), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'e.g. Camp at market' }))
+        e('div', null, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, 'Scheme'),
+          e('select', { value: form.scheme, onChange: ev => setForm({ ...form, scheme: ev.target.value }), className: 'w-full border rounded-lg px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500' },
+            ...SSS_SCHEMES.map(s => e('option', { key: s.key, value: s.key }, s.label))
+          )
+        ),
+        e('div', null, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, 'Customer Name'), e('input', { type: 'text', value: form.customerName, onChange: ev => setForm({ ...form, customerName: ev.target.value }), onKeyDown: ev => ev.key === 'Enter' && handleAdd(), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'e.g. Ramesh Mondal' })),
+        e('div', null, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, currentRefLabel), e('input', { type: 'text', value: form.refNo, onChange: ev => setForm({ ...form, refNo: ev.target.value }), onKeyDown: ev => ev.key === 'Enter' && handleAdd(), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500', placeholder: currentRefLabel })),
+        e('div', null, e('label', { className: 'block text-xs font-medium mb-1 text-gray-500' }, 'Note (optional)'), e('input', { type: 'text', value: form.note, onChange: ev => setForm({ ...form, note: ev.target.value }), onKeyDown: ev => ev.key === 'Enter' && handleAdd(), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'Optional' }))
       ),
       e('button', { onClick: handleAdd, className: 'mt-3 bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 font-medium flex items-center gap-2 text-sm' }, e(Icon, { name: 'Plus', size: 16 }), ' Save Entry')
     ),
@@ -2075,14 +2091,40 @@ function SSSReports({ appData, persist, currentUser, showMessage }) {
     ),
 
     e('div', { className: 'grid grid-cols-2 md:grid-cols-5 gap-4' },
-      ...SSS_SCHEMES.map(s => e(StatCard, { key: s.key, title: s.label, value: String(rangeTotals[s.key]), icon: e(Icon, { name: 'BadgeCheck', size: 22 }), color: SSS_COLOR[s.color].join(' ') })),
+      ...SSS_SCHEMES.map(s => e(StatCard, { key: s.key, title: s.label, value: String(rangeCounts[s.key]), icon: e(Icon, { name: 'BadgeCheck', size: 22 }), color: SSS_COLOR[s.color].join(' ') })),
       e(StatCard, { title: 'Total Enrolments', value: String(grandTotal), icon: e(Icon, { name: 'Shield', size: 22 }), color: 'bg-indigo-50 text-indigo-600' })
     ),
 
     e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 p-4' },
-      e('div', { className: 'flex gap-2 mb-4' },
-        e('button', { onClick: () => setView('datewise'), className: `px-4 py-1.5 rounded-lg text-sm font-medium ${view === 'datewise' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}` }, 'Date-wise'),
-        e('button', { onClick: () => setView('monthly'), className: `px-4 py-1.5 rounded-lg text-sm font-medium ${view === 'monthly' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}` }, 'Monthly')
+      e('div', { className: 'flex flex-wrap gap-2 mb-4 items-center justify-between' },
+        e('div', { className: 'flex gap-2' },
+          e('button', { onClick: () => setView('entries'), className: `px-4 py-1.5 rounded-lg text-sm font-medium ${view === 'entries' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}` }, 'All Entries'),
+          e('button', { onClick: () => setView('datewise'), className: `px-4 py-1.5 rounded-lg text-sm font-medium ${view === 'datewise' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}` }, 'Date-wise'),
+          e('button', { onClick: () => setView('monthly'), className: `px-4 py-1.5 rounded-lg text-sm font-medium ${view === 'monthly' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}` }, 'Monthly')
+        ),
+        view === 'entries' && e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search Name / Policy / Account No...', className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-64' })
+      ),
+
+      view === 'entries' && e('div', { className: 'overflow-x-auto' },
+        e('table', { className: 'w-full text-sm' },
+          e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' },
+            e('th', { className: 'py-2 pr-3' }, 'Date'), e('th', { className: 'py-2 pr-3' }, 'Scheme'), e('th', { className: 'py-2 pr-3' }, 'Customer Name'),
+            e('th', { className: 'py-2 pr-3' }, 'Policy / Account No'), e('th', { className: 'py-2 pr-3' }, 'Staff'), e('th', { className: 'py-2 pr-3' }, 'Note'),
+            isAdmin && e('th', { className: 'py-2 pr-3' }, '')
+          )),
+          e('tbody', null,
+            searchedEntries.length === 0 ? e('tr', null, e('td', { colSpan: 7, className: 'text-center text-gray-400 py-8' }, 'No entries found.')) :
+            searchedEntries.map(x => e('tr', { key: x.id, className: 'border-b last:border-0' },
+              e('td', { className: 'py-2 pr-3 whitespace-nowrap' }, x.date),
+              e('td', { className: 'py-2 pr-3' }, e('span', { className: `px-2 py-0.5 rounded-full text-xs font-medium ${SSS_COLOR[sssScheme(x.scheme).color].join(' ')}` }, sssScheme(x.scheme).label)),
+              e('td', { className: 'py-2 pr-3 font-medium' }, x.customerName),
+              e('td', { className: 'py-2 pr-3' }, x.refNo || '—'),
+              e('td', { className: 'py-2 pr-3 text-gray-500' }, x.staffName),
+              e('td', { className: 'py-2 pr-3 text-gray-500' }, x.note || '—'),
+              isAdmin && e('td', { className: 'py-2 pr-3' }, e('button', { onClick: () => deleteEntry(x.id), className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 14 })))
+            ))
+          )
+        )
       ),
 
       view === 'datewise' && e('div', { className: 'overflow-x-auto' },
@@ -2090,21 +2132,14 @@ function SSSReports({ appData, persist, currentUser, showMessage }) {
           e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' },
             e('th', { className: 'py-2 pr-3' }, 'Date'),
             ...SSS_SCHEMES.map(s => e('th', { key: s.key, className: 'py-2 pr-3 text-center' }, s.label)),
-            e('th', { className: 'py-2 pr-3 text-center' }, 'Total'),
-            isAdmin && e('th', { className: 'py-2 pr-3' }, '')
+            e('th', { className: 'py-2 pr-3 text-center' }, 'Total')
           )),
           e('tbody', null,
-            dateRows.length === 0 ? e('tr', null, e('td', { colSpan: 7, className: 'text-center text-gray-400 py-8' }, 'No entries in this date range.')) :
+            dateRows.length === 0 ? e('tr', null, e('td', { colSpan: 6, className: 'text-center text-gray-400 py-8' }, 'No entries in this date range.')) :
             dateRows.map(r => e('tr', { key: r.date, className: 'border-b last:border-0' },
               e('td', { className: 'py-2 pr-3 font-medium' }, r.date),
               ...SSS_SCHEMES.map(s => e('td', { key: s.key, className: 'py-2 pr-3 text-center' }, r[s.key])),
-              e('td', { className: 'py-2 pr-3 text-center font-semibold text-indigo-600' }, SSS_SCHEMES.reduce((sum, s) => sum + r[s.key], 0)),
-              isAdmin && e('td', { className: 'py-2 pr-3' },
-                e('div', { className: 'flex gap-1 justify-end' }, ...r.entries.map(en => e('button', {
-                  key: en.id, onClick: () => deleteEntry(en.id), title: en.note ? en.note : 'Delete entry by ' + en.staffName,
-                  className: 'text-red-500 bg-red-50 p-1 rounded hover:bg-red-100'
-                }, e(Icon, { name: 'Trash2', size: 14 }))))
-              )
+              e('td', { className: 'py-2 pr-3 text-center font-semibold text-indigo-600' }, SSS_SCHEMES.reduce((sum, s) => sum + r[s.key], 0))
             ))
           )
         )
