@@ -1233,7 +1233,11 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const allTxns = bankTransactions;
   const allOnlineReceived = safeOnline.filter(t => t.type === 'received').reduce((s, t) => s + (t.amount || 0), 0);
   const allOnlineTransfer = safeOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (t.amount || 0), 0);
-  const allTimeWithdrawal = allTxns.reduce((s, t) => s + (t.cashOut || 0), 0) + allOnlineReceived;
+  // Digipay Withdrawals are redirected to Savings Account Balance instead of Account Balance —
+  // so they're excluded here and added to savingsBalance below instead. Everything else
+  // (Bank Withdrawal/Deposit, Digipay Deposit, Cash ledger, Reports) is unchanged.
+  const digipayWithdrawalTotal = allTxns.filter(t => t.location === 'Digipay').reduce((s, t) => s + (t.cashOut || 0), 0);
+  const allTimeWithdrawal = allTxns.reduce((s, t) => s + ((t.location === 'Digipay') ? 0 : (t.cashOut || 0)), 0) + allOnlineReceived;
   const allTimeDeposit    = allTxns.reduce((s, t) => s + (t.cashIn  || 0), 0) + allOnlineTransfer;
   const allTimeAddMore    = Object.values((addMoreHistory && typeof addMoreHistory === 'object') ? addMoreHistory : {}).flat().filter(x => typeof x === 'number').reduce((s, a) => s + (Number(a) || 0), 0);
   const allAccExpenses    = (accountBalanceExpenses || []).reduce((s, x) => s + (x.cost || 0), 0);
@@ -1247,8 +1251,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const selfWithdrawals= allTxns_raw.filter(t => t.location === 'Self Transfer' && t.selfTransferType === 'withdrawal');
   const selfDepTotal   = selfDeposits.reduce((s, t) => s + (t.selfTransferAmount || 0), 0);
   const selfWithTotal  = selfWithdrawals.reduce((s, t) => s + (t.selfTransferAmount || 0), 0);
-  // Savings Account Balance = manual set + transfers in (deposit) - transfers out (withdrawal)
-  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal;
+  // Savings Account Balance = manual set + transfers in (deposit) - transfers out (withdrawal) + Digipay Withdrawals
+  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal;
   // Account Balance: Self Transfer Deposit reduces it, Withdrawal increases it
   const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
   // Use daily override if set for selectedDate, else use auto calculation
@@ -1428,7 +1432,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
           '  −  Deposit ₹' + allTimeDeposit.toLocaleString('en-IN') +
           '  −  Add More ₹' + allTimeAddMore.toLocaleString('en-IN') +
           (allAccExpenses ? '  −  Expense ₹' + allAccExpenses.toLocaleString('en-IN') : '') +
-          (safeArchivedOffset ? '  +  Archived ₹' + safeArchivedOffset.toLocaleString('en-IN') : '')
+          (safeArchivedOffset ? '  +  Archived ₹' + safeArchivedOffset.toLocaleString('en-IN') : '') +
+          (digipayWithdrawalTotal ? '  (Digipay Withdrawals ₹' + digipayWithdrawalTotal.toLocaleString('en-IN') + ' go to Savings instead)' : '')
         )
       ),
       e('div', { className: 'flex items-center gap-2' },
@@ -1445,7 +1450,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
       e('div', null,
         e('p', { className: 'text-emerald-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'Savings Account Balance'),
         e('p', { className: 'text-3xl font-bold' }, '₹' + savingsBalance.toLocaleString('en-IN')),
-        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Base: ₹' + (Number(savingsAccountBalance)||0).toLocaleString('en-IN') + '  |  Self Transfers In: +₹' + selfDepTotal.toLocaleString('en-IN') + '  |  Out: -₹' + selfWithTotal.toLocaleString('en-IN'))
+        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Base: ₹' + (Number(savingsAccountBalance)||0).toLocaleString('en-IN') + '  |  Self Transfers In: +₹' + selfDepTotal.toLocaleString('en-IN') + '  |  Out: -₹' + selfWithTotal.toLocaleString('en-IN') + (digipayWithdrawalTotal ? '  |  Digipay Withdrawals: +₹' + digipayWithdrawalTotal.toLocaleString('en-IN') : ''))
       ),
       e('div', { className: 'flex items-center gap-2' },
         currentUser.role === 'admin' && e('button', {
@@ -1983,15 +1988,26 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
   const [histFrom, setHistFrom] = useState(curMonth + '-01');
   const [histTo, setHistTo] = useState(todayStr);
 
-  const collectedOf = (t) => t.paidAmount !== undefined ? t.paidAmount : (t.status === 'Successful' ? t.price : 0);
-
   const todaysTasks = tasks.filter(t => t.date === selectedDate);
   const todaysExpenses = expenses.filter(x => x.date === selectedDate);
   const todaysBankTxns = bankTransactions.filter(t => t.date === selectedDate);
   const todaysNewCustomers = (customers || []).filter(c => c.lastVisit === selectedDate);
 
-  // 1) Total Income — same definition as the Dashboard's "Total Income" card, for this single day.
-  const totalIncome = todaysTasks.reduce((s, t) => s + collectedOf(t), 0);
+  // 1) Total Income — same paymentHistory-aware definition as the Dashboard's "Total Income" card,
+  //    for this single day. This is the fix: a Pending due cleared later (via Pending Amount) is
+  //    recorded as a paymentHistory entry dated the day it was actually paid — NOT the task's
+  //    original entry date — so it must be counted here by THAT date, or a same-day full clearance
+  //    on a task entered on an earlier day would never show up in any day's Cash Closing at all.
+  const getInitialPaid = (t) => {
+    const laterPayments = (t.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
+    return Math.max(0, (t.paidAmount || 0) - laterPayments) - (t.portalCost || 0);
+  };
+  const entryIncomeToday = todaysTasks.reduce((s, t) => s + getInitialPaid(t), 0);
+  const historyIncomeToday = tasks.reduce((s, t) => {
+    const histToday = (t.paymentHistory || []).filter(p => p.date === selectedDate).reduce((hs, p) => hs + p.amount, 0);
+    return s + histToday;
+  }, 0);
+  const totalIncome = entryIncomeToday + historyIncomeToday;
   // 2) Total Expense — same as the Expenses menu, for this single day.
   const expenseTotal = todaysExpenses.reduce((s, x) => s + x.cost, 0);
   // 3) Net Profit — exactly the Dashboard's "Net Profit" card formula, for this single day.
