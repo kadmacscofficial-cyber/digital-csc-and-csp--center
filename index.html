@@ -78,20 +78,35 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
   // Left: Summary (col 10..105), Right: Day overview (col 108..200)
   const leftX = 10, midX = 105, rightX = 108, rightW = pw - rightX - 5;
 
-  doc.setFillColor(238,242,255);
-  doc.roundedRect(leftX, y, midX - leftX, 60, 2, 2, 'F');
-  doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(67,56,202);
-  doc.text('Cash Reconciliation', leftX + (midX-leftX)/2, y+5, { align: 'center' });
-
   const sumRows = [
-    ...(isAdmin ? [['Total Income', fmtR(data.totalIncome), false]] : []),
+    ...(isAdmin ? [['Total Income (all modes)', fmtR(data.totalIncome), false]] : []),
     ['(-) Total Expense', fmtR(data.expenseTotal), false],
-    ...(isAdmin ? [['= Net Profit', fmtR(data.netProfit), true]] : []),
+    ...(isAdmin ? [['= Net Profit (business, ref. only)', fmtR(data.netProfit), true]] : []),
+    ['Cash Profit (Cash-mode only)', fmtR(data.cashProfitToday), false],
     ['(+) Banking Balance', fmtR(data.bankingCurrentBalance), false],
     ['= Expected Closing', fmtR(data.expectedClosing), true],
     ['Actual Cash Counted', fmtR(data.actualCash), true],
     ['Difference', fmtRSigned(data.difference), true],
   ];
+  const ov = data.dayOverview;
+  const ovRows = ov ? [
+    ['Customers Served', ov.customersServed],
+    ['New Customers', ov.newCustomers],
+    ['Successful Tasks', ov.successfulTasks],
+    ['Pending Tasks', ov.pendingTasks],
+    ['Processing Tasks', ov.processingTasks],
+    ['Banking Txns', ov.bankTxns],
+    ['Pending Dues', '₹' + ov.pendingAmount],
+  ] : [];
+  // Both boxes share one height, tall enough for whichever side has more rows —
+  // so the Cash Profit row added above never overflows the box outline.
+  const boxH = 10 + Math.max(sumRows.length, ovRows.length) * 7.2 + 4;
+
+  doc.setFillColor(238,242,255);
+  doc.roundedRect(leftX, y, midX - leftX, boxH, 2, 2, 'F');
+  doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(67,56,202);
+  doc.text('Cash Reconciliation', leftX + (midX-leftX)/2, y+5, { align: 'center' });
+
   doc.setFontSize(7);
   sumRows.forEach((r, i) => {
     const ry = y + 10 + i * 7.2;
@@ -106,19 +121,9 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
   // Right: Day Overview
   if (data.dayOverview) {
     doc.setFillColor(240,253,244);
-    doc.roundedRect(rightX, y, rightW, 60, 2, 2, 'F');
+    doc.roundedRect(rightX, y, rightW, boxH, 2, 2, 'F');
     doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(22,163,74);
     doc.text('Day Overview', rightX + rightW/2, y+5, { align: 'center' });
-    const ov = data.dayOverview;
-    const ovRows = [
-      ['Customers Served', ov.customersServed],
-      ['New Customers', ov.newCustomers],
-      ['Successful Tasks', ov.successfulTasks],
-      ['Pending Tasks', ov.pendingTasks],
-      ['Processing Tasks', ov.processingTasks],
-      ['Banking Txns', ov.bankTxns],
-      ['Pending Dues', '₹' + ov.pendingAmount],
-    ];
     doc.setFontSize(7);
     ovRows.forEach((r, i) => {
       const ry = y + 10 + i * 7.2;
@@ -129,7 +134,7 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
       doc.text(String(r[1]), rightX+rightW-3, ry, { align: 'right' });
     });
   }
-  y += 64;
+  y += boxH + 4;
 
   // ── Note ──
   if (data.note) {
@@ -293,6 +298,26 @@ function groupTasks(taskList) {
   }).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (String(b.groupId)).localeCompare(String(a.groupId))));
 }
 
+// ── ONLINE-PAID HELPER ──
+// How much of a task's money actually reached the Savings Account Balance, i.e. was paid
+// in "Online" mode. Two separate sources now:
+//   (a) the initial payment made at entry time in Customer CRM — that is paidAmount minus
+//       every later paymentHistory entry — counted only when the row's paymentMode is "Online";
+//   (b) every later due-clearance recorded from the Pending Amount menu that was marked
+//       Online (each paymentHistory entry now carries its own `mode`).
+// Older paymentHistory entries saved before this feature existed have no `mode` field and
+// are treated as Cash, exactly as they were handled before.
+// Every delete handler uses this so removing an entry reverses precisely what was added.
+function onlinePaidOf(t) {
+  if (!t) return 0;
+  const hist = t.paymentHistory || [];
+  const laterTotal = hist.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const initialPaid = Math.max(0, (Number(t.paidAmount) || 0) - laterTotal);
+  const initialOnline = (t.paymentMode === 'Online') ? initialPaid : 0;
+  const historyOnline = hist.reduce((s, p) => s + ((p.mode === 'Online') ? (Number(p.amount) || 0) : 0), 0);
+  return initialOnline + historyOnline;
+}
+
 function receiptFromGroup(g) {
   return {
     groupId: g.groupId, customerName: g.customerName, date: g.date,
@@ -395,7 +420,6 @@ function Icon({ name, size = 20, className = '' }) {
     Maximize2: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
     Minimize2: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`,
     CalendarDays: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>`,
-    TrendingDown: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>`,
     BadgeIndianRupee: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="m13 17-5-5h3a4 4 0 0 0 0-8"/></svg>`,
     RefreshCw: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
     Building2: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>`,
@@ -574,7 +598,7 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
     const newCustomers = remaining.length === 0 ? customers.filter(c => c.name !== task?.customerName) : customers;
     // Reverse this task's amount out of Savings Account Balance if it was paid "Online" —
     // atomic with the rest of the update (same fix as Customer CRM's delete handler).
-    const onlineReversal = (task && task.paymentMode === 'Online') ? (Number(task.paidAmount) || 0) : 0;
+    const onlineReversal = onlinePaidOf(task);
     const payload = { ...appData, tasks: newTasks, customers: newCustomers };
     if (onlineReversal > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) - onlineReversal;
     persist(payload);
@@ -587,7 +611,7 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
     const remaining = newTasks.filter(t => t.customerName === group?.customerName);
     const newCustomers = remaining.length === 0 ? customers.filter(c => c.name !== group?.customerName) : customers;
     // Same online-payment reversal, summed across every task in this group.
-    const onlineReversal = groupTasks_.reduce((sum, t) => sum + ((t.paymentMode === 'Online') ? (Number(t.paidAmount) || 0) : 0), 0);
+    const onlineReversal = groupTasks_.reduce((sum, t) => sum + onlinePaidOf(t), 0);
     const payload = { ...appData, tasks: newTasks, customers: newCustomers };
     if (onlineReversal > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) - onlineReversal;
     persist(payload);
@@ -848,7 +872,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
                       // Any of this customer's services that were paid "Online" had their amount
                       // added to Savings Account Balance — reverse that here too, atomically,
                       // so deleting a customer removes the money from every place it was added.
-                      const onlineReversal = deletedTasks.reduce((sum, t) => sum + ((t.paymentMode === 'Online') ? (Number(t.paidAmount) || 0) : 0), 0);
+                      const onlineReversal = deletedTasks.reduce((sum, t) => sum + onlinePaidOf(t), 0);
                       const payload = { ...appData, customers: customers.filter(x => x.id !== c.id), tasks: remainingTasks };
                       if (onlineReversal > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) - onlineReversal;
                       persist(payload);
@@ -867,48 +891,79 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
 }
 
 // ── PENDING DUES ──
-function PendingDues({ tasks, setTasks, customers, showMessage }) {
+function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage }) {
   const [fromDate, setFromDate] = useState('2020-01-01');
   const [toDate, setToDate] = useState(todayStr);
+  // Cash/Online choice per service row and per customer group. Defaults to Cash, so the
+  // menu behaves exactly as it always did unless the operator actively picks Online.
+  const [itemMode, setItemMode] = useState({});
+  const [groupMode, setGroupMode] = useState({});
+  const modeOf = (id) => itemMode[id] || 'Cash';
+  const groupModeOf = (id) => groupMode[id] || 'Cash';
   // Show ALL unpaid tasks — use original entry date for filtering here
   const filteredTasks = tasks.filter(t => t.date >= fromDate && t.date <= toDate);
   const pending = groupTasks(filteredTasks).filter(g => g.totalDue > 0);
 
-  const markGroupSuccessful = (groupId) => {
-    setTasks(tasks.map(t => {
+  // Single atomic write for every due clearance below. Tasks and (when the payment was
+  // Online) the Savings Account Balance go out in ONE persist() call — two back-to-back
+  // calls would each spread the same stale appData and the second would wipe the first.
+  const commitPayment = (newTasks, onlineAdd, msg) => {
+    const payload = { ...appData, tasks: newTasks };
+    if (onlineAdd > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlineAdd;
+    persist(payload);
+    showMessage(msg + (onlineAdd > 0 ? ' — ₹' + onlineAdd + ' added to Savings Account Balance' : ''));
+  };
+
+  const markGroupSuccessful = (groupId, mode) => {
+    const m = mode || 'Cash';
+    let onlineAdd = 0;
+    const newTasks = tasks.map(t => {
       if ((t.groupId !== undefined ? t.groupId : t.id) !== groupId) return t;
       const remaining = Math.max(0, (t.price || 0) - (t.paidAmount || 0));
       if (remaining <= 0) return t;
-      const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining }];
+      if (m === 'Online') onlineAdd += remaining;
+      const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining, mode: m }];
       return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist };
-    }));
-    showMessage('Marked as Successful! Payment date: ' + todayStr);
+    });
+    commitPayment(newTasks, onlineAdd, 'Marked as Successful (' + m + ')! Payment date: ' + todayStr);
   };
-  const markItemSuccessful = (id) => {
-    setTasks(tasks.map(t => {
+  const markItemSuccessful = (id, mode) => {
+    const m = mode || 'Cash';
+    let onlineAdd = 0;
+    const newTasks = tasks.map(t => {
       if (t.id !== id) return t;
       const remaining = Math.max(0, (t.price || 0) - (t.paidAmount || 0));
       if (remaining <= 0) return t;
-      const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining }];
+      if (m === 'Online') onlineAdd += remaining;
+      const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining, mode: m }];
       return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist };
-    }));
-    showMessage('Marked as Successful! Payment date: ' + todayStr);
+    });
+    commitPayment(newTasks, onlineAdd, 'Marked as Successful (' + m + ')! Payment date: ' + todayStr);
   };
   const setItemStatus = (id, status) => { setTasks(tasks.map(t => t.id === id ? { ...t, status } : t)); showMessage('Status updated'); };
 
   // Partial payment recording
-  const recordPartialPayment = (id, amt) => {
+  const recordPartialPayment = (id, amt, mode) => {
     const t = tasks.find(x => x.id === id);
     if (!t) return;
+    const m = mode || 'Cash';
     const newPaid = Math.min(t.price || 0, (t.paidAmount || 0) + amt);
+    // Never credit more than the outstanding due, even if a larger figure was typed in.
+    const applied = newPaid - (t.paidAmount || 0);
+    if (applied <= 0) return;
     const done = newPaid >= (t.price || 0);
-    const hist = [...(t.paymentHistory || []), { date: todayStr, amount: amt }];
-    setTasks(tasks.map(x =>
+    const hist = [...(t.paymentHistory || []), { date: todayStr, amount: applied, mode: m }];
+    const newTasks = tasks.map(x =>
       x.id === id
         ? { ...x, paidAmount: newPaid, status: done ? 'Successful' : x.status, paymentDate: todayStr, paymentHistory: hist }
         : x
-    ));
-    showMessage(done ? 'Fully paid! Payment date: ' + todayStr : '₹' + amt + ' recorded. Remaining: ₹' + ((t.price||0) - newPaid));
+    );
+    commitPayment(
+      newTasks,
+      m === 'Online' ? applied : 0,
+      done ? 'Fully paid (' + m + ')! Payment date: ' + todayStr
+           : '₹' + applied + ' recorded (' + m + '). Remaining: ₹' + ((t.price||0) - newPaid)
+    );
   };
 
   const getCustomer = (name) => customers.find(c => c.name === name);
@@ -962,7 +1017,18 @@ function PendingDues({ tasks, setTasks, customers, showMessage }) {
                         due > 0
                           ? e('div', { className: 'flex items-center gap-2 flex-wrap' },
                               e('span', { className: 'text-red-500 font-medium text-xs' }, 'Due ₹' + due),
-                              e('button', { onClick: () => markItemSuccessful(t.id), className: 'text-green-600 hover:bg-green-50 px-2 py-0.5 rounded text-xs font-medium border border-green-200' }, 'Full Pay'),
+                              e('select', {
+                                value: modeOf(t.id),
+                                onChange: ev => setItemMode({ ...itemMode, [t.id]: ev.target.value }),
+                                title: 'Online payments are added to Savings Account Balance; Cash works as before',
+                                className: 'border rounded px-1.5 py-0.5 text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-400 ' + (
+                                  modeOf(t.id) === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300 bg-white'
+                                )
+                              },
+                                e('option', { value: 'Cash' }, 'Cash'),
+                                e('option', { value: 'Online' }, 'Online')
+                              ),
+                              e('button', { onClick: () => markItemSuccessful(t.id, modeOf(t.id)), className: 'text-green-600 hover:bg-green-50 px-2 py-0.5 rounded text-xs font-medium border border-green-200' }, 'Full Pay'),
                               e('div', { className: 'flex items-center gap-1' },
                                 e('input', {
                                   type: 'number', placeholder: 'Partial ₹',
@@ -974,7 +1040,7 @@ function PendingDues({ tasks, setTasks, customers, showMessage }) {
                                     const inp = document.getElementById('partial_' + t.id);
                                     const val = Number(inp.value) || 0;
                                     if (val <= 0) return;
-                                    recordPartialPayment(t.id, val);
+                                    recordPartialPayment(t.id, val, modeOf(t.id));
                                     inp.value = '';
                                   },
                                   className: 'text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded text-xs font-medium border border-indigo-200'
@@ -996,7 +1062,20 @@ function PendingDues({ tasks, setTasks, customers, showMessage }) {
                     e('div', { className: 'bg-green-50 rounded-lg px-3 py-2' }, e('p', { className: 'text-xs text-green-500' }, 'Paid'), e('p', { className: 'font-bold text-green-700' }, `₹${g.totalPaid}`)),
                     e('div', { className: 'bg-red-50 rounded-lg px-3 py-2' }, e('p', { className: 'text-xs text-red-400' }, 'Due'), e('p', { className: 'font-bold text-red-600' }, `₹${g.totalDue}`))
                   ),
-                  e('button', { onClick: () => markGroupSuccessful(g.groupId), className: 'bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-1 whitespace-nowrap justify-center' }, e(Icon, { name: 'CheckCircle', size: 15 }), ' Mark All Paid')
+                  e('div', { className: 'flex items-center gap-2 justify-end' },
+                    e('select', {
+                      value: groupModeOf(g.groupId),
+                      onChange: ev => setGroupMode({ ...groupMode, [g.groupId]: ev.target.value }),
+                      title: 'Online payments are added to Savings Account Balance; Cash works as before',
+                      className: 'border rounded-lg px-2 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400 ' + (
+                        groupModeOf(g.groupId) === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300 bg-white'
+                      )
+                    },
+                      e('option', { value: 'Cash' }, 'Cash'),
+                      e('option', { value: 'Online' }, 'Online')
+                    ),
+                    e('button', { onClick: () => markGroupSuccessful(g.groupId, groupModeOf(g.groupId)), className: 'bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-1 whitespace-nowrap justify-center' }, e(Icon, { name: 'CheckCircle', size: 15 }), ' Mark All Paid')
+                  )
                 )
               )
             );
@@ -2471,7 +2550,34 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
   // 2) Total Expense — same as the Expenses menu, for this single day.
   const expenseTotal = todaysExpenses.reduce((s, x) => s + x.cost, 0);
   // 3) Net Profit — exactly the Dashboard's "Net Profit" card formula, for this single day.
+  //    (Portal-cost-adjusted, unchanged — this stays the "true business profit" figure.)
   const netProfit = totalIncome - expenseTotal;
+  // 3b) Cash-in-hand version, used ONLY for Expected Closing Cash below — NOT for the Net Profit
+  //     stat card or PDF, which keep using netProfit above exactly as before.
+  //     Two corrections vs. totalIncome:
+  //       - Online-mode payments never touch the physical cash drawer (that money goes straight
+  //         to Savings Account Balance instead — see CustomerCRM), so they're excluded here.
+  //       - Portal Cost is paid out of the CSC Wallet, not the cash drawer, so Cash-mode payments
+  //         are counted at their FULL amount here (not portal-cost-reduced like getInitialPaid).
+  //     Later due clearances (Pending Amount menu) now carry their own Cash/Online mode, so the
+  //     Online ones are excluded here exactly like entry-time Online payments — that money went
+  //     to Savings Account Balance, not into the drawer. Entries saved before the Pending Amount
+  //     menu had a mode selector have no `mode` field and still count as cash, as they always did.
+  const getInitialPaidCash = (t) => {
+    const laterPayments = (t.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
+    return Math.max(0, (t.paidAmount || 0) - laterPayments);
+  };
+  const cashEntryIncomeToday = todaysTasks
+    .filter(t => (t.paymentMode || 'Cash') !== 'Online')
+    .reduce((s, t) => s + getInitialPaidCash(t), 0);
+  const cashHistoryIncomeToday = tasks.reduce((s, t) => {
+    const histToday = (t.paymentHistory || [])
+      .filter(p => p.date === selectedDate && (p.mode || 'Cash') !== 'Online')
+      .reduce((hs, p) => hs + p.amount, 0);
+    return s + histToday;
+  }, 0);
+  const cashIncomeToday = cashEntryIncomeToday + cashHistoryIncomeToday;
+  const cashProfitToday = cashIncomeToday - expenseTotal;
   // 4) Banking Current Balance — Banking Ledger's "Current Balance" for this date
   //    includes online transactions (received → withdrawal side, transfer → deposit side)
   const safeOnlineTxns = Array.isArray(onlineTransactions) ? onlineTransactions : [];
@@ -2485,8 +2591,8 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
 
   // Expected Closing Cash:
   // If Banking Current Balance is negative → Expected Closing Cash = Banking Current Balance (same value)
-  // If Banking Current Balance is zero or positive → Net Profit + Banking Current Balance
-  const expectedClosing = bankingCurrentBalance < 0 ? bankingCurrentBalance : netProfit + bankingCurrentBalance;
+  // If Banking Current Balance is zero or positive → Cash Profit (Cash-mode only, full amount) + Banking Current Balance
+  const expectedClosing = bankingCurrentBalance < 0 ? bankingCurrentBalance : cashProfitToday + bankingCurrentBalance;
 
   // Reference-only figures — shown for a full picture of the day, but NOT part of the cash formula above.
   const pendingGroups = groupTasks(tasks.filter(t => t.date <= selectedDate)).filter(g => g.totalDue > 0);
@@ -2511,7 +2617,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
     const actualCash = Number(actualInput) || 0;
     const entry = {
       id: savedLog ? savedLog.id : Date.now(), date: selectedDate,
-      totalIncome, expenseTotal, netProfit, bankingCurrentBalance, bankingOpeningBalance: bankingOpening, pendingAmount,
+      totalIncome, expenseTotal, netProfit, cashProfitToday, bankingCurrentBalance, bankingOpeningBalance: bankingOpening, pendingAmount,
       expectedClosing, actualCash, difference: actualCash - expectedClosing,
       note: noteInput, closedBy: currentUser.name,
       serviceGroups: todaysServiceGroups,
@@ -2538,9 +2644,10 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       [null, businessProfile.name + ' — DAILY CASH CLOSING REPORT'],
       [null, 'Date: ' + selectedDate],
       [],
-      ...(isAdmin ? [['Total Income', totalIncome]] : []),
+      ...(isAdmin ? [['Total Income (all modes)', totalIncome]] : []),
       ['(-) Total Expense', expenseTotal],
-      ...(isAdmin ? [['= Net Profit', netProfit]] : []),
+      ...(isAdmin ? [['= Net Profit (business, reference only)', netProfit]] : []),
+      ['Cash Profit (Cash-mode only, after Expense)', cashProfitToday],
       ['(+) Banking Current Balance', bankingCurrentBalance],
       ['= Expected Closing Cash', expectedClosing],
       ['Actual Cash Counted', actualInput === '' ? '' : Number(actualInput)],
@@ -2584,17 +2691,18 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
 
   return e('div', { className: 'space-y-4' },
     e('div', { className: 'flex flex-wrap justify-between items-center gap-3' },
-      e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Daily Cash Closing Report'), e('p', { className: 'text-sm text-gray-500' }, 'Net Profit + Banking Current Balance = Expected Closing Cash')),
+      e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Daily Cash Closing Report'), e('p', { className: 'text-sm text-gray-500' }, 'Cash Profit (Cash-mode only) + Banking Current Balance = Expected Closing Cash')),
       e('div', { className: 'flex items-end gap-3' },
         e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Date'), e('input', { type: 'date', value: selectedDate, onChange: ev => setSelectedDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
         e('button', { onClick: exportReport, className: 'flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Download', size: 16 }), ' Export Excel')
       )
     ),
 
-    e('div', { className: 'grid grid-cols-2 md:grid-cols-5 gap-4' },
+    e('div', { className: 'grid grid-cols-2 md:grid-cols-6 gap-4' },
       currentUser.role === 'admin' && e(StatCard, { title: 'Total Income', value: `₹${totalIncome}`, icon: e(Icon, { name: 'TrendingUp', size: 22 }), color: 'bg-green-50 text-green-600' }),
       e(StatCard, { title: 'Total Expense', value: `₹${expenseTotal}`, icon: e(Icon, { name: 'TrendingDown', size: 22 }), color: 'bg-red-50 text-red-500' }),
       currentUser.role === 'admin' && e(StatCard, { title: 'Net Profit', value: fmtR(netProfit), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600' }),
+      e(StatCard, { title: 'Cash Profit (Cash-mode)', value: fmtR(cashProfitToday), icon: e(Icon, { name: 'Wallet', size: 22 }), color: cashProfitToday >= 0 ? 'bg-teal-50 text-teal-600' : 'bg-red-50 text-red-600', sub: 'Feeds Expected Closing Cash' }),
       e(StatCard, { title: 'Banking Current Balance', value: fmtR(bankingCurrentBalance), icon: e(Icon, { name: 'Landmark', size: 22 }), color: bankingCurrentBalance >= 0 ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600' }),
       e(StatCard, { title: 'Expected Closing Cash', value: fmtR(expectedClosing), icon: e(Icon, { name: 'Wallet', size: 22 }), color: expectedClosing >= 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600' })
     ),
@@ -2806,7 +2914,7 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
                     const newCustomers = remaining.length === 0 ? customers.filter(c => c.name !== g.customerName) : customers;
                     // Reverse any "Online" paid amounts out of Savings Account Balance too —
                     // same fix as Customer CRM / Service Tracking's delete handlers.
-                    const onlineReversal = groupTasks_.reduce((sum, t) => sum + ((t.paymentMode === 'Online') ? (Number(t.paidAmount) || 0) : 0), 0);
+                    const onlineReversal = groupTasks_.reduce((sum, t) => sum + onlinePaidOf(t), 0);
                     const payload = { ...appData, tasks: newTasks, customers: newCustomers };
                     if (onlineReversal > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) - onlineReversal;
                     persist(payload);
@@ -4046,7 +4154,7 @@ function App() {
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
-        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
+        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
         activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
