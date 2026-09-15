@@ -351,6 +351,15 @@ const defaultData = {
   // SSS Reports — standalone daily log of PMSBY/PMJJBY/New Account/APY enrolment counts.
   // Deliberately isolated: nothing else in the app reads this field or is affected by it.
   sssEntries: [],
+  // CSC Digital Seva Wallet — a third wallet, separate from Account Balance and Savings.
+  // Topped up FROM Savings; spent automatically via each service's Portal Cost (CRM), plus
+  // any manual wallet expenses. cscWalletBase is a manual correction, same role as
+  // savingsAccountBalance's base — the displayed total is always base + topups − expenses − portal costs.
+  cscWalletBase: 0,
+  cscWalletTopups: [],
+  cscWalletExpenses: [],
+  // Personal/other expenses paid directly out of the Savings Account (not via the CSC Wallet).
+  savingsExpenses: [],
   businessProfile: {
     name: 'Digital CSC Center', cscId: 'CSC-WB-98765',
     address: 'Durgapur, West Bengal', phone: '+91 98765 43210', email: 'contact@digitalcsc.in'
@@ -1179,7 +1188,7 @@ function CashNoteModal({ noteModal, counts, setCounts, onSave, onSkip }) {
 }
 
 // ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, openingBalances, setOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank', selfTransferType: 'deposit' });
   const [editingBase, setEditingBase] = useState(false);
@@ -1192,6 +1201,10 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const [accBalInput, setAccBalInput] = useState('');
   const [showSetSavings, setShowSetSavings] = useState(false);
   const [savingsInput, setSavingsInput] = useState('');
+  const [showSetCscWallet, setShowSetCscWallet] = useState(false);
+  const [cscWalletInput, setCscWalletInput] = useState('');
+  const [showTopup, setShowTopup] = useState(false);
+  const [topupInput, setTopupInput] = useState('');
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
   const [addMoreCounts, setAddMoreCounts] = useState({});
@@ -1205,6 +1218,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const closeNoteModal = () => { setNoteModalQueue(q => q.slice(1)); setNoteModalCounts({}); };
   const [bankingTab, setBankingTab] = useState('ledger');
   const [expForm, setExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' }); // 'ledger' | 'reports'
+  const [cscExpForm, setCscExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' });
+  const [savingsExpForm, setSavingsExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' });
 
   // ── Reports tab state ──
   const [rptFrom, setRptFrom] = useState(todayStr);
@@ -1254,8 +1269,23 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
   const selfWithdrawals= allTxns_raw.filter(t => t.location === 'Self Transfer' && t.selfTransferType === 'withdrawal');
   const selfDepTotal   = selfDeposits.reduce((s, t) => s + (t.selfTransferAmount || 0), 0);
   const selfWithTotal  = selfWithdrawals.reduce((s, t) => s + (t.selfTransferAmount || 0), 0);
-  // Savings Account Balance = manual set + transfers in (deposit) - transfers out (withdrawal) + Digipay Withdrawals
-  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal;
+
+  // ── CSC Digital Seva Wallet + Savings Expense ──
+  // CSC Wallet is topped up FROM Savings (cscTopupTotal reduces Savings, increases the Wallet —
+  // symmetric, both computed from the SAME cscWalletTopups array so they can never drift apart).
+  // It is spent on: (a) manual wallet expenses, and (b) every service's Portal Cost, read LIVE
+  // straight off `tasks` — so if a service is ever edited or deleted anywhere in the app (CRM,
+  // Service Tracking, Reports & Invoice, Pending Amount), the Wallet balance updates itself
+  // automatically with no separate reversal code needed.
+  const cscTopupTotal = (cscWalletTopups || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const cscExpenseTotal = (cscWalletExpenses || []).reduce((s, x) => s + (Number(x.cost) || 0), 0);
+  const totalPortalCostAllTime = (tasks || []).reduce((s, t) => s + (Number(t.portalCost) || 0), 0);
+  const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime;
+  // Personal/other expenses paid directly from Savings (not via the CSC Wallet).
+  const savingsExpenseTotal = (savingsExpenses || []).reduce((s, x) => s + (Number(x.cost) || 0), 0);
+
+  // Savings Account Balance = manual set + transfers in (deposit) - transfers out (withdrawal) + Digipay Withdrawals - CSC Wallet Top-ups - Savings Expenses
+  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal - cscTopupTotal - savingsExpenseTotal;
   // Account Balance: Self Transfer Deposit reduces it, Withdrawal increases it
   const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
   // Use daily override if set for selectedDate, else use auto calculation
@@ -1400,7 +1430,9 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
     e('div', { className: 'flex gap-2 border-b border-gray-100 pb-3' },
       e('button', { onClick: () => setBankingTab('ledger'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='ledger' ? 'bg-green-700 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-green-50') }, 'Ledger'),
       e('button', { onClick: () => setBankingTab('reports'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='reports' ? 'bg-green-700 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-green-50') }, 'Reports'),
-      e('button', { onClick: () => setBankingTab('accexpense'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='accexpense' ? 'bg-red-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-red-50') }, 'Acc. Balance Expense')
+      e('button', { onClick: () => setBankingTab('accexpense'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='accexpense' ? 'bg-red-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-red-50') }, 'Acc. Balance Expense'),
+      e('button', { onClick: () => setBankingTab('cscwallet'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='cscwallet' ? 'bg-orange-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-orange-50') }, 'CSC Wallet'),
+      e('button', { onClick: () => setBankingTab('savingsexpense'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='savingsexpense' ? 'bg-teal-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-teal-50') }, 'Savings Expense')
     ),
 
     bankingTab === 'ledger' && e('div', { className: 'space-y-4' },
@@ -1453,7 +1485,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
       e('div', null,
         e('p', { className: 'text-emerald-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'Savings Account Balance'),
         e('p', { className: 'text-3xl font-bold' }, '₹' + savingsBalance.toLocaleString('en-IN')),
-        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Base: ₹' + (Number(savingsAccountBalance)||0).toLocaleString('en-IN') + '  |  Self Transfers In: +₹' + selfDepTotal.toLocaleString('en-IN') + '  |  Out: -₹' + selfWithTotal.toLocaleString('en-IN') + (digipayWithdrawalTotal ? '  |  Digipay Withdrawals: +₹' + digipayWithdrawalTotal.toLocaleString('en-IN') : ''))
+        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Base: ₹' + (Number(savingsAccountBalance)||0).toLocaleString('en-IN') + '  |  Self Transfers In: +₹' + selfDepTotal.toLocaleString('en-IN') + '  |  Out: -₹' + selfWithTotal.toLocaleString('en-IN') + (digipayWithdrawalTotal ? '  |  Digipay Withdrawals: +₹' + digipayWithdrawalTotal.toLocaleString('en-IN') : '') + (cscTopupTotal ? '  |  To CSC Wallet: -₹' + cscTopupTotal.toLocaleString('en-IN') : '') + (savingsExpenseTotal ? '  |  Savings Expense: -₹' + savingsExpenseTotal.toLocaleString('en-IN') : ''))
       ),
       e('div', { className: 'flex items-center gap-2' },
         currentUser.role === 'admin' && e('button', {
@@ -1479,12 +1511,13 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
         e('button', {
           onClick: () => {
             const val = Number(savingsInput) || 0;
-            // The card shows savingsBalance = base + selfDepTotal - selfWithTotal + digipayWithdrawalTotal.
-            // The admin is setting the TOTAL shown on the card, so solve for the hidden base that
-            // makes the total come out to exactly what they typed (previously this set the base
-            // directly, so the displayed total kept including the old Self Transfer/Digipay deltas
-            // on top of it and never matched what was typed — that's the bug being fixed here).
-            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal;
+            // The card shows savingsBalance = base + selfDepTotal - selfWithTotal + digipayWithdrawalTotal
+            // - cscTopupTotal - savingsExpenseTotal. The admin is setting the TOTAL shown on the
+            // card, so solve for the hidden base that makes the total come out to exactly what
+            // they typed (previously this set the base directly, so the displayed total kept
+            // including the old deltas on top of it and never matched what was typed — that's
+            // the bug being fixed here).
+            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal + cscTopupTotal + savingsExpenseTotal;
             setSavingsAccountBalance(newBase);
             setShowSetSavings(false); setSavingsInput('');
             showMessage('Savings Account Balance set to ₹' + val.toLocaleString('en-IN'));
@@ -1492,6 +1525,79 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
           className: 'bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium'
         }, 'Save'),
         e('button', { onClick: () => { setShowSetSavings(false); setSavingsInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm' }, 'Cancel')
+      )
+    ),
+
+    e('div', { className: 'bg-gradient-to-r from-orange-500 to-amber-600 rounded-xl p-4 text-white flex items-center justify-between shadow-md' },
+      e('div', null,
+        e('p', { className: 'text-orange-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'CSC Digital Seva Wallet'),
+        e('p', { className: 'text-3xl font-bold' }, '₹' + cscWalletBalance.toLocaleString('en-IN')),
+        e('p', { className: 'text-orange-100 text-xs mt-1.5' }, 'Top-ups: +₹' + cscTopupTotal.toLocaleString('en-IN') + '  |  Portal Cost spent: -₹' + totalPortalCostAllTime.toLocaleString('en-IN') + (cscExpenseTotal ? '  |  Other Expense: -₹' + cscExpenseTotal.toLocaleString('en-IN') : ''))
+      ),
+      e('div', { className: 'flex items-center gap-2' },
+        currentUser.role === 'admin' && e('button', {
+          onClick: () => { setShowTopup(true); setShowSetCscWallet(false); },
+          title: 'Top-up from Savings',
+          className: 'bg-white bg-opacity-20 hover:bg-opacity-30 p-2.5 rounded-lg text-white transition-colors'
+        }, e(Icon, { name: 'Plus', size: 18 })),
+        currentUser.role === 'admin' && e('button', {
+          onClick: () => { setCscWalletInput(String(cscWalletBalance)); setShowSetCscWallet(true); setShowTopup(false); },
+          title: 'Edit CSC Wallet Balance',
+          className: 'bg-white bg-opacity-20 hover:bg-opacity-30 p-2.5 rounded-lg text-white transition-colors'
+        }, e(Icon, { name: 'Edit3', size: 18 })),
+        e('div', { className: 'bg-white bg-opacity-20 p-3 rounded-xl' }, e(Icon, { name: 'ShoppingBag', size: 28 }))
+      )
+    ),
+
+    showTopup && currentUser.role === 'admin' && e('div', { className: 'bg-orange-50 p-4 rounded-xl shadow-sm border border-orange-300 flex flex-wrap items-end gap-4' },
+      e('div', null,
+        e('label', { className: 'block text-sm font-semibold text-orange-800 mb-1' }, 'Top-up CSC Wallet from Savings'),
+        e('p', { className: 'text-xs text-orange-600 mb-3' }, 'This amount is added to the CSC Wallet and deducted from Savings Account Balance, at the same time.'),
+        e('div', { className: 'flex items-center gap-2' },
+          e('span', { className: 'text-orange-700 font-bold' }, '₹'),
+          e('input', { type: 'number', value: topupInput, onChange: ev => setTopupInput(ev.target.value),
+            className: 'border border-orange-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500 w-44 text-sm', placeholder: '0' })
+        )
+      ),
+      e('div', { className: 'flex gap-2' },
+        e('button', {
+          onClick: () => {
+            const amt = Number(topupInput) || 0;
+            if (!amt || amt <= 0) return showMessage('Please enter a valid amount.', 'error');
+            setCscWalletTopups([...(cscWalletTopups || []), { id: Date.now(), date: selectedDate, amount: amt, addedBy: currentUser.name }]);
+            setShowTopup(false); setTopupInput('');
+            showMessage('₹' + amt.toLocaleString('en-IN') + ' moved from Savings to CSC Wallet!');
+          },
+          className: 'bg-orange-600 text-white px-5 py-2 rounded-lg hover:bg-orange-700 text-sm font-medium'
+        }, 'Top-up'),
+        e('button', { onClick: () => { setShowTopup(false); setTopupInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm' }, 'Cancel')
+      )
+    ),
+
+    showSetCscWallet && currentUser.role === 'admin' && e('div', { className: 'bg-orange-50 p-4 rounded-xl shadow-sm border border-orange-300 flex flex-wrap items-end gap-4' },
+      e('div', null,
+        e('label', { className: 'block text-sm font-semibold text-orange-800 mb-1' }, 'Set CSC Wallet Balance'),
+        e('p', { className: 'text-xs text-orange-600 mb-3' }, 'Directly correct the current amount held in the CSC Digital Seva Wallet.'),
+        e('div', { className: 'flex items-center gap-2' },
+          e('span', { className: 'text-orange-700 font-bold' }, '₹'),
+          e('input', { type: 'number', value: cscWalletInput, onChange: ev => setCscWalletInput(ev.target.value),
+            className: 'border border-orange-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500 w-44 text-sm', placeholder: '0' })
+        )
+      ),
+      e('div', { className: 'flex gap-2' },
+        e('button', {
+          onClick: () => {
+            const val = Number(cscWalletInput) || 0;
+            // Card shows cscWalletBalance = base + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime.
+            // Solve for the hidden base so the displayed total becomes exactly what was typed.
+            const newBase = val - cscTopupTotal + cscExpenseTotal + totalPortalCostAllTime;
+            setCscWalletBase(newBase);
+            setShowSetCscWallet(false); setCscWalletInput('');
+            showMessage('CSC Wallet Balance set to ₹' + val.toLocaleString('en-IN'));
+          },
+          className: 'bg-orange-600 text-white px-5 py-2 rounded-lg hover:bg-orange-700 text-sm font-medium'
+        }, 'Save'),
+        e('button', { onClick: () => { setShowSetCscWallet(false); setCscWalletInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm' }, 'Cancel')
       )
     ),
 
@@ -1976,6 +2082,175 @@ function BankingLedger({ bankTransactions, setBankTransactions, openingBalances,
             )
       )
     ) // end accexpense tab
+
+    ,
+    // ── CSC DIGITAL SEVA WALLET TAB ──
+    bankingTab === 'cscwallet' && (() => {
+      const walletLog = [
+        ...(cscWalletTopups || []).map(x => ({ id: 'top-' + x.id, date: x.date, kind: 'Top-up', label: 'Top-up from Savings', by: x.addedBy, amount: x.amount, sign: 1, delId: x.id })),
+        ...(cscWalletExpenses || []).map(x => ({ id: 'exp-' + x.id, date: x.date, kind: 'Expense', label: x.name + (x.remarks ? ' (' + x.remarks + ')' : ''), by: x.addedBy, amount: x.cost, sign: -1, delId: x.id })),
+        ...(tasks || []).filter(t => Number(t.portalCost) > 0).map(t => ({ id: 'pc-' + t.id, date: t.date, kind: 'Portal Cost', label: (t.service || 'Service') + ' — ' + (t.customerName || ''), by: t.staffName, amount: Number(t.portalCost), sign: -1, delId: null }))
+      ].sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
+
+      return e('div', { className: 'space-y-5' },
+        e('div', { className: 'bg-white rounded-xl shadow-sm border border-orange-100 p-5' },
+          e('div', { className: 'flex items-center gap-2 mb-4' },
+            e(Icon, { name: 'ShoppingBag', size: 20, className: 'text-orange-500' }),
+            e('h4', { className: 'font-bold text-gray-800 text-lg' }, 'Add CSC Wallet Expense'),
+            e('span', { className: 'text-xs bg-orange-50 text-orange-600 border border-orange-100 px-2 py-0.5 rounded-full ml-2' }, 'Deducts from CSC Wallet')
+          ),
+          e('p', { className: 'text-xs text-gray-400 mb-3' }, "Use this only for wallet costs NOT already covered by a service's Portal Cost in Customer CRM (those are added automatically below)."),
+          e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
+            e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Expense Name *'),
+              e('input', { type: 'text', value: cscExpForm.name, onChange: ev => setCscExpForm({ ...cscExpForm, name: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-400', placeholder: 'e.g. Wallet recharge fee' })),
+            e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Cost (₹) *'),
+              e('input', { type: 'number', value: cscExpForm.cost, onChange: ev => setCscExpForm({ ...cscExpForm, cost: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-400', placeholder: '0' })),
+            e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Date'),
+              e('input', { type: 'date', value: cscExpForm.date, onChange: ev => setCscExpForm({ ...cscExpForm, date: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-400' })),
+            e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Remarks'),
+              e('input', { type: 'text', value: cscExpForm.remarks, onChange: ev => setCscExpForm({ ...cscExpForm, remarks: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-400', placeholder: 'Optional note...' }))
+          ),
+          e('button', {
+            onClick: () => {
+              if (!cscExpForm.name.trim()) return showMessage('Expense Name দিন।', 'error');
+              if (!cscExpForm.cost || isNaN(cscExpForm.cost) || Number(cscExpForm.cost) <= 0) return showMessage('সঠিক Cost (₹) দিন।', 'error');
+              const newExp = { id: Date.now(), name: cscExpForm.name.trim(), cost: Number(cscExpForm.cost), date: cscExpForm.date || todayStr, remarks: cscExpForm.remarks.trim(), addedBy: currentUser.name };
+              setCscWalletExpenses([...(cscWalletExpenses || []), newExp]);
+              setCscExpForm({ name: '', cost: '', date: todayStr, remarks: '' });
+              showMessage('Expense added! CSC Wallet থেকে ₹' + newExp.cost + ' কাটা হয়েছে।');
+            },
+            className: 'mt-4 bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors shadow-sm'
+          }, e(Icon, { name: 'Plus', size: 17 }), ' Add Expense')
+        ),
+
+        e('div', { className: 'grid grid-cols-3 gap-4' },
+          e('div', { className: 'bg-orange-50 border border-orange-200 rounded-xl p-4 text-center' }, e('p', { className: 'text-xs text-orange-500 font-medium mb-1' }, 'Total Top-ups'), e('p', { className: 'text-2xl font-bold text-orange-700' }, '₹' + cscTopupTotal)),
+          e('div', { className: 'bg-red-50 border border-red-200 rounded-xl p-4 text-center' }, e('p', { className: 'text-xs text-red-500 font-medium mb-1' }, 'Portal Cost + Expense Spent'), e('p', { className: 'text-2xl font-bold text-red-700' }, '₹' + (totalPortalCostAllTime + cscExpenseTotal))),
+          e('div', { className: 'bg-gray-50 border border-gray-200 rounded-xl p-4 text-center' }, e('p', { className: 'text-xs text-gray-500 font-medium mb-1' }, 'CSC Wallet Balance'), e('p', { className: 'text-2xl font-bold ' + (cscWalletBalance >= 0 ? 'text-green-700' : 'text-red-700') }, '₹' + cscWalletBalance))
+        ),
+
+        e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden' },
+          e('div', { className: 'flex justify-between items-center px-5 py-4 border-b bg-orange-50' },
+            e('h4', { className: 'font-semibold text-orange-800' }, 'CSC Wallet History'),
+            e('span', { className: 'text-xs text-orange-500' }, 'Portal Cost rows come from Customer CRM automatically')
+          ),
+          walletLog.length === 0
+            ? e('p', { className: 'text-center text-gray-400 py-10' }, 'No CSC Wallet activity yet.')
+            : e('table', { className: 'w-full text-sm' },
+                e('thead', { className: 'bg-gray-50 text-gray-500 text-xs' },
+                  e('tr', null,
+                    e('th', { className: 'p-3 text-left font-medium' }, 'Date'), e('th', { className: 'p-3 text-left font-medium' }, 'Type'),
+                    e('th', { className: 'p-3 text-left font-medium' }, 'Details'), e('th', { className: 'p-3 text-left font-medium' }, 'By'),
+                    e('th', { className: 'p-3 text-right font-medium' }, 'Amount'),
+                    currentUser.role === 'admin' && e('th', { className: 'p-3 text-center font-medium' }, 'Del')
+                  )
+                ),
+                e('tbody', { className: 'divide-y divide-gray-100' },
+                  ...walletLog.map(row => e('tr', { key: row.id, className: 'hover:bg-orange-50' },
+                    e('td', { className: 'p-3 text-gray-600 whitespace-nowrap' }, row.date),
+                    e('td', { className: 'p-3' }, e('span', { className: 'px-2 py-0.5 rounded-full text-xs font-medium ' + (row.kind === 'Top-up' ? 'bg-emerald-50 text-emerald-600' : row.kind === 'Portal Cost' ? 'bg-purple-50 text-purple-600' : 'bg-red-50 text-red-600') }, row.kind)),
+                    e('td', { className: 'p-3 font-medium text-gray-800' }, row.label),
+                    e('td', { className: 'p-3 text-gray-500 text-xs' }, row.by || '—'),
+                    e('td', { className: 'p-3 text-right font-bold ' + (row.sign > 0 ? 'text-emerald-600' : 'text-red-600') }, (row.sign > 0 ? '+₹' : '-₹') + row.amount),
+                    currentUser.role === 'admin' && e('td', { className: 'p-3 text-center' },
+                      row.delId ? e('button', {
+                        onClick: () => {
+                          if (row.kind === 'Top-up') setCscWalletTopups((cscWalletTopups || []).filter(x => x.id !== row.delId));
+                          else setCscWalletExpenses((cscWalletExpenses || []).filter(x => x.id !== row.delId));
+                          showMessage('Deleted', 'error');
+                        },
+                        className: 'text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50'
+                      }, e(Icon, { name: 'Trash2', size: 15 })) : e('span', { className: 'text-xs text-gray-300', title: 'Delete/edit this service in Customer CRM' }, '—')
+                    )
+                  ))
+                )
+              )
+        )
+      );
+    })()
+
+    ,
+    // ── SAVINGS EXPENSE TAB ──
+    bankingTab === 'savingsexpense' && e('div', { className: 'space-y-5' },
+
+      e('div', { className: 'bg-white rounded-xl shadow-sm border border-teal-100 p-5' },
+        e('div', { className: 'flex items-center gap-2 mb-4' },
+          e(Icon, { name: 'Minus', size: 20, className: 'text-teal-500' }),
+          e('h4', { className: 'font-bold text-gray-800 text-lg' }, 'Add Savings Expense'),
+          e('span', { className: 'text-xs bg-teal-50 text-teal-600 border border-teal-100 px-2 py-0.5 rounded-full ml-2' }, 'Deducts from Savings Account Balance')
+        ),
+        e('p', { className: 'text-xs text-gray-400 mb-3' }, 'For personal or other expenses paid directly from the Savings Account (e.g. UPI/online payments) — not related to the CSC Wallet.'),
+        e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
+          e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Expense Name *'),
+            e('input', { type: 'text', value: savingsExpForm.name, onChange: ev => setSavingsExpForm({ ...savingsExpForm, name: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400', placeholder: 'e.g. Personal UPI payment' })),
+          e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Cost (₹) *'),
+            e('input', { type: 'number', value: savingsExpForm.cost, onChange: ev => setSavingsExpForm({ ...savingsExpForm, cost: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400', placeholder: '0' })),
+          e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Date'),
+            e('input', { type: 'date', value: savingsExpForm.date, onChange: ev => setSavingsExpForm({ ...savingsExpForm, date: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400' })),
+          e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, 'Remarks'),
+            e('input', { type: 'text', value: savingsExpForm.remarks, onChange: ev => setSavingsExpForm({ ...savingsExpForm, remarks: ev.target.value }), className: 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400', placeholder: 'Optional note...' }))
+        ),
+        e('button', {
+          onClick: () => {
+            if (!savingsExpForm.name.trim()) return showMessage('Expense Name দিন।', 'error');
+            if (!savingsExpForm.cost || isNaN(savingsExpForm.cost) || Number(savingsExpForm.cost) <= 0) return showMessage('সঠিক Cost (₹) দিন।', 'error');
+            const newExp = { id: Date.now(), name: savingsExpForm.name.trim(), cost: Number(savingsExpForm.cost), date: savingsExpForm.date || todayStr, remarks: savingsExpForm.remarks.trim(), addedBy: currentUser.name };
+            setSavingsExpenses([...(savingsExpenses || []), newExp]);
+            setSavingsExpForm({ name: '', cost: '', date: todayStr, remarks: '' });
+            showMessage('Expense added! Savings Account থেকে ₹' + newExp.cost + ' কাটা হয়েছে।');
+          },
+          className: 'mt-4 bg-teal-600 hover:bg-teal-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors shadow-sm'
+        }, e(Icon, { name: 'Plus', size: 17 }), ' Add Expense')
+      ),
+
+      e('div', { className: 'grid grid-cols-2 gap-4' },
+        e('div', { className: 'bg-teal-50 border border-teal-200 rounded-xl p-4 text-center' },
+          e('p', { className: 'text-xs text-teal-500 font-medium mb-1' }, 'Total Savings Expense'),
+          e('p', { className: 'text-2xl font-bold text-teal-700' }, '₹' + savingsExpenseTotal),
+          e('p', { className: 'text-xs text-teal-400 mt-1' }, (savingsExpenses || []).length + ' entries')
+        ),
+        e('div', { className: 'bg-gray-50 border border-gray-200 rounded-xl p-4 text-center' },
+          e('p', { className: 'text-xs text-gray-500 font-medium mb-1' }, 'Savings Account (After Deduction)'),
+          e('p', { className: 'text-2xl font-bold ' + (savingsBalance >= 0 ? 'text-green-700' : 'text-red-700') }, '₹' + savingsBalance)
+        )
+      ),
+
+      e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden' },
+        e('div', { className: 'flex justify-between items-center px-5 py-4 border-b bg-teal-50' },
+          e('h4', { className: 'font-semibold text-teal-800' }, 'Savings Expense Records'),
+          e('span', { className: 'text-xs text-teal-500' }, 'All entries are deducted from Savings Account Balance')
+        ),
+        (savingsExpenses || []).length === 0
+          ? e('p', { className: 'text-center text-gray-400 py-10' }, 'No Savings Expenses added yet.')
+          : e('table', { className: 'w-full text-sm' },
+              e('thead', { className: 'bg-gray-50 text-gray-500 text-xs' },
+                e('tr', null,
+                  e('th', { className: 'p-3 text-left font-medium' }, '#'), e('th', { className: 'p-3 text-left font-medium' }, 'Date'),
+                  e('th', { className: 'p-3 text-left font-medium' }, 'Expense Name'), e('th', { className: 'p-3 text-right font-medium' }, 'Cost (₹)'),
+                  e('th', { className: 'p-3 text-left font-medium' }, 'Remarks'),
+                  currentUser.role === 'admin' && e('th', { className: 'p-3 text-center font-medium' }, 'Del')
+                )
+              ),
+              e('tbody', { className: 'divide-y divide-gray-100' },
+                ...(savingsExpenses || []).slice().reverse().map((x, i) =>
+                  e('tr', { key: x.id, className: 'hover:bg-teal-50' },
+                    e('td', { className: 'p-3 text-gray-400 text-xs font-mono' }, (savingsExpenses || []).length - i),
+                    e('td', { className: 'p-3 text-gray-600' }, x.date),
+                    e('td', { className: 'p-3 font-medium text-gray-800' }, x.name),
+                    e('td', { className: 'p-3 text-right font-bold text-teal-600' }, '-₹' + x.cost),
+                    e('td', { className: 'p-3 text-gray-500 text-xs' }, x.remarks || '—'),
+                    currentUser.role === 'admin' && e('td', { className: 'p-3 text-center' },
+                      e('button', {
+                        onClick: () => { setSavingsExpenses((savingsExpenses || []).filter(ex => ex.id !== x.id)); showMessage('Deleted', 'error'); },
+                        className: 'text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50'
+                      }, e(Icon, { name: 'Trash2', size: 15 }))
+                    )
+                  )
+                )
+              )
+            )
+      )
+    ) // end savingsexpense tab
 
     ,
     noteModal && e(CashNoteModal, {
@@ -3652,6 +3927,16 @@ function App() {
   // (b) auto-incremented by Customer CRM whenever a service is paid with Payment Mode = "Online".
   const savingsAccountBalance = (appData && appData.savingsAccountBalance) || 0;
   const setSavingsAccountBalance = (newVal) => persist({ ...appData, savingsAccountBalance: newVal });
+  // CSC Digital Seva Wallet + Savings Expense — same simple array + setter pattern as
+  // accountBalanceExpenses above, kept fully separate so nothing here can clash with it.
+  const cscWalletBase = (appData && appData.cscWalletBase) || 0;
+  const setCscWalletBase = (newVal) => persist({ ...appData, cscWalletBase: newVal });
+  const cscWalletTopups = (appData && appData.cscWalletTopups) || [];
+  const setCscWalletTopups = (v) => persist({ ...appData, cscWalletTopups: typeof v === 'function' ? v(appData.cscWalletTopups || []) : v });
+  const cscWalletExpenses = (appData && appData.cscWalletExpenses) || [];
+  const setCscWalletExpenses = (v) => persist({ ...appData, cscWalletExpenses: typeof v === 'function' ? v(appData.cscWalletExpenses || []) : v });
+  const savingsExpenses = (appData && appData.savingsExpenses) || [];
+  const setSavingsExpenses = (v) => persist({ ...appData, savingsExpenses: typeof v === 'function' ? v(appData.savingsExpenses || []) : v });
   // Archives (removes) Banking-Ledger transactions in a date range. Since each day's Opening Balance
   // is now set independently per date (not auto-summed from history), archiving old transactions has
   // zero effect on any other day's balance. Touches ONLY bankTransactions —
@@ -3762,7 +4047,7 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
         activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
