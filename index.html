@@ -678,7 +678,7 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
 }
 
 // ── CUSTOMER CRM ──
-function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }) {
+function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [newC, setNewC] = useState({ name: '', phone: '', address: '', dob: '' });
@@ -743,6 +743,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
     persist(payload);
+    addAuditLog('Customer Added', newC.name, 'Phone: ' + newC.phone);
     setNewC({ name: '', phone: '', address: '', dob: '' });
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
     setShowAdd(false);
@@ -754,6 +755,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const updatedCustomers = customers.map(c => c.id === editingCustomerId ? { ...c, name: newC.name, phone: newC.phone, address: newC.address, dob: newC.dob } : c);
     const updatedTasks = tasks.map(t => t.customerName === cust.name ? { ...t, customerName: newC.name } : t);
     persist({ ...appData, customers: updatedCustomers, tasks: updatedTasks });
+    addAuditLog('Customer Updated', cust.name + ' → ' + newC.name, 'Phone: ' + newC.phone);
     setNewC({ name: '', phone: '', address: '', dob: '' });
     setEditingCustomerId(null);
     setShowAdd(false);
@@ -901,6 +903,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
                       const payload = { ...appData, customers: customers.filter(x => x.id !== c.id), tasks: remainingTasks };
                       if (onlineReversal > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) - onlineReversal;
                       persist(payload);
+                      addAuditLog('Customer Deleted', c.name, 'Phone: ' + c.phone + ' | Tasks deleted: ' + deletedTasks.length);
                       showMessage('Customer and all related data deleted!' + (onlineReversal > 0 ? ' \u20B9' + onlineReversal + ' removed from Savings Account Balance.' : ''), 'error');
                     },
                     className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100'
@@ -1110,7 +1113,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
 }
 
 // ── EXPENSES ──
-function Expenses({ expenses, setExpenses, currentUser, showMessage }) {
+function Expenses({ expenses, setExpenses, currentUser, showMessage, addAuditLog }) {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', remarks: '', cost: '', date: todayStr });
   const [fromDate, setFromDate] = useState(curMonth + '-01');
@@ -1122,6 +1125,7 @@ function Expenses({ expenses, setExpenses, currentUser, showMessage }) {
   const handleAdd = () => {
     if (!form.name || !form.cost) return showMessage('Please enter expense name and cost।', 'error');
     setExpenses([...expenses, { id: Date.now(), name: form.name, remarks: form.remarks, cost: Number(form.cost), date: form.date, addedBy: currentUser.name }]);
+    addAuditLog('Expense Added', form.name, '₹' + form.cost + (form.remarks ? ' | ' + form.remarks : ''));
     setForm({ name: '', remarks: '', cost: '', date: todayStr });
     setShowAdd(false);
     showMessage('Expense added!');
@@ -3378,7 +3382,7 @@ function StaffSalary({ users, appData, persist, showMessage, currentUser, busine
 
 
 // ── ONLINE TRANSACTION ──
-function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentUser, showMessage }) {
+function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentUser, showMessage, addAuditLog }) {
   const safe = Array.isArray(onlineTransactions) ? onlineTransactions : [];
   const [tab, setTab]           = useState('received'); // 'received' | 'transfer'
   const [form, setForm]         = useState({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
@@ -3395,12 +3399,15 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentU
     if (amt <= 0) return showMessage('Please enter a valid amount.', 'error');
     const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim() };
     setOnlineTransactions([...safe, newTxn]);
+    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + (form.utrNumber ? ' | UTR: ' + form.utrNumber : ''));
     setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
     showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added!');
   };
 
   const deleteTxn = (id) => {
+    const txn = safe.find(t => t.id === id);
     setOnlineTransactions(safe.filter(t => t.id !== id));
+    if (txn) addAuditLog('Online Transaction Deleted', txn.name, '₹' + txn.amount);
     showMessage('Deleted', 'error');
   };
 
@@ -4075,7 +4082,25 @@ function App() {
   const setAddMoreHistory = v => { const cur = (appData && appData.addMoreHistory && typeof appData.addMoreHistory === 'object') ? appData.addMoreHistory : {}; persist({ ...appData, addMoreHistory: typeof v === 'function' ? v(cur) : v }); };
   const setCashClosingLogs = v => persist({ ...appData, cashClosingLogs: typeof v === 'function' ? v(gl('cashClosingLogs')) : v });
   const onlineTransactions = gl('onlineTransactions') || [];
-  const setOnlineTransactions = v => persist({ ...appData, onlineTransactions: typeof v === 'function' ? v(gl('onlineTransactions')) : v });
+  const setAuditLogs = v => persist({ ...appData, auditLogs: typeof v === 'function' ? v(gl('auditLogs') || []) : v });
+  
+  // Function to add audit log entry
+  const addAuditLog = (action, details = '', relatedData = '') => {
+    const now = new Date();
+    const log = {
+      id: Date.now(),
+      date: todayStr,
+      time: now.toLocaleTimeString('en-IN'),
+      timestamp: now.getTime(),
+      action: action,
+      details: details + (relatedData ? ' (' + relatedData + ')' : ''),
+      staffId: currentUser.id,
+      staffName: currentUser.name,
+      staffRole: currentUser.role
+    };
+    const existing = gl('auditLogs') || [];
+    setAuditLogs([...existing, log]);
+  };
   const setAccountBalanceExpenses = v => persist({ ...appData, accountBalanceExpenses: typeof v === 'function' ? v(appData.accountBalanceExpenses || []) : v });
   const accountBalanceOverrides = (appData && appData.accountBalanceOverrides) || {};
   const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
@@ -4256,13 +4281,13 @@ function App() {
       e('div', { className: 'flex-1 overflow-y-auto p-6 relative' },
         activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
-        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }),
+        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
         activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
-        activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage }),
-        activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage }),
+        activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, currentUser, showMessage, addAuditLog }),
+        activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, currentUser, showMessage, addAuditLog }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
         activeTab === 'sss' && e(SSSReports, { appData, persist, currentUser, showMessage }),
         activeTab === 'performance' && currentUser.role === 'admin' && e(StaffPerformance, { tasks, users, expenses }),
