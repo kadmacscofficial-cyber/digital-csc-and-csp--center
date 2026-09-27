@@ -385,6 +385,8 @@ const defaultData = {
   cscWalletExpenses: [],
   // Personal/other expenses paid directly out of the Savings Account (not via the CSC Wallet).
   savingsExpenses: [],
+  // Audit Log — tracks all major actions in the system (admin only).
+  auditLogs: [],
   businessProfile: {
     name: 'Digital CSC Center', cscId: 'CSC-WB-98765',
     address: 'Durgapur, West Bengal', phone: '+91 98765 43210', email: 'contact@digitalcsc.in'
@@ -678,8 +680,9 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
 // ── CUSTOMER CRM ──
 function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [newC, setNewC] = useState({ name: '', phone: '', address: '', dob: '' });
-  const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
+  const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
@@ -689,7 +692,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     .filter(c => c.lastVisit >= fromDate && c.lastVisit <= toDate)
     .filter(c => !searchQ || [c.name, c.phone, c.address, c.dob].some(v => (v || '').toLowerCase().includes(searchQ)));
 
-  const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
+  const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
   const updateServiceRow = (rowId, field, val) => setSelectedServices(selectedServices.map(s => s.id === rowId ? { ...s, [field]: val } : s));
 
@@ -725,8 +728,10 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const svcPrice = getRowPrice(row);
       const svcName = getRowName(row);
       const paidAmt = Number(row.paid) || 0;
+      const discountAmt = Number(row.discount) || 0;
       const portalCostAmt = Number(row.portalCost) || 0;
-      return { id: cid + i + 1, groupId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= svcPrice ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt };
+      const finalAmount = svcPrice - discountAmt;
+      return { id: cid + i + 1, groupId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt };
     });
     // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
     // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
@@ -739,15 +744,26 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
     persist(payload);
     setNewC({ name: '', phone: '', address: '', dob: '' });
-    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
+    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '' }]);
     setShowAdd(false);
     showMessage('Customer added! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
+  };
+
+  const handleEditCustomer = (cust) => {
+    if (!newC.name || !newC.phone) return showMessage('Name and Mobile are required.', 'error');
+    const updatedCustomers = customers.map(c => c.id === editingCustomerId ? { ...c, name: newC.name, phone: newC.phone, address: newC.address, dob: newC.dob } : c);
+    const updatedTasks = tasks.map(t => t.customerName === cust.name ? { ...t, customerName: newC.name } : t);
+    persist({ ...appData, customers: updatedCustomers, tasks: updatedTasks });
+    setNewC({ name: '', phone: '', address: '', dob: '' });
+    setEditingCustomerId(null);
+    setShowAdd(false);
+    showMessage('Customer details updated!');
   };
 
   return e('div', { className: 'space-y-4' },
     e('div', { className: 'flex justify-between items-center' },
       e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Customer CRM')),
-      e('button', { onClick: () => setShowAdd(!showAdd), className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2' }, e(Icon, { name: 'Plus', size: 18 }), ' Add Customer')
+      !editingCustomerId && e('button', { onClick: () => { setShowAdd(!showAdd); if (showAdd) setNewC({ name: '', phone: '', address: '', dob: '' }); }, className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2' }, e(Icon, { name: 'Plus', size: 18 }), ' Add Customer')
     ),
     e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(filtered.map(c => ({ Name: c.name, Mobile: c.phone, Address: c.address || '', DOB: c.dob || '', Service: c.service, 'Last Visit': c.lastVisit })), `Customers_${fromDate}_to_${toDate}`) }),
     e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100' },
@@ -795,6 +811,10 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('input', { type: 'number', value: row.paid, onChange: ev => updateServiceRow(row.id, 'paid', ev.target.value), className: 'w-24 border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm', placeholder: '₹0' })
             ),
             e('div', { className: 'flex flex-col' },
+              e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Discount'),
+              e('input', { type: 'number', value: row.discount, onChange: ev => updateServiceRow(row.id, 'discount', ev.target.value), className: 'w-24 border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-red-400 text-sm', placeholder: '₹0' })
+            ),
+            e('div', { className: 'flex flex-col' },
               e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Payment Mode'),
               e('select', {
                 value: row.paymentMode || 'Cash',
@@ -816,7 +836,8 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           ),
           row.serviceId && e('div', { className: 'flex gap-4 text-xs pt-1 pl-1' },
             e('span', { className: 'text-gray-500' }, 'Amount: ', e('span', { className: 'font-semibold text-gray-800' }, '₹' + getRowPrice(row))),
-            e('span', { style: { color: (Number(row.paid) || 0) < getRowPrice(row) ? '#dc2626' : '#16a34a' } }, 'Due: ', e('span', { className: 'font-semibold' }, '₹' + Math.max(0, getRowPrice(row) - (Number(row.paid) || 0))))
+            (Number(row.discount) || 0) > 0 && e('span', { className: 'text-red-500' }, 'Discount: ', e('span', { className: 'font-semibold' }, '-₹' + (Number(row.discount) || 0))),
+            e('span', { style: { color: Math.max(0, getRowPrice(row) - (Number(row.discount) || 0) - (Number(row.paid) || 0)) > 0 ? '#dc2626' : '#16a34a' } }, 'Due: ', e('span', { className: 'font-semibold' }, '₹' + Math.max(0, getRowPrice(row) - (Number(row.discount) || 0) - (Number(row.paid) || 0))))
           ),
           // Portal Cost — kept in its own purple box, separate from the customer Amount/Due
           // line above, so it never gets visually or numerically mixed with customer payments.
@@ -841,7 +862,10 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           currentUser.role === 'admin' && e('div', null, e('p', { className: 'text-xs font-medium mb-0.5', style: { color: crmProfitTotal >= 0 ? '#16a34a' : '#dc2626' } }, 'Total Profit'), e('p', { className: 'text-lg font-bold', style: { color: crmProfitTotal >= 0 ? '#16a34a' : '#dc2626' } }, '₹' + crmProfitTotal))
         )
       ),
-      e('button', { onClick: handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium' }, 'Save Customer')
+      e('div', { className: 'flex gap-3 items-center' },
+        e('button', { onClick: editingCustomerId ? () => handleEditCustomer(customers.find(c => c.id === editingCustomerId)) : handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2' }, e(Icon, { name: editingCustomerId ? 'Save' : 'Plus', size: 18 }), editingCustomerId ? 'Update Customer' : 'Save Customer'),
+        editingCustomerId && e('button', { onClick: () => { setEditingCustomerId(null); setNewC({ name: '', phone: '', address: '', dob: '' }); setShowAdd(false); }, className: 'bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium' }, 'Cancel')
+      )
     ),
     e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto' },
       e('table', { className: 'w-full text-left' },
@@ -860,6 +884,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('td', { className: 'p-4 text-right' },
                 e('div', { className: 'flex justify-end gap-2' },
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
+                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name, phone: c.phone, address: c.address, dob: c.dob }); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
                     onClick: () => {
                       const isRelated = (t) => {
@@ -3356,7 +3381,7 @@ function StaffSalary({ users, appData, persist, showMessage, currentUser, busine
 function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentUser, showMessage }) {
   const safe = Array.isArray(onlineTransactions) ? onlineTransactions : [];
   const [tab, setTab]           = useState('received'); // 'received' | 'transfer'
-  const [form, setForm]         = useState({ name: '', amount: '' });
+  const [form, setForm]         = useState({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate]     = useState(todayStr);
 
@@ -3368,9 +3393,9 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentU
     if (!form.name.trim()) return showMessage('Please enter a name / details.', 'error');
     const amt = Number(form.amount) || 0;
     if (amt <= 0) return showMessage('Please enter a valid amount.', 'error');
-    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name };
+    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim() };
     setOnlineTransactions([...safe, newTxn]);
-    setForm({ name: '', amount: '' });
+    setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
     showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added!');
   };
 
@@ -3383,16 +3408,16 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentU
     const rows = [
       ['Online Transaction Report', fromDate + ' to ' + toDate],
       [],
-      ['Type', 'Date', 'Name / Details', 'Amount', 'Staff'],
+      ['Type', 'Date', 'Name / Details', 'Amount', 'UTR Number', 'Screenshot File Name', 'Staff'],
       ...safe.filter(t => t.date >= fromDate && t.date <= toDate)
         .sort((a, b) => a.date < b.date ? -1 : 1)
-        .map(t => [t.type === 'received' ? 'Money Received' : 'Money Transfer', t.date, t.name, t.amount, t.staffName || '']),
+        .map(t => [t.type === 'received' ? 'Money Received' : 'Money Transfer', t.date, t.name, t.amount, t.utrNumber || '', t.screenshotFileName || '', t.staffName || '']),
       [],
       ['', '', 'Total Money Received', totalReceived],
       ['', '', 'Total Money Transfer', totalTransfer],
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:18},{wch:12},{wch:30},{wch:14},{wch:18}];
+    ws['!cols'] = [{wch:18},{wch:12},{wch:30},{wch:14},{wch:15},{wch:20},{wch:18}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Online Transactions');
     XLSX.writeFile(wb, 'Online_Transactions_' + fromDate + '_to_' + toDate + '.xlsx');
@@ -3448,23 +3473,37 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentU
       e('h4', { className: 'text-sm font-semibold text-gray-700 mb-3' },
         'Add ' + (tab === 'received' ? 'Money Received' : 'Money Transfer') + ' Entry'
       ),
-      e('div', { className: 'flex flex-wrap gap-3 items-end' },
-        e('div', { className: 'flex-1 min-w-48' },
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-end' },
+        e('div', null,
           e('label', { className: 'block text-sm font-medium mb-1' }, 'Name / Details *'),
           e('input', { type: 'text', value: form.name, onChange: ev => setForm({ ...form, name: ev.target.value }),
-            className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
-            placeholder: tab === 'received' ? 'e.g. NEFT from Ramesh Mondal' : 'e.g. Transfer to Ramesh Mondal'
+            className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
+            placeholder: tab === 'received' ? 'e.g. NEFT' : 'e.g. Transfer'
           })
         ),
         e('div', null,
           e('label', { className: 'block text-sm font-medium mb-1' }, 'Amount (\u20B9) *'),
           e('input', { type: 'number', value: form.amount, onChange: ev => setForm({ ...form, amount: ev.target.value }),
-            className: 'w-36 border rounded-lg px-3 py-2 outline-none focus:ring-2 ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
+            className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
             placeholder: '0'
           })
         ),
+        e('div', null,
+          e('label', { className: 'block text-sm font-medium mb-1' }, 'UTR Number'),
+          e('input', { type: 'text', value: form.utrNumber, onChange: ev => setForm({ ...form, utrNumber: ev.target.value }),
+            className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
+            placeholder: 'e.g. 1234567890'
+          })
+        ),
+        e('div', null,
+          e('label', { className: 'block text-sm font-medium mb-1' }, 'Screenshot File Name'),
+          e('input', { type: 'text', value: form.screenshotFileName, onChange: ev => setForm({ ...form, screenshotFileName: ev.target.value }),
+            className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
+            placeholder: 'e.g. screenshot.png'
+          })
+        ),
         e('button', { onClick: handleAdd,
-          className: 'px-5 py-2 rounded-lg font-medium text-white flex items-center gap-2 ' + (tab === 'received' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600')
+          className: 'px-5 py-2 rounded-lg font-medium text-white flex items-center gap-2 w-full justify-center ' + (tab === 'received' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600')
         }, e(Icon, { name: 'Plus', size: 17 }), ' Add')
       )
     ),
@@ -3478,19 +3517,23 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentU
             e('th', { className: 'p-4 font-medium' }, 'Date'),
             e('th', { className: 'p-4 font-medium' }, 'Name / Details'),
             e('th', { className: 'p-4 font-medium' }, 'Amount'),
+            e('th', { className: 'p-4 font-medium' }, 'UTR Number'),
+            e('th', { className: 'p-4 font-medium' }, 'Screenshot'),
             e('th', { className: 'p-4 font-medium' }, 'Staff'),
             e('th', { className: 'p-4 font-medium text-right' }, 'Action')
           )
         ),
         e('tbody', { className: 'divide-y divide-gray-100' },
           filtered.length === 0
-            ? e('tr', null, e('td', { colSpan: 6, className: 'p-8 text-center text-gray-400' }, 'No ' + (tab === 'received' ? 'money received' : 'money transfer') + ' entries for this date range.'))
+            ? e('tr', null, e('td', { colSpan: 8, className: 'p-8 text-center text-gray-400' }, 'No ' + (tab === 'received' ? 'money received' : 'money transfer') + ' entries for this date range.'))
             : filtered.slice().sort((a, b) => b.id - a.id).map((t, idx) =>
                 e('tr', { key: t.id, className: 'hover:bg-gray-50' },
                   e('td', { className: 'p-4 text-sm text-gray-500' }, idx + 1),
                   e('td', { className: 'p-4 text-sm text-gray-500' }, t.date),
                   e('td', { className: 'p-4 font-medium text-gray-800' }, t.name),
                   e('td', { className: 'p-4 font-bold ' + (tab === 'received' ? 'text-green-600' : 'text-red-500') }, '\u20B9' + (t.amount || 0).toLocaleString('en-IN')),
+                  e('td', { className: 'p-4 text-sm text-gray-600' }, t.utrNumber || '—'),
+                  e('td', { className: 'p-4 text-sm text-gray-600' }, t.screenshotFileName || '—'),
                   e('td', { className: 'p-4 text-sm text-gray-500' }, t.staffName || ''),
                   e('td', { className: 'p-4 text-right' },
                     currentUser.role === 'admin' && e('button', { onClick: () => deleteTxn(t.id), className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 }))
@@ -3504,6 +3547,66 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, currentU
 }
 
 // ── STAFF PERFORMANCE ──
+// ── AUDIT LOG ──
+function AuditLog({ auditLogs }) {
+  const [fromDate, setFromDate] = useState(todayStr);
+  const [toDate, setToDate] = useState(todayStr);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const safe = Array.isArray(auditLogs) ? auditLogs : [];
+  const filtered = safe.filter(log => 
+    log.date >= fromDate && log.date <= toDate &&
+    (!searchTerm || [log.action, log.details, log.staffName].some(v => (v || '').toLowerCase().includes(searchTerm.toLowerCase())))
+  ).sort((a, b) => b.timestamp - a.timestamp);
+
+  return e('div', { className: 'space-y-4' },
+    e('div', { className: 'flex flex-wrap justify-between items-center gap-3' },
+      e('div', null,
+        e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Audit Log'),
+        e('p', { className: 'text-sm text-gray-500' }, 'System activity and changes log')
+      ),
+      e('div', { className: 'flex gap-2 items-center flex-wrap' },
+        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'From'), e('input', { type: 'date', value: fromDate, onChange: ev => setFromDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
+        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'To'), e('input', { type: 'date', value: toDate, onChange: ev => setToDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' }))
+      )
+    ),
+
+    e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100' },
+      e('div', { className: 'relative' },
+        e('div', { className: 'absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400' }, e(Icon, { name: 'Search', size: 16 })),
+        e('input', { type: 'text', value: searchTerm, onChange: ev => setSearchTerm(ev.target.value), placeholder: 'Search by action, details, or staff...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })
+      )
+    ),
+
+    e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto' },
+      filtered.length === 0
+        ? e('div', { className: 'p-8 text-center text-gray-400' }, 'No audit logs found')
+        : e('table', { className: 'w-full text-sm' },
+            e('thead', { className: 'bg-gray-50 border-b text-gray-600 text-xs' },
+              e('tr', null,
+                e('th', { className: 'p-3 text-left font-medium' }, 'Date/Time'),
+                e('th', { className: 'p-3 text-left font-medium' }, 'Action'),
+                e('th', { className: 'p-3 text-left font-medium' }, 'Details'),
+                e('th', { className: 'p-3 text-left font-medium' }, 'Staff'),
+                e('th', { className: 'p-3 text-left font-medium' }, 'Role')
+              )
+            ),
+            e('tbody', { className: 'divide-y divide-gray-100' },
+              ...filtered.map(log =>
+                e('tr', { key: log.id, className: 'hover:bg-gray-50' },
+                  e('td', { className: 'p-3 text-gray-600 font-mono text-xs' }, (log.date || '') + ' ' + (log.time || '')),
+                  e('td', { className: 'p-3 font-medium text-gray-800' }, log.action),
+                  e('td', { className: 'p-3 text-gray-600' }, log.details || '—'),
+                  e('td', { className: 'p-3 text-gray-600' }, log.staffName || '—'),
+                  e('td', { className: 'p-3' }, e('span', { className: 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ' + (log.staffRole === 'admin' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700') }, log.staffRole || 'operator'))
+                )
+              )
+            )
+          )
+    )
+  );
+}
+
 function StaffPerformance({ tasks, users, expenses }) {
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
@@ -4100,12 +4203,13 @@ function App() {
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
     { id: 'sss', label: 'SSS Reports', icon: 'Shield' },
     ...(currentUser.role === 'admin' ? [
-      { id: 'performance', label: 'Staff Performance', icon: 'BarChart2' }
+      { id: 'performance', label: 'Staff Performance', icon: 'BarChart2' },
+      { id: 'auditlog', label: 'Audit Log', icon: 'LogIn' }
     ] : []),
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', cashcount: 'Cash Count', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', cashcount: 'Cash Count', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen font-sans overflow-hidden bg-gray-50' },
     e('aside', { className: `w-64 text-white flex flex-col transition-colors duration-300 bg-${sideColor}-900` },
@@ -4162,6 +4266,7 @@ function App() {
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
         activeTab === 'sss' && e(SSSReports, { appData, persist, currentUser, showMessage }),
         activeTab === 'performance' && currentUser.role === 'admin' && e(StaffPerformance, { tasks, users, expenses }),
+        activeTab === 'auditlog' && currentUser.role === 'admin' && e(AuditLog, { auditLogs: gl('auditLogs') || [] }),
         activeTab === 'salary'      && activeTab === 'salary' && e(StaffSalary, { users, appData, persist, showMessage, currentUser, businessProfile }),
         activeTab === 'settings' && e(SystemSettings, { currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage })
       )
