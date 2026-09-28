@@ -1410,8 +1410,16 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
 
   // ── Account Balance (all-time) ──
   const allTxns = bankTransactions;
-  const allOnlineReceived = safeOnline.filter(t => t.type === 'received').reduce((s, t) => s + (t.amount || 0), 0);
-  const allOnlineTransfer = safeOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (t.amount || 0), 0);
+  // Online Transactions entered from now on carry toSavings:true and are redirected to the
+  // Savings Account Balance (Received +, Transfer -), computed live from this array so adding
+  // or deleting an entry keeps Savings correct automatically. Older entries (no flag) keep
+  // affecting Account Balance exactly as before, so no existing balance silently shifts.
+  const legacyOnline = safeOnline.filter(t => !t.toSavings);
+  const savingsOnline = safeOnline.filter(t => t.toSavings);
+  const allOnlineReceived = legacyOnline.filter(t => t.type === 'received').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const allOnlineTransfer = legacyOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const savingsOnlineReceived = savingsOnline.filter(t => t.type === 'received').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const savingsOnlineTransfer = savingsOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   // Digipay Withdrawals are redirected to Savings Account Balance instead of Account Balance —
   // so they're excluded here and added to savingsBalance below instead. Everything else
   // (Bank Withdrawal/Deposit, Digipay Deposit, Cash ledger, Reports) is unchanged.
@@ -1446,7 +1454,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   const savingsExpenseTotal = (savingsExpenses || []).reduce((s, x) => s + (Number(x.cost) || 0), 0);
 
   // Savings Account Balance = manual set + transfers in (deposit) - transfers out (withdrawal) + Digipay Withdrawals - CSC Wallet Top-ups - Savings Expenses
-  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal - cscTopupTotal - savingsExpenseTotal;
+  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal;
   // Account Balance: Self Transfer Deposit reduces it, Withdrawal increases it
   const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
   // Use daily override if set for selectedDate, else use auto calculation
@@ -1646,7 +1654,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       e('div', null,
         e('p', { className: 'text-emerald-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'Savings Account Balance'),
         e('p', { className: 'text-3xl font-bold' }, '₹' + savingsBalance.toLocaleString('en-IN')),
-        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Base: ₹' + (Number(savingsAccountBalance)||0).toLocaleString('en-IN') + '  |  Self Transfers In: +₹' + selfDepTotal.toLocaleString('en-IN') + '  |  Out: -₹' + selfWithTotal.toLocaleString('en-IN') + (digipayWithdrawalTotal ? '  |  Digipay Withdrawals: +₹' + digipayWithdrawalTotal.toLocaleString('en-IN') : '') + (cscTopupTotal ? '  |  To CSC Wallet: -₹' + cscTopupTotal.toLocaleString('en-IN') : '') + (savingsExpenseTotal ? '  |  Savings Expense: -₹' + savingsExpenseTotal.toLocaleString('en-IN') : ''))
+        e('p', { className: 'text-emerald-100 text-xs mt-1.5' }, 'Base: ₹' + (Number(savingsAccountBalance)||0).toLocaleString('en-IN') + '  |  Self Transfers In: +₹' + selfDepTotal.toLocaleString('en-IN') + '  |  Out: -₹' + selfWithTotal.toLocaleString('en-IN') + (digipayWithdrawalTotal ? '  |  Digipay Withdrawals: +₹' + digipayWithdrawalTotal.toLocaleString('en-IN') : '') + (savingsOnlineReceived ? '  |  Online Received: +₹' + savingsOnlineReceived.toLocaleString('en-IN') : '') + (savingsOnlineTransfer ? '  |  Online Transfer: -₹' + savingsOnlineTransfer.toLocaleString('en-IN') : '') + (cscTopupTotal ? '  |  To CSC Wallet: -₹' + cscTopupTotal.toLocaleString('en-IN') : '') + (savingsExpenseTotal ? '  |  Savings Expense: -₹' + savingsExpenseTotal.toLocaleString('en-IN') : ''))
       ),
       e('div', { className: 'flex items-center gap-2' },
         currentUser.role === 'admin' && e('button', {
@@ -1678,7 +1686,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
             // they typed (previously this set the base directly, so the displayed total kept
             // including the old deltas on top of it and never matched what was typed — that's
             // the bug being fixed here).
-            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal + cscTopupTotal + savingsExpenseTotal;
+            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal - savingsOnlineReceived + savingsOnlineTransfer + cscTopupTotal + savingsExpenseTotal;
             setSavingsAccountBalance(newBase);
             setShowSetSavings(false); setSavingsInput('');
             showMessage('Savings Account Balance set to ₹' + val.toLocaleString('en-IN'));
@@ -3450,10 +3458,10 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     if (!form.name.trim()) return showMessage('Please enter a name / details.', 'error');
     const amt = Number(form.amount) || 0;
     if (amt <= 0) return showMessage('Please enter a valid amount.', 'error');
-    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim() };
+    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true };
     addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + (form.utrNumber ? ' | UTR: ' + form.utrNumber : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
     setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
-    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added!');
+    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to' : ' deducted from') + ' Savings Account Balance.');
   };
 
   const deleteTxn = (id) => {
