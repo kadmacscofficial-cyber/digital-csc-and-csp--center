@@ -444,6 +444,7 @@ function Icon({ name, size = 20, className = '' }) {
     Edit3: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
     Calculator: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>`,
     Wallet: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M3 9h18"/><path d="M16 14h2"/></svg>`,
+    MessageCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`,
     Search: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
   };
   const svg = icons[name] || icons['User'];
@@ -678,10 +679,160 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
   );
 }
 
+// ── WHATSAPP MESSAGES ──
+// Click-to-chat: opens the customer's WhatsApp chat with the message already typed in
+// (wa.me link). WhatsApp itself then needs one tap on "Send" — fully automatic sending
+// without that tap needs the paid WhatsApp Business API, which a plain web app can't do.
+const DEFAULT_WA_TEMPLATES = [
+  { id: 'due',      title: 'Payment Due Reminder',  text: 'নমস্কার {name}, {shop}-এর পক্ষ থেকে জানাচ্ছি যে আপনার {service} সার্ভিসের ₹{due} বকেয়া আছে। অনুগ্রহ করে সুবিধামতো সময়ে পরিশোধ করুন। ধন্যবাদ। 📞 {shop_phone}' },
+  { id: 'done',     title: 'Service Completed',     text: 'নমস্কার {name}, আপনার {service} এর কাজ সম্পন্ন হয়েছে। অনুগ্রহ করে দোকান থেকে আপনার ডকুমেন্ট সংগ্রহ করুন। ধন্যবাদ — {shop}' },
+  { id: 'progress', title: 'Application In Progress', text: 'নমস্কার {name}, আপনার {service} এর আবেদন প্রক্রিয়াধীন আছে। কাজ শেষ হলেই আপনাকে জানানো হবে। ধন্যবাদ — {shop}' },
+  { id: 'docs',     title: 'Documents Required',    text: 'নমস্কার {name}, আপনার {service} এর জন্য কিছু ডকুমেন্ট প্রয়োজন। অনুগ্রহ করে দ্রুত দোকানে যোগাযোগ করুন। — {shop}, 📞 {shop_phone}' },
+  { id: 'thanks',   title: 'Thank You',             text: 'ধন্যবাদ {name}! {shop}-এর সার্ভিস ব্যবহার করার জন্য আমরা কৃতজ্ঞ। আবার আসবেন। 🙏' },
+  { id: 'bday',     title: 'Birthday Wish',         text: 'শুভ জন্মদিন {name}! 🎂 {shop}-এর পক্ষ থেকে আপনাকে অনেক শুভেচ্ছা ও ভালোবাসা।' },
+  { id: 'closed',   title: 'Shop Closed Notice',    text: 'নমস্কার {name}, জানানো যাচ্ছে যে আগামীকাল {shop} বন্ধ থাকবে। অসুবিধার জন্য দুঃখিত। ধন্যবাদ।' }
+];
+
+function getWaTemplates(appData) {
+  const raw = appData && appData.whatsappTemplates;
+  const arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+  const clean = arr.filter(t => t && t.text);
+  return clean.length ? clean : DEFAULT_WA_TEMPLATES;
+}
+
+// Normalises an Indian mobile number to WhatsApp's international format (no + or spaces).
+// Returns '' if it doesn't look like a valid number.
+function waPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  if (d.length === 10) d = '91' + d;
+  return (d.length >= 11 && d.length <= 15) ? d : '';
+}
+
+// Values available inside a template: {name} {due} {service} {shop} {shop_phone} {date}
+function waVars(customer, tasks, businessProfile) {
+  const bp = businessProfile || {};
+  const mine = (tasks || []).filter(t => t.customerName === customer.name);
+  const dueOf = t => Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0));
+  const due = mine.reduce((s, t) => s + dueOf(t), 0);
+  let items = mine.filter(t => dueOf(t) > 0);
+  if (!items.length) { const last = mine.reduce((m, t) => (t.date > m ? t.date : m), ''); items = mine.filter(t => t.date === last); }
+  const service = items.map(t => t.service).filter((v, i, a) => v && a.indexOf(v) === i).join(', ') || customer.service || '';
+  return { name: customer.name || '', due: String(due), service, shop: bp.name || '', shop_phone: bp.phone || '', date: todayStr };
+}
+function waFill(text, vars) {
+  return String(text || '').replace(/\{(name|due|service|shop|shop_phone|date)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : ''));
+}
+function openWhatsApp(phone, text) {
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+}
+
+// Pick a message (or tick several to send together as one) and send in one click.
+function WhatsAppModal({ customer, tasks, appData, onClose, onSent, preferId }) {
+  const templates = getWaTemplates(appData);
+  const vars = waVars(customer, tasks, appData && appData.businessProfile);
+  const [phone, setPhone] = useState(customer.phone || '');
+  const [selected, setSelected] = useState([]);
+  const [custom, setCustom] = useState('');
+  const [err, setErr] = useState('');
+  const ordered = preferId ? [...templates].sort((a, b) => (b.id === preferId ? 1 : 0) - (a.id === preferId ? 1 : 0)) : templates;
+  const toggle = id => setSelected(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+  const send = (text, label) => {
+    const p = waPhone(phone);
+    if (!p) return setErr('Please enter a valid mobile number (10 digits).');
+    if (!String(text).trim()) return setErr('Message is empty.');
+    setErr('');
+    openWhatsApp(p, text);
+    onSent && onSent(label, p);
+  };
+  const selectedText = templates.filter(t => selected.includes(t.id)).map(t => waFill(t.text, vars)).join('\n\n');
+
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4', onClick: ev => { if (ev.target === ev.currentTarget) onClose(); } },
+    e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col' },
+      e('div', { className: 'flex items-center justify-between px-5 py-4 border-b bg-green-600 text-white rounded-t-2xl' },
+        e('div', { className: 'flex items-center gap-2' }, e(Icon, { name: 'MessageCircle', size: 22 }), e('div', null, e('p', { className: 'font-bold leading-tight' }, 'WhatsApp — ' + customer.name), e('p', { className: 'text-xs text-green-100' }, 'Opens WhatsApp with the message ready; just press Send there.'))),
+        e('button', { onClick: onClose, className: 'text-white text-2xl leading-none px-2' }, '×')
+      ),
+      e('div', { className: 'p-5 overflow-y-auto space-y-3' },
+        e('div', { className: 'flex items-center gap-2' },
+          e('label', { className: 'text-sm font-medium text-gray-700 whitespace-nowrap' }, 'Mobile'),
+          e('input', { type: 'text', value: phone, onChange: ev => setPhone(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-green-500 w-48', placeholder: '10-digit mobile' }),
+          e('span', { className: 'text-xs ' + (waPhone(phone) ? 'text-green-600' : 'text-red-500') }, waPhone(phone) ? '+' + waPhone(phone) : 'invalid number')
+        ),
+        err && e('p', { className: 'text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2' }, err),
+        ...ordered.map(t => {
+          const filled = waFill(t.text, vars);
+          const zeroDue = /\{due\}/.test(t.text) && vars.due === '0';
+          return e('div', { key: t.id, className: 'border rounded-xl p-3 flex gap-3 items-start ' + (selected.includes(t.id) ? 'border-green-400 bg-green-50' : 'border-gray-200') },
+            e('input', { type: 'checkbox', checked: selected.includes(t.id), onChange: () => toggle(t.id), className: 'mt-1 h-4 w-4', title: 'Tick to combine with other messages' }),
+            e('div', { className: 'flex-1 min-w-0' },
+              e('p', { className: 'font-semibold text-gray-800 text-sm' }, t.title || 'Message', t.id === preferId && e('span', { className: 'ml-2 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full' }, 'Suggested')),
+              e('p', { className: 'text-xs text-gray-500 whitespace-pre-wrap break-words mt-0.5' }, filled),
+              zeroDue && e('p', { className: 'text-xs text-amber-600 mt-1' }, 'Note: this customer has no pending due (₹0).')
+            ),
+            e('button', { onClick: () => send(filled, t.title), className: 'bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 whitespace-nowrap' }, e(Icon, { name: 'MessageCircle', size: 15 }), 'Send')
+          );
+        }),
+        e('div', { className: 'border border-dashed border-gray-300 rounded-xl p-3 space-y-2' },
+          e('p', { className: 'text-sm font-semibold text-gray-700' }, 'Custom message'),
+          e('textarea', { value: custom, onChange: ev => setCustom(ev.target.value), rows: 2, className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500', placeholder: 'Type your own message…' }),
+          e('button', { onClick: () => send(custom, 'Custom message'), className: 'bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium' }, 'Send custom message')
+        )
+      ),
+      e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex items-center justify-between gap-3' },
+        e('p', { className: 'text-xs text-gray-500' }, selected.length ? selected.length + ' message(s) ticked — they go together as one message.' : 'Tick more than one message to send them together.'),
+        e('button', { disabled: !selected.length, onClick: () => send(selectedText, selected.length + ' messages combined'), className: 'px-4 py-2 rounded-lg text-sm font-medium text-white ' + (selected.length ? 'bg-green-700 hover:bg-green-800' : 'bg-gray-300 cursor-not-allowed') }, 'Send Ticked (' + selected.length + ')')
+      )
+    )
+  );
+}
+
+// Admin: add / edit / delete the message list used by the WhatsApp buttons.
+function WhatsAppTemplatesModal({ appData, persist, addAuditLog, showMessage, onClose }) {
+  const [draft, setDraft] = useState(getWaTemplates(appData).map(t => ({ id: t.id, title: t.title || '', text: t.text || '' })));
+  const update = (i, k, v) => setDraft(draft.map((t, j) => j === i ? { ...t, [k]: v } : t));
+  const remove = i => setDraft(draft.filter((_, j) => j !== i));
+  const add = () => setDraft([...draft, { id: 'tpl' + Date.now(), title: '', text: '' }]);
+  const save = () => {
+    const cleaned = draft.filter(t => t.text.trim()).map(t => ({ id: t.id, title: t.title.trim() || 'Message', text: t.text.trim() }));
+    if (!cleaned.length) return showMessage('Add at least one message.', 'error');
+    addAuditLog('WhatsApp Templates Updated', cleaned.length + ' message(s) saved', '', { ...appData, whatsappTemplates: cleaned });
+    showMessage('WhatsApp messages saved!');
+    onClose();
+  };
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4' },
+    e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col' },
+      e('div', { className: 'flex items-center justify-between px-5 py-4 border-b' },
+        e('h3', { className: 'font-bold text-gray-800' }, 'WhatsApp Messages'),
+        e('button', { onClick: onClose, className: 'text-gray-500 text-2xl leading-none px-2' }, '×')
+      ),
+      e('div', { className: 'p-5 overflow-y-auto space-y-3' },
+        e('p', { className: 'text-xs text-gray-500 bg-gray-50 border rounded-lg p-2' }, 'You can use these placeholders — they are replaced per customer: {name}  {due}  {service}  {shop}  {shop_phone}  {date}'),
+        ...draft.map((t, i) => e('div', { key: t.id, className: 'border rounded-xl p-3 space-y-2' },
+          e('div', { className: 'flex gap-2' },
+            e('input', { type: 'text', value: t.title, onChange: ev => update(i, 'title', ev.target.value), className: 'flex-1 border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-green-500', placeholder: 'Title (e.g. Payment Due Reminder)' }),
+            e('button', { disabled: draft.length <= 1, onClick: () => remove(i), className: 'text-red-500 bg-red-50 px-3 rounded-lg text-sm ' + (draft.length <= 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-100') }, 'Delete')
+          ),
+          e('textarea', { value: t.text, onChange: ev => update(i, 'text', ev.target.value), rows: 3, className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500', placeholder: 'Message text…' })
+        )),
+        e('button', { onClick: add, className: 'text-green-700 border border-green-300 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg text-sm font-medium' }, '+ Add Message')
+      ),
+      e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex justify-end gap-2' },
+        e('button', { onClick: () => setDraft(DEFAULT_WA_TEMPLATES.map(t => ({ ...t }))), className: 'text-gray-600 bg-white border px-4 py-2 rounded-lg text-sm' }, 'Reset to defaults'),
+        e('button', { onClick: onClose, className: 'text-gray-600 bg-white border px-4 py-2 rounded-lg text-sm' }, 'Cancel'),
+        e('button', { onClick: save, className: 'bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium' }, 'Save')
+      )
+    )
+  );
+}
+
 // ── CUSTOMER CRM ──
 function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
+  const [waCustomer, setWaCustomer] = useState(null);
+  const [showWaTpl, setShowWaTpl] = useState(false);
   const [newC, setNewC] = useState({ name: '', phone: '', address: '', dob: '' });
   const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const [search, setSearch] = useState('');
@@ -796,7 +947,10 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   return e('div', { className: 'space-y-4' },
     e('div', { className: 'flex justify-between items-center' },
       e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Customer CRM')),
-      !editingCustomerId && e('button', { onClick: () => { setShowAdd(!showAdd); if (showAdd) setNewC({ name: '', phone: '', address: '', dob: '' }); }, className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2' }, e(Icon, { name: 'Plus', size: 18 }), ' Add Customer')
+      e('div', { className: 'flex gap-2' },
+        currentUser.role === 'admin' && e('button', { onClick: () => setShowWaTpl(true), className: 'bg-green-50 text-green-700 border border-green-300 px-4 py-2 rounded-lg hover:bg-green-100 flex items-center gap-2 text-sm font-medium' }, e(Icon, { name: 'MessageCircle', size: 18 }), ' WhatsApp Messages'),
+        !editingCustomerId && e('button', { onClick: () => { setShowAdd(!showAdd); if (showAdd) setNewC({ name: '', phone: '', address: '', dob: '' }); }, className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2' }, e(Icon, { name: 'Plus', size: 18 }), ' Add Customer')
+      )
     ),
     e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(filtered.map(c => ({ Name: c.name, Mobile: c.phone, Address: c.address || '', DOB: c.dob || '', Service: c.service, 'Last Visit': c.lastVisit })), `Customers_${fromDate}_to_${toDate}`) }),
     e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100' },
@@ -937,6 +1091,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('td', { className: 'p-4 text-sm text-gray-500' }, c.lastVisit),
               e('td', { className: 'p-4 text-right' },
                 e('div', { className: 'flex justify-end gap-2' },
+                  e('button', { onClick: () => setWaCustomer(c), title: 'Send WhatsApp message', className: 'text-green-600 bg-green-50 p-1.5 rounded hover:bg-green-100' }, e(Icon, { name: 'MessageCircle', size: 17 })),
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
                   e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', address: c.address || '', dob: c.dob || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
@@ -967,12 +1122,15 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           )
         )
       )
-    )
+    ),
+    waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } }),
+    showWaTpl && e(WhatsAppTemplatesModal, { appData, persist, addAuditLog, showMessage, onClose: () => setShowWaTpl(false) })
   );
 }
 
 // ── PENDING DUES ──
-function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage }) {
+function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog }) {
+  const [waCustomer, setWaCustomer] = useState(null);
   const [fromDate, setFromDate] = useState('2020-01-01');
   const [toDate, setToDate] = useState(todayStr);
   // Cash/Online choice per service row and per customer group. Defaults to Cash, so the
@@ -1143,6 +1301,9 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                     e('div', { className: 'bg-green-50 rounded-lg px-3 py-2' }, e('p', { className: 'text-xs text-green-500' }, 'Paid'), e('p', { className: 'font-bold text-green-700' }, `₹${g.totalPaid}`)),
                     e('div', { className: 'bg-red-50 rounded-lg px-3 py-2' }, e('p', { className: 'text-xs text-red-400' }, 'Due'), e('p', { className: 'font-bold text-red-600' }, `₹${g.totalDue}`))
                   ),
+                  e('div', { className: 'flex justify-end' },
+                    e('button', { onClick: () => setWaCustomer(cust || { name: g.customerName, phone: '' }), className: 'text-green-700 bg-green-50 border border-green-300 hover:bg-green-100 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5' }, e(Icon, { name: 'MessageCircle', size: 16 }), 'WhatsApp Reminder')
+                  ),
                   e('div', { className: 'flex items-center gap-2 justify-end' },
                     e('select', {
                       value: groupModeOf(g.groupId),
@@ -1161,7 +1322,8 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
               )
             );
           })
-        )
+        ),
+    waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, preferId: 'due', onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog && addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } })
   );
 }
 
@@ -4358,7 +4520,7 @@ function App() {
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
-        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage }),
+        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
         activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
