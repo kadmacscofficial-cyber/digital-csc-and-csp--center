@@ -834,7 +834,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   const [waCustomer, setWaCustomer] = useState(null);
   const [showWaTpl, setShowWaTpl] = useState(false);
   const [newC, setNewC] = useState({ name: '', phone: '', address: '', dob: '' });
-  const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+  const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
@@ -844,14 +844,15 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     .filter(c => c.lastVisit >= fromDate && c.lastVisit <= toDate)
     .filter(c => !searchQ || [c.name, c.phone, c.address, c.dob].some(v => (v || '').toLowerCase().includes(searchQ)));
 
-  const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+  const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
   const updateServiceRow = (rowId, field, val) => setSelectedServices(selectedServices.map(s => s.id === rowId ? { ...s, [field]: val } : s));
 
   const getRowPrice = (row) => {
-    if (row.serviceId === 'others') return Number(row.customServicePrice) || 0;
+    const qty = Math.max(1, parseInt(row.qty) || 1);
+    if (row.serviceId === 'others') return (Number(row.customServicePrice) || 0) * qty;
     const svc = services.find(s => s.id === parseInt(row.serviceId));
-    return svc ? svc.price : 0;
+    return svc ? svc.price * qty : 0;
   };
   const getRowName = (row) => {
     if (row.serviceId === 'others') return row.customServiceName || 'Custom';
@@ -873,6 +874,8 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     if (validRows.length === 0) return showMessage('Please select at least one service.', 'error');
     for (const row of validRows) {
       if (row.serviceId === 'others' && (!row.customServiceName || !row.customServicePrice)) return showMessage('Please fill custom service name and price.', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক। "' + getRowName(row) + '" row-তে UTR দিন।', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক। "' + getRowName(row) + '" row-তে Screenshot নাম দিন।', 'error');
     }
     const cid = Date.now();
     const allSvcNames = validRows.map(r => getRowName(r)).join(', ');
@@ -897,7 +900,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
     addAuditLog('Customer Added', newC.name, 'Phone: ' + newC.phone, payload);
     setNewC({ name: '', phone: '', address: '', dob: '' });
-    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(false);
     showMessage('Customer added! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
@@ -911,6 +914,8 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const validRows = selectedServices.filter(r => r.serviceId);
     for (const row of validRows) {
       if (row.serviceId === 'others' && (!row.customServiceName || !row.customServicePrice)) return showMessage('Please fill custom service name and price.', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক। "' + getRowName(row) + '" row-তে UTR দিন।', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক। "' + getRowName(row) + '" row-তে Screenshot নাম দিন।', 'error');
     }
     const gid = Date.now();
     const newSvcNames = validRows.map(r => getRowName(r)).join(', ');
@@ -938,7 +943,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
     addAuditLog('Customer Updated', cust.name + ' → ' + newC.name, 'Phone: ' + newC.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
     setNewC({ name: '', phone: '', address: '', dob: '' });
-    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
     showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
@@ -993,6 +998,10 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               ...allSvcs.map(s => e('option', { key: s.id, value: s.id }, s.id === 'others' ? 'Others (Custom)' : s.name + ' (₹' + s.price + ')'))
             ),
             e('div', { className: 'flex flex-col' },
+              e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Qty'),
+              e('input', { type: 'number', min: '1', value: row.qty || '1', onChange: ev => updateServiceRow(row.id, 'qty', ev.target.value), className: 'w-16 border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm text-center', placeholder: '1' })
+            ),
+            e('div', { className: 'flex flex-col' },
               e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Status'),
               e('select', {
                 value: row.status || 'Pending',
@@ -1039,11 +1048,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           // Shown only when this row's Payment Mode is "Online" — lets staff record the
           // payment's UTR number and the filename of the screenshot they've saved for it.
           (row.paymentMode || 'Cash') === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 mt-1 p-2 bg-teal-50 rounded-lg border border-teal-200' },
-            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number'), e('input', { type: 'text', value: row.utrNumber || '', onChange: ev => updateServiceRow(row.id, 'utrNumber', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm', placeholder: 'e.g. 1234567890' })),
-            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name'), e('input', { type: 'text', value: row.screenshotFileName || '', onChange: ev => updateServiceRow(row.id, 'screenshotFileName', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm', placeholder: 'e.g. screenshot.png' }))
+            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')), e('input', { type: 'text', value: row.utrNumber || '', onChange: ev => updateServiceRow(row.id, 'utrNumber', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm ' + (!(row.utrNumber||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (আবশ্যক)' })),
+            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')), e('input', { type: 'text', value: row.screenshotFileName || '', onChange: ev => updateServiceRow(row.id, 'screenshotFileName', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm ' + (!(row.screenshotFileName||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (আবশ্যক)' }))
           ),
           row.serviceId && e('div', { className: 'flex gap-4 text-xs pt-1 pl-1' },
-            e('span', { className: 'text-gray-500' }, 'Amount: ', e('span', { className: 'font-semibold text-gray-800' }, '₹' + getRowPrice(row))),
+            e('span', { className: 'text-gray-500' }, 'Amount: ', e('span', { className: 'font-semibold text-gray-800' }, '₹' + getRowPrice(row)), (Math.max(1, parseInt(row.qty)||1) > 1) && e('span', { className: 'text-gray-400' }, ' (₹' + Math.round(getRowPrice(row) / Math.max(1, parseInt(row.qty)||1)) + ' × ' + (parseInt(row.qty)||1) + ')')),
             (Number(row.discount) || 0) > 0 && e('span', { className: 'text-red-500' }, 'Discount: ', e('span', { className: 'font-semibold' }, '-₹' + (Number(row.discount) || 0))),
             e('span', { style: { color: Math.max(0, getRowPrice(row) - (Number(row.discount) || 0) - (Number(row.paid) || 0)) > 0 ? '#dc2626' : '#16a34a' } }, 'Due: ', e('span', { className: 'font-semibold' }, '₹' + Math.max(0, getRowPrice(row) - (Number(row.discount) || 0) - (Number(row.paid) || 0))))
           ),
@@ -1093,7 +1102,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
                 e('div', { className: 'flex justify-end gap-2' },
                   e('button', { onClick: () => setWaCustomer(c), title: 'Send WhatsApp message', className: 'text-green-600 bg-green-50 p-1.5 rounded hover:bg-green-100' }, e(Icon, { name: 'MessageCircle', size: 17 })),
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
-                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', address: c.address || '', dob: c.dob || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
+                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', address: c.address || '', dob: c.dob || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
                     onClick: () => {
                       const isRelated = (t) => {
@@ -1137,6 +1146,10 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   // menu behaves exactly as it always did unless the operator actively picks Online.
   const [itemMode, setItemMode] = useState({});
   const [groupMode, setGroupMode] = useState({});
+  const [itemUtr, setItemUtr] = useState({});
+  const [itemScreenshot, setItemScreenshot] = useState({});
+  const [groupUtr, setGroupUtr] = useState({});
+  const [groupScreenshot, setGroupScreenshot] = useState({});
   const modeOf = (id) => itemMode[id] || 'Cash';
   const groupModeOf = (id) => groupMode[id] || 'Cash';
   // Show ALL unpaid tasks — use original entry date for filtering here
@@ -1153,8 +1166,10 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     showMessage(msg + (onlineAdd > 0 ? ' — ₹' + onlineAdd + ' added to Savings Account Balance' : ''));
   };
 
-  const markGroupSuccessful = (groupId, mode) => {
+  const markGroupSuccessful = (groupId, mode, utr, screenshot) => {
     const m = mode || 'Cash';
+    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক।', 'error');
+    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক।', 'error');
     let onlineAdd = 0;
     const newTasks = tasks.map(t => {
       if ((t.groupId !== undefined ? t.groupId : t.id) !== groupId) return t;
@@ -1162,12 +1177,14 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
       if (remaining <= 0) return t;
       if (m === 'Online') onlineAdd += remaining;
       const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining, mode: m }];
-      return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist };
+      return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) };
     });
     commitPayment(newTasks, onlineAdd, 'Marked as Successful (' + m + ')! Payment date: ' + todayStr);
   };
-  const markItemSuccessful = (id, mode) => {
+  const markItemSuccessful = (id, mode, utr, screenshot) => {
     const m = mode || 'Cash';
+    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক।', 'error');
+    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক।', 'error');
     let onlineAdd = 0;
     const newTasks = tasks.map(t => {
       if (t.id !== id) return t;
@@ -1175,26 +1192,27 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
       if (remaining <= 0) return t;
       if (m === 'Online') onlineAdd += remaining;
       const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining, mode: m }];
-      return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist };
+      return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) };
     });
     commitPayment(newTasks, onlineAdd, 'Marked as Successful (' + m + ')! Payment date: ' + todayStr);
   };
   const setItemStatus = (id, status) => { setTasks(tasks.map(t => t.id === id ? { ...t, status } : t)); showMessage('Status updated'); };
 
   // Partial payment recording
-  const recordPartialPayment = (id, amt, mode) => {
+  const recordPartialPayment = (id, amt, mode, utr, screenshot) => {
     const t = tasks.find(x => x.id === id);
     if (!t) return;
     const m = mode || 'Cash';
+    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক।', 'error');
+    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক।', 'error');
     const newPaid = Math.min(t.price || 0, (t.paidAmount || 0) + amt);
-    // Never credit more than the outstanding due, even if a larger figure was typed in.
     const applied = newPaid - (t.paidAmount || 0);
     if (applied <= 0) return;
     const done = newPaid >= (t.price || 0);
     const hist = [...(t.paymentHistory || []), { date: todayStr, amount: applied, mode: m }];
     const newTasks = tasks.map(x =>
       x.id === id
-        ? { ...x, paidAmount: newPaid, status: done ? 'Successful' : x.status, paymentDate: todayStr, paymentHistory: hist }
+        ? { ...x, paidAmount: newPaid, status: done ? 'Successful' : x.status, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) }
         : x
     );
     commitPayment(
@@ -1254,38 +1272,50 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                       return e('div', { key: t.id, className: 'flex items-center justify-between text-sm' },
                         e('span', { className: 'text-gray-700' }, t.service, ' — ₹', t.price, ' (Paid ₹', t.paidAmount || 0, ')'),
                         due > 0
-                          ? e('div', { className: 'flex items-center gap-2 flex-wrap' },
-                              e('span', { className: 'text-red-500 font-medium text-xs' }, 'Due ₹' + due),
-                              e('select', {
-                                value: modeOf(t.id),
-                                onChange: ev => setItemMode({ ...itemMode, [t.id]: ev.target.value }),
-                                title: 'Online payments are added to Savings Account Balance; Cash works as before',
-                                className: 'border rounded px-1.5 py-0.5 text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-400 ' + (
-                                  modeOf(t.id) === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300 bg-white'
+                          ? e('div', { className: 'flex flex-col gap-1.5 w-full' },
+                              e('div', { className: 'flex items-center gap-2 flex-wrap' },
+                                e('span', { className: 'text-red-500 font-medium text-xs' }, 'Due ₹' + due),
+                                e('select', {
+                                  value: modeOf(t.id),
+                                  onChange: ev => setItemMode({ ...itemMode, [t.id]: ev.target.value }),
+                                  title: 'Online payments are added to Savings Account Balance; Cash works as before',
+                                  className: 'border rounded px-1.5 py-0.5 text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-400 ' + (
+                                    modeOf(t.id) === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300 bg-white'
+                                  )
+                                },
+                                  e('option', { value: 'Cash' }, 'Cash'),
+                                  e('option', { value: 'Online' }, 'Online')
+                                ),
+                                e('button', { onClick: () => markItemSuccessful(t.id, modeOf(t.id), itemUtr[t.id], itemScreenshot[t.id]), className: 'text-green-600 hover:bg-green-50 px-2 py-0.5 rounded text-xs font-medium border border-green-200' }, 'Full Pay'),
+                                e('div', { className: 'flex items-center gap-1' },
+                                  e('input', {
+                                    type: 'number', placeholder: 'Partial ₹',
+                                    id: 'partial_' + t.id,
+                                    className: 'w-20 border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-indigo-400'
+                                  }),
+                                  e('button', {
+                                    onClick: () => {
+                                      const inp = document.getElementById('partial_' + t.id);
+                                      const val = Number(inp.value) || 0;
+                                      if (val <= 0) return;
+                                      recordPartialPayment(t.id, val, modeOf(t.id), itemUtr[t.id], itemScreenshot[t.id]);
+                                      inp.value = '';
+                                    },
+                                    className: 'text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded text-xs font-medium border border-indigo-200'
+                                  }, 'Pay')
+                                ),
+                                t.paymentDate && e('span', { className: 'text-gray-400 text-xs' }, 'Paid on: ' + t.paymentDate)
+                              ),
+                              modeOf(t.id) === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200' },
+                                e('div', null,
+                                  e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')),
+                                  e('input', { type: 'text', value: itemUtr[t.id] || '', onChange: ev => setItemUtr({ ...itemUtr, [t.id]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(itemUtr[t.id]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (আবশ্যক)' })
+                                ),
+                                e('div', null,
+                                  e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')),
+                                  e('input', { type: 'text', value: itemScreenshot[t.id] || '', onChange: ev => setItemScreenshot({ ...itemScreenshot, [t.id]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(itemScreenshot[t.id]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (আবশ্যক)' })
                                 )
-                              },
-                                e('option', { value: 'Cash' }, 'Cash'),
-                                e('option', { value: 'Online' }, 'Online')
-                              ),
-                              e('button', { onClick: () => markItemSuccessful(t.id, modeOf(t.id)), className: 'text-green-600 hover:bg-green-50 px-2 py-0.5 rounded text-xs font-medium border border-green-200' }, 'Full Pay'),
-                              e('div', { className: 'flex items-center gap-1' },
-                                e('input', {
-                                  type: 'number', placeholder: 'Partial ₹',
-                                  id: 'partial_' + t.id,
-                                  className: 'w-20 border border-gray-200 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-indigo-400'
-                                }),
-                                e('button', {
-                                  onClick: () => {
-                                    const inp = document.getElementById('partial_' + t.id);
-                                    const val = Number(inp.value) || 0;
-                                    if (val <= 0) return;
-                                    recordPartialPayment(t.id, val, modeOf(t.id));
-                                    inp.value = '';
-                                  },
-                                  className: 'text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded text-xs font-medium border border-indigo-200'
-                                }, 'Pay')
-                              ),
-                              t.paymentDate && e('span', { className: 'text-gray-400 text-xs' }, 'Paid on: ' + t.paymentDate)
+                              )
                             )
                           : e('div', { className: 'flex items-center gap-2' },
                               e('span', { className: 'text-green-600 text-xs font-medium' }, 'Paid in full'),
@@ -1304,19 +1334,31 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                   e('div', { className: 'flex justify-end' },
                     e('button', { onClick: () => setWaCustomer(cust || { name: g.customerName, phone: '' }), className: 'text-green-700 bg-green-50 border border-green-300 hover:bg-green-100 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5' }, e(Icon, { name: 'MessageCircle', size: 16 }), 'WhatsApp Reminder')
                   ),
-                  e('div', { className: 'flex items-center gap-2 justify-end' },
-                    e('select', {
-                      value: groupModeOf(g.groupId),
-                      onChange: ev => setGroupMode({ ...groupMode, [g.groupId]: ev.target.value }),
-                      title: 'Online payments are added to Savings Account Balance; Cash works as before',
-                      className: 'border rounded-lg px-2 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400 ' + (
-                        groupModeOf(g.groupId) === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300 bg-white'
-                      )
-                    },
-                      e('option', { value: 'Cash' }, 'Cash'),
-                      e('option', { value: 'Online' }, 'Online')
+                  e('div', { className: 'flex flex-col gap-2' },
+                    e('div', { className: 'flex items-center gap-2 justify-end' },
+                      e('select', {
+                        value: groupModeOf(g.groupId),
+                        onChange: ev => setGroupMode({ ...groupMode, [g.groupId]: ev.target.value }),
+                        title: 'Online payments are added to Savings Account Balance; Cash works as before',
+                        className: 'border rounded-lg px-2 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-400 ' + (
+                          groupModeOf(g.groupId) === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'text-gray-700 border-gray-300 bg-white'
+                        )
+                      },
+                        e('option', { value: 'Cash' }, 'Cash'),
+                        e('option', { value: 'Online' }, 'Online')
+                      ),
+                      e('button', { onClick: () => markGroupSuccessful(g.groupId, groupModeOf(g.groupId), groupUtr[g.groupId], groupScreenshot[g.groupId]), className: 'bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-1 whitespace-nowrap justify-center' }, e(Icon, { name: 'CheckCircle', size: 15 }), ' Mark All Paid')
                     ),
-                    e('button', { onClick: () => markGroupSuccessful(g.groupId, groupModeOf(g.groupId)), className: 'bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-1 whitespace-nowrap justify-center' }, e(Icon, { name: 'CheckCircle', size: 15 }), ' Mark All Paid')
+                    groupModeOf(g.groupId) === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200' },
+                      e('div', null,
+                        e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')),
+                        e('input', { type: 'text', value: groupUtr[g.groupId] || '', onChange: ev => setGroupUtr({ ...groupUtr, [g.groupId]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(groupUtr[g.groupId]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (আবশ্যক)' })
+                      ),
+                      e('div', null,
+                        e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')),
+                        e('input', { type: 'text', value: groupScreenshot[g.groupId] || '', onChange: ev => setGroupScreenshot({ ...groupScreenshot, [g.groupId]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(groupScreenshot[g.groupId]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (আবশ্যক)' })
+                      )
+                    )
                   )
                 )
               )
