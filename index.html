@@ -330,8 +330,9 @@ function receiptFromGroup(g) {
 // where we only have the customer record, not a pre-grouped task list).
 function getCustomerReceipt(customer, tasks) {
   const items = (tasks || []).filter(t =>
-    (t.groupId !== undefined && t.groupId !== null) ? t.groupId === customer.id
-      : (t.customerName === customer.name && t.date === customer.lastVisit)
+    (t.customerId !== undefined && t.customerId !== null && t.customerId === customer.id) ||
+    ((t.groupId !== undefined && t.groupId !== null) ? t.groupId === customer.id
+      : (t.customerName === customer.name && t.date === customer.lastVisit))
   );
   const totalAmount = items.reduce((s, i) => s + (i.price || 0), 0);
   const totalPaid = items.reduce((s, i) => s + (i.paidAmount || 0), 0);
@@ -732,14 +733,14 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: cid + i + 1, groupId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
     // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
     const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
     const payload = {
       ...appData,
-      customers: [{ id: cid, name: newC.name, phone: newC.phone, address: newC.address, dob: newC.dob, service: allSvcNames, lastVisit: todayStr }, ...customers],
+      customers: [{ id: cid, name: newC.name, phone: newC.phone, address: newC.address || '', dob: newC.dob || '', service: allSvcNames, lastVisit: todayStr }, ...customers],
       tasks: [...tasks, ...newTasks]
     };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
@@ -752,13 +753,44 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
 
   const handleEditCustomer = (cust) => {
     if (!newC.name || !newC.phone) return showMessage('Name and Mobile are required.', 'error');
-    const updatedCustomers = customers.map(c => c.id === editingCustomerId ? { ...c, name: newC.name, phone: newC.phone, address: newC.address, dob: newC.dob } : c);
-    const updatedTasks = tasks.map(t => t.customerName === cust.name ? { ...t, customerName: newC.name } : t);
-    addAuditLog('Customer Updated', cust.name + ' → ' + newC.name, 'Phone: ' + newC.phone, { ...appData, customers: updatedCustomers, tasks: updatedTasks });
+    // Any service row the operator filled in here (e.g. a returning customer taking a new
+    // service) is a NEW task to add for this existing customer — same validation and
+    // task-building as handleAdd. Previously this was silently ignored on Update: only
+    // name/phone/address/DOB were saved and any selected service was thrown away.
+    const validRows = selectedServices.filter(r => r.serviceId);
+    for (const row of validRows) {
+      if (row.serviceId === 'others' && (!row.customServiceName || !row.customServicePrice)) return showMessage('Please fill custom service name and price.', 'error');
+    }
+    const gid = Date.now();
+    const newSvcNames = validRows.map(r => getRowName(r)).join(', ');
+    const newTasks = validRows.map((row, i) => {
+      const svcPrice = getRowPrice(row);
+      const svcName = getRowName(row);
+      const paidAmt = Number(row.paid) || 0;
+      const discountAmt = Number(row.discount) || 0;
+      const portalCostAmt = Number(row.portalCost) || 0;
+      const finalAmount = svcPrice - discountAmt;
+      const isOnline = (row.paymentMode || 'Cash') === 'Online';
+      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+    });
+    const updatedCustomers = customers.map(c => {
+      if (c.id !== editingCustomerId) return c;
+      const mergedService = newSvcNames ? (c.service ? c.service + ', ' + newSvcNames : newSvcNames) : c.service;
+      return { ...c, name: newC.name, phone: newC.phone, address: newC.address || '', dob: newC.dob || '', service: mergedService || '', lastVisit: newTasks.length > 0 ? todayStr : (c.lastVisit || todayStr) };
+    });
+    const updatedTasks = [
+      ...tasks.map(t => t.customerName === cust.name ? { ...t, customerName: newC.name } : t),
+      ...newTasks
+    ];
+    const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
+    const payload = { ...appData, customers: updatedCustomers, tasks: updatedTasks };
+    if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
+    addAuditLog('Customer Updated', cust.name + ' → ' + newC.name, 'Phone: ' + newC.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
     setNewC({ name: '', phone: '', address: '', dob: '' });
+    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
-    showMessage('Customer details updated!');
+    showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
 
   return e('div', { className: 'space-y-4' },
@@ -780,9 +812,24 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
         e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Address'), e('input', { type: 'text', value: newC.address, onChange: ev => setNewC({...newC, address: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'Village / Town, District' })),
         e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Date of Birth'), e('input', { type: 'date', value: newC.dob, onChange: ev => setNewC({...newC, dob: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500' }))
       ),
+      // Edit mode only: show what this customer already has, so it is clear the rows below
+      // are ADDITIONAL services that will be added when "Update Customer" is pressed.
+      editingCustomerId && (() => {
+        const ec = customers.find(c => c.id === editingCustomerId);
+        const existing = ec ? tasks.filter(t => t.customerName === ec.name) : [];
+        return e('div', { className: 'p-3 bg-blue-50 rounded-xl border border-blue-200 space-y-1' },
+          e('p', { className: 'text-sm font-semibold text-blue-800' }, 'Existing services of this customer'),
+          existing.length === 0
+            ? e('p', { className: 'text-xs text-gray-500' }, 'No services recorded yet.')
+            : e('div', { className: 'space-y-0.5' }, ...existing.map(t => e('div', { key: t.id, className: 'flex flex-wrap justify-between gap-2 text-xs text-gray-700' },
+                e('span', null, (t.service || '') + ' (' + (t.date || '') + ')'),
+                e('span', null, '₹' + (t.price || 0) + ' | Paid ₹' + (t.paidAmount || 0) + ' | ' + (t.status || 'Pending'))))),
+          e('p', { className: 'text-xs text-blue-600 pt-1' }, 'To give this customer another service, pick it below and press Update Customer. (To change status or take a due payment on an existing service, use Service Tracking / Pending Amount.)')
+        );
+      })(),
       e('div', { className: 'space-y-3' },
         e('div', { className: 'flex justify-between items-center' },
-          e('label', { className: 'block text-sm font-semibold text-gray-700' }, 'Services *'),
+          e('label', { className: 'block text-sm font-semibold text-gray-700' }, editingCustomerId ? 'Add New Service (optional)' : 'Services *'),
           e('button', { onClick: addServiceRow, className: 'flex items-center gap-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-sm font-medium border border-indigo-200' }, e(Icon, { name: 'Plus', size: 15 }), ' Add Another Service')
         ),
         ...selectedServices.map((row, idx) => e('div', { key: row.id, className: 'p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2' },
@@ -891,13 +938,15 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('td', { className: 'p-4 text-right' },
                 e('div', { className: 'flex justify-end gap-2' },
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
-                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name, phone: c.phone, address: c.address, dob: c.dob }); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
+                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', address: c.address || '', dob: c.dob || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
                     onClick: () => {
                       const isRelated = (t) => {
                         const byGroup = (t.groupId !== undefined && t.groupId !== null) ? t.groupId === c.id : false;
                         const byNameDate = (t.customerName === c.name && t.date === c.lastVisit);
-                        return byGroup || byNameDate;
+                        // Services added later via Edit carry customerId (their own visit groupId differs).
+                        const byCustomerId = (t.customerId !== undefined && t.customerId !== null) ? t.customerId === c.id : false;
+                        return byGroup || byNameDate || byCustomerId;
                       };
                       const deletedTasks = tasks.filter(isRelated);
                       const remainingTasks = tasks.filter(t => !isRelated(t));
