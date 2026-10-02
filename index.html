@@ -548,6 +548,7 @@ function Icon({ name, size = 20, className = '' }) {
     Wallet: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M3 9h18"/><path d="M16 14h2"/></svg>`,
     MessageCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`,
     Search: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+    GitMerge: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>`,
   };
   const svg = icons[name] || icons['User'];
   return e('span', { dangerouslySetInnerHTML: { __html: svg }, style: { display: 'inline-flex', alignItems: 'center' } });
@@ -782,13 +783,13 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
 // (wa.me link). WhatsApp itself then needs one tap on "Send" — fully automatic sending
 // without that tap needs the paid WhatsApp Business API, which a plain web app can't do.
 const DEFAULT_WA_TEMPLATES = [
-  { id: 'due',      title: 'Payment Due Reminder',  text: 'নমস্কার {name}, {shop}-এর পক্ষ থেকে জানাচ্ছি যে আপনার {service} সার্ভিসের ₹{due} বকেয়া আছে। অনুগ্রহ করে সুবিধামতো সময়ে পরিশোধ করুন। ধন্যবাদ। 📞 {shop_phone}' },
-  { id: 'done',     title: 'Service Completed',     text: 'নমস্কার {name}, আপনার {service} এর কাজ সম্পন্ন হয়েছে। অনুগ্রহ করে দোকান থেকে আপনার ডকুমেন্ট সংগ্রহ করুন। ধন্যবাদ — {shop}' },
-  { id: 'progress', title: 'Application In Progress', text: 'নমস্কার {name}, আপনার {service} এর আবেদন প্রক্রিয়াধীন আছে। কাজ শেষ হলেই আপনাকে জানানো হবে। ধন্যবাদ — {shop}' },
-  { id: 'docs',     title: 'Documents Required',    text: 'নমস্কার {name}, আপনার {service} এর জন্য কিছু ডকুমেন্ট প্রয়োজন। অনুগ্রহ করে দ্রুত দোকানে যোগাযোগ করুন। — {shop}, 📞 {shop_phone}' },
-  { id: 'thanks',   title: 'Thank You',             text: 'ধন্যবাদ {name}! {shop}-এর সার্ভিস ব্যবহার করার জন্য আমরা কৃতজ্ঞ। আবার আসবেন। 🙏' },
-  { id: 'bday',     title: 'Birthday Wish',         text: 'শুভ জন্মদিন {name}! 🎂 {shop}-এর পক্ষ থেকে আপনাকে অনেক শুভেচ্ছা ও ভালোবাসা।' },
-  { id: 'closed',   title: 'Shop Closed Notice',    text: 'নমস্কার {name}, জানানো যাচ্ছে যে আগামীকাল {shop} বন্ধ থাকবে। অসুবিধার জন্য দুঃখিত। ধন্যবাদ।' }
+  { id: 'due',      title: 'Payment Due Reminder',  text: 'Hello {name}, this is a reminder from {shop} that ₹{due} is due for your {service} service. Please make the payment at your earliest convenience. Thank you. 📞 {shop_phone}' },
+  { id: 'done',     title: 'Service Completed',     text: 'Hello {name}, your {service} work has been completed. Please collect your documents from the centre. Thank you — {shop}' },
+  { id: 'progress', title: 'Application In Progress', text: 'Hello {name}, your {service} application is currently in process. You will be notified once it is completed. Thank you — {shop}' },
+  { id: 'docs',     title: 'Documents Required',    text: 'Hello {name}, some documents are required for your {service}. Please contact the centre as soon as possible. — {shop}, 📞 {shop_phone}' },
+  { id: 'thanks',   title: 'Thank You',             text: 'Thank you {name}! We are grateful for using {shop} services. Please visit us again. 🙏' },
+  { id: 'bday',     title: 'Birthday Wish',         text: 'Happy Birthday {name}! 🎂 Warm wishes and love from {shop}.' },
+  { id: 'closed',   title: 'Shop Closed Notice',    text: 'Hello {name}, please be informed that {shop} will remain closed tomorrow. We apologise for the inconvenience. Thank you.' }
 ];
 
 function getWaTemplates(appData) {
@@ -955,9 +956,14 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt }) 
       e('div', { className: 'p-5 overflow-y-auto space-y-4' },
         e('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 text-sm bg-gray-50 rounded-xl p-3 border border-gray-100' },
           e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Mobile'), e('p', { className: 'font-medium text-gray-800' }, customer.phone || '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Address'), e('p', { className: 'font-medium text-gray-800' }, customer.address || '—')),
+          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Alt. Mobile'), e('p', { className: 'font-medium text-gray-800' }, customer.altPhone || '—')),
+          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Gender'), e('p', { className: 'font-medium text-gray-800' }, customer.gender || '—')),
           e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'DOB'), e('p', { className: 'font-medium text-gray-800' }, customer.dob || '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Last Visit'), e('p', { className: 'font-medium text-gray-800' }, customer.lastVisit || '—'))
+          e('div', { className: 'col-span-2 md:col-span-2' }, e('p', { className: 'text-xs text-gray-400' }, 'Address'), e('p', { className: 'font-medium text-gray-800' }, customer.address || '—')),
+          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Document 1'), e('p', { className: 'font-medium text-gray-800' }, customer.doc1Type ? ((customer.doc1Type === 'Others' ? (customer.doc1Other || 'Others') : customer.doc1Type) + (customer.doc1Number ? ': ' + customer.doc1Number : '')) : '—')),
+          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Document 2'), e('p', { className: 'font-medium text-gray-800' }, customer.doc2Type ? ((customer.doc2Type === 'Others' ? (customer.doc2Other || 'Others') : customer.doc2Type) + (customer.doc2Number ? ': ' + customer.doc2Number : '')) : '—')),
+          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Last Visit'), e('p', { className: 'font-medium text-gray-800' }, customer.lastVisit || '—')),
+          customer.notes && e('div', { className: 'col-span-2 md:col-span-4' }, e('p', { className: 'text-xs text-gray-400' }, 'Notes'), e('p', { className: 'font-medium text-gray-800 whitespace-pre-wrap' }, customer.notes))
         ),
         e('div', { className: 'grid grid-cols-3 gap-3 text-center' },
           e('div', { className: 'bg-indigo-50 rounded-xl p-3' }, e('p', { className: 'text-xs text-indigo-500' }, 'Total Billed'), e('p', { className: 'text-lg font-bold text-indigo-800' }, '₹' + totalAmount)),
@@ -997,13 +1003,258 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt }) 
 }
 
 // ── CUSTOMER CRM ──
+// ── CUSTOMER MERGE MODAL (Admin only) ──
+// Merges TWO customers into ONE. Rules:
+//  • All tasks of BOTH customers are re-pointed to the winner's id/name.
+//  • The winner's profile fields are kept (name, phone, address, dob, custCode, etc.)
+//    unless the admin explicitly picks a field from the other customer.
+//  • The loser record is removed from the customers array.
+//  • No money, savings-balance, or other menu data is touched.
+function CustomerMergeModal({ customers, tasks, appData, persist, showMessage, addAuditLog, onClose }) {
+  const [step, setStep]         = useState(1);          // 1=pick A, 2=pick B, 3=confirm
+  const [custA, setCustA]       = useState(null);
+  const [custB, setCustB]       = useState(null);
+  const [searchA, setSearchA]   = useState('');
+  const [searchB, setSearchB]   = useState('');
+  // winner = which customer's profile to keep (A or B); the other's tasks flow into it.
+  const [winner, setWinner]     = useState('A');
+  // field overrides: if admin wants a specific field from the *loser*, toggle it here.
+  const [fieldOverrides, setFieldOverrides] = useState({});
+
+  const profileFields = [
+    { key: 'name',      label: 'Name'      },
+    { key: 'phone',     label: 'Mobile'    },
+    { key: 'altPhone',  label: 'Alt Mobile'},
+    { key: 'address',   label: 'Address'   },
+    { key: 'dob',       label: 'DOB'       },
+    { key: 'gender',    label: 'Gender'    },
+    { key: 'village',   label: 'Village'   },
+    { key: 'post',      label: 'Post'      },
+    { key: 'city',      label: 'City'      },
+    { key: 'pin',       label: 'PIN'       },
+    { key: 'doc1Type',  label: 'Doc1 Type' },
+    { key: 'doc1Number',label: 'Doc1 No.'  },
+    { key: 'doc2Type',  label: 'Doc2 Type' },
+    { key: 'doc2Number',label: 'Doc2 No.'  },
+    { key: 'notes',     label: 'Notes'     },
+  ];
+
+  const filtA = customers.filter(c =>
+    !searchA || c.name.toLowerCase().includes(searchA.toLowerCase()) ||
+    (c.phone || '').includes(searchA) || (c.custCode || '').toLowerCase().includes(searchA.toLowerCase())
+  );
+  const filtB = customers.filter(c =>
+    c.id !== (custA ? custA.id : null) &&
+    (!searchB || c.name.toLowerCase().includes(searchB.toLowerCase()) ||
+    (c.phone || '').includes(searchB) || (c.custCode || '').toLowerCase().includes(searchB.toLowerCase()))
+  );
+
+  const winnerCust  = winner === 'A' ? custA  : custB;
+  const loserCust   = winner === 'A' ? custB  : custA;
+
+  // Build the merged profile: start with winner, apply any field overrides from loser.
+  const buildMergedProfile = () => {
+    if (!winnerCust || !loserCust) return null;
+    const merged = { ...winnerCust };
+    profileFields.forEach(({ key }) => {
+      if (fieldOverrides[key]) merged[key] = loserCust[key] || '';
+    });
+    // Combine service tags (deduplicated, trimmed)
+    const winSvcs = (winnerCust.service || '').split(',').map(s => s.trim()).filter(Boolean);
+    const losSvcs = (loserCust.service  || '').split(',').map(s => s.trim()).filter(Boolean);
+    const allSvcs = [...new Set([...winSvcs, ...losSvcs])];
+    merged.service   = allSvcs.join(', ');
+    // Keep the earliest lastVisit between the two so no history is hidden.
+    // (The most-recent visit should already be on the winner but let's keep all.)
+    merged.lastVisit = [winnerCust.lastVisit, loserCust.lastVisit].filter(Boolean).sort().pop() || winnerCust.lastVisit;
+    return merged;
+  };
+
+  const handleMerge = () => {
+    const merged = buildMergedProfile();
+    if (!merged) return;
+
+    // Re-point all loser's tasks → winner's id/name (group-level and individual-level).
+    const loserTaskIds = new Set(
+      tasks.filter(t => {
+        const byGroup    = (t.groupId    !== undefined && t.groupId    !== null) ? t.groupId    === loserCust.id : false;
+        const byCustomer = (t.customerId !== undefined && t.customerId !== null) ? t.customerId === loserCust.id : false;
+        const byNameDate = t.customerName === loserCust.name;
+        return byGroup || byCustomer || byNameDate;
+      }).map(t => t.id)
+    );
+
+    const newTasks = tasks.map(t => {
+      if (!loserTaskIds.has(t.id)) return t;
+      return {
+        ...t,
+        customerName: merged.name,
+        // groupId and customerId that pointed to the loser now point to the winner.
+        ...(t.groupId    === loserCust.id ? { groupId:    winnerCust.id } : {}),
+        ...(t.customerId === loserCust.id ? { customerId: winnerCust.id } : {}),
+      };
+    });
+
+    const newCustomers = customers
+      .filter(c => c.id !== loserCust.id)
+      .map(c  => c.id === winnerCust.id ? merged : c);
+
+    const payload = { ...appData, customers: newCustomers, tasks: newTasks };
+    addAuditLog && addAuditLog(
+      'Customer Merged',
+      (loserCust.custCode || loserCust.name) + ' → ' + (winnerCust.custCode || winnerCust.name),
+      'Tasks reassigned: ' + loserTaskIds.size + ' | Loser ID: ' + loserCust.id
+    );
+    persist(payload);
+    showMessage('Merge Done! ' + loserCust.name + '-All services are now under ' + merged.name + '-');
+    onClose();
+  };
+
+  const MiniCard = ({ c, highlight }) => e('div', {
+    className: 'p-3 rounded-xl border-2 text-sm ' + (highlight ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white')
+  },
+    e('div', { className: 'flex items-center gap-2 mb-1' },
+      e('div', { className: 'h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm' }, (c.name||'?').charAt(0)),
+      e('div', null,
+        e('p', { className: 'font-semibold text-gray-800 leading-tight' }, c.name),
+        e('p', { className: 'text-xs text-gray-500' }, c.custCode || '', ' • ', c.phone || '')
+      )
+    ),
+    e('p', { className: 'text-xs text-gray-400 mt-1' }, 'Services: ' + (c.service || '—').slice(0, 60) + ((c.service||'').length > 60 ? '…' : ''))
+  );
+
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4' },
+    e('div', { className: 'bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]' },
+
+      // ── Header ──
+      e('div', { className: 'bg-indigo-700 px-6 py-4 flex justify-between items-center' },
+        e('div', null,
+          e('h3', { className: 'text-white font-bold text-lg' }, 'Customer Merge'),
+          e('p', { className: 'text-indigo-200 text-sm' }, 'Merge two customer profiles — keeping all services & history')
+        ),
+        e('button', { onClick: onClose, className: 'text-white hover:bg-indigo-600 p-2 rounded-lg' }, e(Icon, { name: 'X', size: 20 }))
+      ),
+
+      e('div', { className: 'overflow-y-auto flex-1 p-6 space-y-5' },
+
+        // ── Step 1: Pick Customer A ──
+        e('div', { className: 'space-y-2' },
+          e('div', { className: 'flex items-center gap-2' },
+            e('span', { className: 'w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center' }, '1'),
+            e('label', { className: 'font-semibold text-gray-700' }, 'Select First Customer')
+          ),
+          custA
+            ? e('div', { className: 'flex items-center gap-3' },
+                e(MiniCard, { c: custA, highlight: true }),
+                e('button', { onClick: () => { setCustA(null); setStep(1); }, className: 'text-xs text-red-500 hover:underline whitespace-nowrap' }, 'Change')
+              )
+            : e('div', { className: 'space-y-2' },
+                e('input', { type: 'text', value: searchA, onChange: ev => setSearchA(ev.target.value), placeholder: 'Search by Name / Mobile / Customer ID…', className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' }),
+                e('div', { className: 'max-h-40 overflow-y-auto space-y-1.5 border rounded-xl p-2 bg-gray-50' },
+                  filtA.length === 0 ? e('p', { className: 'text-center text-xs text-gray-400 py-4' }, 'No customer found.') :
+                  filtA.slice(0, 8).map(c => e('button', { key: c.id, onClick: () => { setCustA(c); setStep(2); }, className: 'w-full text-left px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm' },
+                    e('span', { className: 'font-medium text-gray-800' }, c.name), ' ',
+                    e('span', { className: 'text-gray-400 text-xs' }, c.custCode || '', ' • ', c.phone || '')
+                  ))
+                )
+              )
+        ),
+
+        // ── Step 2: Pick Customer B ──
+        (step >= 2 || custB) && e('div', { className: 'space-y-2' },
+          e('div', { className: 'flex items-center gap-2' },
+            e('span', { className: 'w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center' }, '2'),
+            e('label', { className: 'font-semibold text-gray-700' }, 'Select Second Customer (to merge into)')
+          ),
+          custB
+            ? e('div', { className: 'flex items-center gap-3' },
+                e(MiniCard, { c: custB, highlight: true }),
+                e('button', { onClick: () => { setCustB(null); setStep(2); }, className: 'text-xs text-red-500 hover:underline whitespace-nowrap' }, 'Change')
+              )
+            : e('div', { className: 'space-y-2' },
+                e('input', { type: 'text', value: searchB, onChange: ev => setSearchB(ev.target.value), placeholder: 'Search by Name / Mobile / Customer ID…', className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' }),
+                e('div', { className: 'max-h-40 overflow-y-auto space-y-1.5 border rounded-xl p-2 bg-gray-50' },
+                  filtB.length === 0 ? e('p', { className: 'text-center text-xs text-gray-400 py-4' }, 'No customer found.') :
+                  filtB.slice(0, 8).map(c => e('button', { key: c.id, onClick: () => { setCustB(c); setStep(3); }, className: 'w-full text-left px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm' },
+                    e('span', { className: 'font-medium text-gray-800' }, c.name), ' ',
+                    e('span', { className: 'text-gray-400 text-xs' }, c.custCode || '', ' • ', c.phone || '')
+                  ))
+                )
+              )
+        ),
+
+        // ── Step 3: Confirm & configure ──
+        custA && custB && e('div', { className: 'space-y-4' },
+          e('div', { className: 'flex items-center gap-2' },
+            e('span', { className: 'w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center' }, '3'),
+            e('label', { className: 'font-semibold text-gray-700' }, 'Which profile to keep?')
+          ),
+
+          e('div', { className: 'grid grid-cols-2 gap-3' },
+            e('button', { onClick: () => setWinner('A'), className: 'border-2 rounded-xl p-3 text-left transition ' + (winner === 'A' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300') },
+              e('p', { className: 'text-xs font-semibold text-indigo-600 mb-1' }, winner === 'A' ? '✓ This profile will be kept' : 'Keep this'),
+              e(MiniCard, { c: custA })
+            ),
+            e('button', { onClick: () => setWinner('B'), className: 'border-2 rounded-xl p-3 text-left transition ' + (winner === 'B' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300') },
+              e('p', { className: 'text-xs font-semibold text-indigo-600 mb-1' }, winner === 'B' ? '✓ This profile will be kept' : 'Keep this'),
+              e(MiniCard, { c: custB })
+            )
+          ),
+
+          winnerCust && loserCust && e('div', { className: 'bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-2' },
+            e('p', { className: 'text-xs font-semibold text-gray-600 mb-2' }, 'Tick to copy specific fields from the other customer:'),
+            e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-1.5' },
+              ...profileFields.filter(({ key }) => loserCust[key] && loserCust[key] !== winnerCust[key]).map(({ key, label }) =>
+                e('label', { key, className: 'flex items-center gap-2 text-sm cursor-pointer hover:bg-white rounded-lg p-1.5' },
+                  e('input', { type: 'checkbox', checked: !!fieldOverrides[key], onChange: ev => setFieldOverrides({ ...fieldOverrides, [key]: ev.target.checked }), className: 'rounded' }),
+                  e('span', { className: 'text-gray-600' }, label + ':'),
+                  e('span', { className: 'text-indigo-700 font-medium truncate max-w-32' }, String(loserCust[key] || ''))
+                )
+              )
+            ),
+            profileFields.filter(({ key }) => loserCust[key] && loserCust[key] !== winnerCust[key]).length === 0 &&
+              e('p', { className: 'text-xs text-gray-400 text-center py-2' }, 'All fields in both profiles are identical.')
+          ),
+
+          winnerCust && loserCust && e('div', { className: 'bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm' },
+            e('p', { className: 'font-semibold text-orange-800 mb-2' }, '⚠ Confirm'),
+            e('ul', { className: 'text-orange-700 space-y-1 text-xs list-disc list-inside' },
+              e('li', null, e('b', null, loserCust.name), '- Customer ID (', loserCust.id, ') will be deleted'),
+              e('li', null, loserCust.name, '- all services & history ', e('b', null, winnerCust.name), '-will be moved under'),
+              e('li', null, 'This action will be recorded in the Audit Log'),
+              e('li', { className: 'text-red-600' }, 'This action cannot be undone')
+            )
+          )
+        )
+      ),
+
+      // ── Footer ──
+      e('div', { className: 'bg-gray-50 border-t px-6 py-4 flex justify-between items-center' },
+        e('button', { onClick: onClose, className: 'text-gray-500 hover:text-gray-800 font-medium px-4 py-2' }, 'Cancel'),
+        custA && custB
+          ? e('button', { onClick: handleMerge, className: 'bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2 shadow-sm' },
+              e(Icon, { name: 'GitMerge', size: 18 }), ' Merge Merge'
+            )
+          : e('p', { className: 'text-xs text-gray-400' }, custA ? 'Please select the second customer' : 'Please select the first customer')
+      )
+    )
+  );
+}
+
 function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [waCustomer, setWaCustomer] = useState(null);
   const [showWaTpl, setShowWaTpl] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
   const [profileCustomer, setProfileCustomer] = useState(null);
-  const [newC, setNewC] = useState({ name: '', phone: '', address: '', dob: '' });
+  // Blank template for the Add/Edit Customer form. address/dob stay as plain fields for
+  // backward compatibility with every existing table/search/export/receipt that reads
+  // c.address and c.dob directly — the structured village/post/city/pin below are ALSO
+  // kept on the customer record and are what the popup actually edits; address is the
+  // auto-composed "Village, Post, City - PIN" string built from them on save.
+  const blankNewC = { name: '', phone: '', altPhone: '', village: '', post: '', city: '', pin: '', address: '', doc1Type: '', doc1Number: '', doc1Other: '', doc2Type: '', doc2Number: '', doc2Other: '', gender: '', dob: '', notes: '' };
+  const [newC, setNewC] = useState(blankNewC);
   const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState(todayStr);
@@ -1015,7 +1266,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   // returning customer from months ago must be findable without hunting for the right dates.
   // Customer ID is searchable too, so typing "12" finds CUS-0012.
   const filtered = (searchQ ? customers : dateFilteredCustomers)
-    .filter(c => !searchQ || [c.name, c.phone, c.address, c.dob, c.custCode].some(v => (v || '').toLowerCase().includes(searchQ)));
+    .filter(c => !searchQ || [c.name, c.phone, c.altPhone, c.address, c.dob, c.custCode, c.doc1Number, c.doc2Number].some(v => (v || '').toLowerCase().includes(searchQ)));
 
   const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
@@ -1041,20 +1292,57 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   const crmPortalCostTotal = selectedServices.reduce((sum, row) => sum + (Number(row.portalCost) || 0), 0);
   const crmProfitTotal = crmTotal - crmPortalCostTotal;
 
+  // Validates the core-detail fields of the Add/Edit Customer form and returns the
+  // normalised set of fields to save, or null (after showing the error) if invalid.
+  // Shared by handleAdd and handleEditCustomer so both enforce the exact same rules.
+  const buildCustomerFields = () => {
+    const digits = v => _normPhone(v);
+    if (!newC.name.trim()) { showMessage('Name is required.', 'error'); return null; }
+    const phone = digits(newC.phone);
+    if (phone.length !== 10) { showMessage('Mobile Number must be a valid 10-digit number.', 'error'); return null; }
+    const altPhone = digits(newC.altPhone);
+    if (newC.altPhone && altPhone.length !== 10) { showMessage('Alternative Mobile Number if provided, must be 10 digits (or leave blank).', 'error'); return null; }
+    const pin = digits(newC.pin);
+    if (newC.pin && pin.length !== 6) { showMessage('PIN Code if provided, must be 6 digits (or leave blank).', 'error'); return null; }
+    // address is auto-composed from the structured fields so every existing table/search/
+    // export/receipt that reads customer.address keeps working without any changes there.
+    // If none of village/post/city/pin were touched (e.g. editing a legacy customer's phone
+    // number only, or one whose address was never broken into these fields), keep whatever
+    // address was already on file (newC.address, populated from the customer record when
+    // Edit was opened) instead of overwriting it with a blank string.
+    const addrBits = [newC.village, newC.post, newC.city].map(s => (s || '').trim()).filter(Boolean);
+    let address;
+    if (addrBits.length || pin) {
+      address = addrBits.join(', ');
+      if (pin) address += (address ? ' - ' : '') + pin;
+    } else {
+      address = (newC.address || '').trim();
+    }
+    return {
+      name: newC.name.trim(), phone, altPhone,
+      village: (newC.village || '').trim(), post: (newC.post || '').trim(), city: (newC.city || '').trim(), pin,
+      address,
+      doc1Type: newC.doc1Type || '', doc1Number: (newC.doc1Number || '').trim(), doc1Other: newC.doc1Type === 'Others' ? (newC.doc1Other || '').trim() : '',
+      doc2Type: newC.doc2Type || '', doc2Number: (newC.doc2Number || '').trim(), doc2Other: newC.doc2Type === 'Others' ? (newC.doc2Other || '').trim() : '',
+      gender: newC.gender || '', dob: newC.dob || '', notes: (newC.notes || '').trim()
+    };
+  };
+
   const handleAdd = () => {
-    if (!newC.name || !newC.phone) return showMessage('Name and Mobile are required.', 'error');
+    const cf = buildCustomerFields();
+    if (!cf) return;
     // Same mobile number already on file — warn, don't block (a family can share one number).
-    const dupPhone = customers.find(c => _normPhone(c.phone) === _normPhone(newC.phone));
+    const dupPhone = customers.find(c => _normPhone(c.phone) === cf.phone);
     if (dupPhone && !window.confirm(
-      'এই মোবাইল নম্বর ইতিমধ্যে ' + (dupPhone.custCode || '') + ' ' + dupPhone.name + '-এর নামে আছে।\n\n' +
-      '"' + newC.name + '" নামে আলাদা নতুন Customer ID হিসেবে যোগ করতে চান? (ফিরতি customer হলে বাতিল করে ' + (dupPhone.custCode || 'তার') + '-কে Search করে Edit (পেন্সিল) দিয়ে service যোগ করুন)'
+      'This mobile number already exists under ' + (dupPhone.custCode || '') + ' ' + dupPhone.name + '-.\n\n' +
+      '"' + cf.name + '" Do you want to add as a separate new Customer ID? (If returning customer, press Cancel and ' + (dupPhone.custCode || 'search for their') + '-search for them and add the service using Edit (pencil icon))'
     )) return;
     const validRows = selectedServices.filter(r => r.serviceId);
     if (validRows.length === 0) return showMessage('Please select at least one service.', 'error');
     for (const row of validRows) {
       if (row.serviceId === 'others' && (!row.customServiceName || !row.customServicePrice)) return showMessage('Please fill custom service name and price.', 'error');
-      if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক। "' + getRowName(row) + '" row-তে UTR দিন।', 'error');
-      if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক। "' + getRowName(row) + '" row-তে Screenshot নাম দিন।', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-UTR Number is required for this payment. "' + getRowName(row) + '" row-Please enter UTR Number.', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
     const cid = Date.now();
     const allSvcNames = validRows.map(r => getRowName(r)).join(', ');
@@ -1066,7 +1354,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
     // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
@@ -1077,20 +1365,21 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const custCode = 'CUS-' + String(nextSeq).padStart(4, '0');
     const payload = {
       ...appData,
-      customers: [{ id: cid, custCode, name: newC.name, phone: newC.phone, address: newC.address || '', dob: newC.dob || '', service: allSvcNames, lastVisit: todayStr }, ...customers],
+      customers: [{ id: cid, custCode, ...cf, service: allSvcNames, lastVisit: todayStr }, ...customers],
       tasks: [...tasks, ...newTasks],
       customerIdSeq: nextSeq + 1
     };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
-    addAuditLog('Customer Added', custCode + ' — ' + newC.name, 'Phone: ' + newC.phone, payload);
-    setNewC({ name: '', phone: '', address: '', dob: '' });
+    addAuditLog('Customer Added', custCode + ' — ' + cf.name, 'Phone: ' + cf.phone, payload);
+    setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(false);
     showMessage(custCode + ' created! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
 
   const handleEditCustomer = (cust) => {
-    if (!newC.name || !newC.phone) return showMessage('Name and Mobile are required.', 'error');
+    const cf = buildCustomerFields();
+    if (!cf) return;
     // Any service row the operator filled in here (e.g. a returning customer taking a new
     // service) is a NEW task to add for this existing customer — same validation and
     // task-building as handleAdd. Previously this was silently ignored on Update: only
@@ -1098,8 +1387,8 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const validRows = selectedServices.filter(r => r.serviceId);
     for (const row of validRows) {
       if (row.serviceId === 'others' && (!row.customServiceName || !row.customServicePrice)) return showMessage('Please fill custom service name and price.', 'error');
-      if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক। "' + getRowName(row) + '" row-তে UTR দিন।', 'error');
-      if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক। "' + getRowName(row) + '" row-তে Screenshot নাম দিন।', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-UTR Number is required for this payment. "' + getRowName(row) + '" row-Please enter UTR Number.', 'error');
+      if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
     const gid = Date.now();
     const newSvcNames = validRows.map(r => getRowName(r)).join(', ');
@@ -1111,27 +1400,27 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: newC.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: cf.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     const updatedCustomers = customers.map(c => {
       if (c.id !== editingCustomerId) return c;
       const mergedService = newSvcNames ? (c.service ? c.service + ', ' + newSvcNames : newSvcNames) : c.service;
-      return { ...c, name: newC.name, phone: newC.phone, address: newC.address || '', dob: newC.dob || '', service: mergedService || '', lastVisit: newTasks.length > 0 ? todayStr : (c.lastVisit || todayStr) };
+      return { ...c, ...cf, service: mergedService || '', lastVisit: newTasks.length > 0 ? todayStr : (c.lastVisit || todayStr) };
     });
     // Rename only THIS customer's own tasks — matched by customerId, not by the old name,
     // so a different customer who happens to share that name never gets renamed along with it.
     const updatedTasks = [
       ...tasks.map(t => {
         const isThisCustomer = (t.customerId !== undefined && t.customerId !== null) ? t.customerId === editingCustomerId : t.customerName === cust.name;
-        return isThisCustomer ? { ...t, customerName: newC.name } : t;
+        return isThisCustomer ? { ...t, customerName: cf.name } : t;
       }),
       ...newTasks
     ];
     const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
     const payload = { ...appData, customers: updatedCustomers, tasks: updatedTasks };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
-    addAuditLog('Customer Updated', cust.name + ' → ' + newC.name, 'Phone: ' + newC.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
-    setNewC({ name: '', phone: '', address: '', dob: '' });
+    addAuditLog('Customer Updated', cust.name + ' → ' + cf.name, 'Phone: ' + cf.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
+    setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
@@ -1143,23 +1432,66 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Customer CRM')),
       e('div', { className: 'flex gap-2' },
         currentUser.role === 'admin' && e('button', { onClick: () => setShowWaTpl(true), className: 'bg-green-50 text-green-700 border border-green-300 px-4 py-2 rounded-lg hover:bg-green-100 flex items-center gap-2 text-sm font-medium' }, e(Icon, { name: 'MessageCircle', size: 18 }), ' WhatsApp Messages'),
-        !editingCustomerId && e('button', { onClick: () => { setShowAdd(!showAdd); if (showAdd) setNewC({ name: '', phone: '', address: '', dob: '' }); }, className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2' }, e(Icon, { name: 'Plus', size: 18 }), ' Add Customer')
+        currentUser.role === 'admin' && e('button', { onClick: () => setShowMerge(true), title: 'Merge two duplicate customers', className: 'bg-purple-50 text-purple-700 border border-purple-300 px-4 py-2 rounded-lg hover:bg-purple-100 flex items-center gap-2 text-sm font-medium' }, e(Icon, { name: 'GitMerge', size: 18 }), ' Merge Customer'),
+        !editingCustomerId && e('button', { onClick: () => { setShowAdd(!showAdd); if (showAdd) setNewC(blankNewC); }, className: 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2' }, e(Icon, { name: 'Plus', size: 18 }), ' Add Customer')
       )
     ),
-    e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(filtered.map(c => ({ 'Customer ID': c.custCode || '', Name: c.name, Mobile: c.phone, Address: c.address || '', DOB: c.dob || '', Service: c.service, 'Last Visit': c.lastVisit })), `Customers_${fromDate}_to_${toDate}`) }),
+    e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(filtered.map(c => ({ 'Customer ID': c.custCode || '', Name: c.name, Mobile: c.phone, 'Alt Mobile': c.altPhone || '', Gender: c.gender || '', Address: c.address || '', DOB: c.dob || '', 'Document 1': c.doc1Type ? ((c.doc1Type === 'Others' ? (c.doc1Other || 'Others') : c.doc1Type) + (c.doc1Number ? ': ' + c.doc1Number : '')) : '', 'Document 2': c.doc2Type ? ((c.doc2Type === 'Others' ? (c.doc2Other || 'Others') : c.doc2Type) + (c.doc2Number ? ': ' + c.doc2Number : '')) : '', Service: c.service, 'Last Visit': c.lastVisit, Notes: c.notes || '' })), `Customers_${fromDate}_to_${toDate}`) }),
     e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100' },
       e('div', { className: 'relative max-w-md' },
         e('div', { className: 'absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400' }, e(Icon, { name: 'Search', size: 16 })),
         e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search by Name, Mobile, Address or DOB...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })
       )
     ),
-    showAdd && e('div', { className: 'bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-4' },
+    showAdd && e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-start md:items-center justify-center z-50 p-2 md:p-4 overflow-y-auto' },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-4xl my-4 md:my-0 flex flex-col max-h-[95vh]' },
+        e('div', { className: 'flex items-center justify-between px-5 py-4 border-b bg-indigo-600 text-white rounded-t-2xl shrink-0' },
+          e('h3', { className: 'font-bold text-lg' }, editingCustomerId ? 'Update Customer' : 'Add New Customer'),
+          e('button', { onClick: () => { setEditingCustomerId(null); setNewC(blankNewC); setShowAdd(false); }, className: 'text-white text-2xl leading-none px-2' }, '×')
+        ),
+        e('div', { className: 'p-6 overflow-y-auto space-y-5' },
       e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
         e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Name *'), e('input', { type: 'text', value: newC.name, onChange: ev => setNewC({...newC, name: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'Full name' })),
-        e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Mobile *'), e('input', { type: 'text', value: newC.phone, onChange: ev => setNewC({...newC, phone: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'Mobile number' })),
-        e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Address'), e('input', { type: 'text', value: newC.address, onChange: ev => setNewC({...newC, address: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'Village / Town, District' })),
+        e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Mobile * ', e('span', { className: 'text-xs font-normal text-gray-400' }, '(10 digit)')), e('input', { type: 'text', inputMode: 'numeric', maxLength: 10, value: newC.phone, onChange: ev => setNewC({...newC, phone: ev.target.value.replace(/\D/g, '').slice(0, 10)}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 ' + (newC.phone && newC.phone.length !== 10 ? 'border-red-300 bg-red-50' : ''), placeholder: '10-digit mobile number' })),
+        e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Alternative Mobile ', e('span', { className: 'text-xs font-normal text-gray-400' }, '(Optional, 10 digit)')), e('input', { type: 'text', inputMode: 'numeric', maxLength: 10, value: newC.altPhone, onChange: ev => setNewC({...newC, altPhone: ev.target.value.replace(/\D/g, '').slice(0, 10)}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 ' + (newC.altPhone && newC.altPhone.length !== 10 ? 'border-red-300 bg-red-50' : ''), placeholder: 'Second mobile number (if any)' })),
+        e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Gender'), e('select', { value: newC.gender, onChange: ev => setNewC({...newC, gender: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500' }, e('option', { value: '' }, '-- Select --'), e('option', { value: 'Male' }, 'Male'), e('option', { value: 'Female' }, 'Female'), e('option', { value: 'Other' }, 'Other'))),
         e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Date of Birth'), e('input', { type: 'date', value: newC.dob, onChange: ev => setNewC({...newC, dob: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500' }))
       ),
+      e('div', { className: 'space-y-2' },
+        e('p', { className: 'text-sm font-semibold text-gray-700' }, 'Full Address'),
+        editingCustomerId && !newC.village && !newC.post && !newC.city && !newC.pin && newC.address && e('p', { className: 'text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5' }, 'Previous address (for reference): ', newC.address, ' — You may split it into separate fields below if needed.'),
+        e('div', { className: 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3' },
+          e('input', { type: 'text', value: newC.village, onChange: ev => setNewC({...newC, village: ev.target.value}), className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm', placeholder: 'Village / Area' }),
+          e('input', { type: 'text', value: newC.post, onChange: ev => setNewC({...newC, post: ev.target.value}), className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm', placeholder: 'Post Office' }),
+          e('input', { type: 'text', value: newC.city, onChange: ev => setNewC({...newC, city: ev.target.value}), className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm', placeholder: 'City / District' }),
+          e('input', { type: 'text', inputMode: 'numeric', maxLength: 6, value: newC.pin, onChange: ev => setNewC({...newC, pin: ev.target.value.replace(/\D/g, '').slice(0, 6)}), className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm ' + (newC.pin && newC.pin.length !== 6 ? 'border-red-300 bg-red-50' : ''), placeholder: 'PIN Code (6 digit)' })
+        )
+      ),
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
+        ...[1, 2].map(n => {
+          const typeKey = 'doc' + n + 'Type', numKey = 'doc' + n + 'Number', otherKey = 'doc' + n + 'Other';
+          const docPlaceholder = {
+            'Aadhaar Card': 'e.g. 1234 5678 9012', 'Voter ID': 'e.g. ABC1234567',
+            'PAN Card': 'e.g. ABCDE1234F', 'Ration Card': 'e.g. 123456789', 'Others': 'ID Number'
+          }[newC[typeKey]] || 'ID Number';
+          return e('div', { key: n, className: 'p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2' },
+            e('p', { className: 'text-xs font-semibold text-gray-600' }, 'Document ' + n + ' (Optional)'),
+            e('div', { className: 'grid grid-cols-2 gap-2' },
+              e('select', { value: newC[typeKey], onChange: ev => setNewC({...newC, [typeKey]: ev.target.value}), className: 'border rounded-lg px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-400 text-sm' },
+                e('option', { value: '' }, '-- Document Type --'),
+                e('option', { value: 'Aadhaar Card' }, 'Aadhaar Card'),
+                e('option', { value: 'Voter ID' }, 'Voter ID'),
+                e('option', { value: 'PAN Card' }, 'PAN Card'),
+                e('option', { value: 'Ration Card' }, 'Ration Card'),
+                e('option', { value: 'Others' }, 'Others')
+              ),
+              e('input', { type: 'text', value: newC[numKey], onChange: ev => setNewC({...newC, [numKey]: ev.target.value}), className: 'border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm', placeholder: docPlaceholder })
+            ),
+            newC[typeKey] === 'Others' && e('input', { type: 'text', value: newC[otherKey], onChange: ev => setNewC({...newC, [otherKey]: ev.target.value}), className: 'w-full border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm', placeholder: 'Document name (e.g. Driving License)' })
+          );
+        })
+      ),
+      e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Others / Notes'), e('textarea', { value: newC.notes, onChange: ev => setNewC({...newC, notes: ev.target.value}), rows: 2, className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm', placeholder: 'Any other information about this customer (optional)' })),
       // Edit mode only: show what this customer already has, so it is clear the rows below
       // are ADDITIONAL services that will be added when "Update Customer" is pressed.
       editingCustomerId && (() => {
@@ -1237,8 +1569,8 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           // Shown only when this row's Payment Mode is "Online" — lets staff record the
           // payment's UTR number and the filename of the screenshot they've saved for it.
           (row.paymentMode || 'Cash') === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 mt-1 p-2 bg-teal-50 rounded-lg border border-teal-200' },
-            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')), e('input', { type: 'text', value: row.utrNumber || '', onChange: ev => updateServiceRow(row.id, 'utrNumber', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm ' + (!(row.utrNumber||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (আবশ্যক)' })),
-            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')), e('input', { type: 'text', value: row.screenshotFileName || '', onChange: ev => updateServiceRow(row.id, 'screenshotFileName', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm ' + (!(row.screenshotFileName||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (আবশ্যক)' }))
+            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')), e('input', { type: 'text', value: row.utrNumber || '', onChange: ev => updateServiceRow(row.id, 'utrNumber', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm ' + (!(row.utrNumber||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (required)' })),
+            e('div', null, e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')), e('input', { type: 'text', value: row.screenshotFileName || '', onChange: ev => updateServiceRow(row.id, 'screenshotFileName', ev.target.value), className: 'w-full border rounded-lg px-2 py-1.5 outline-none text-sm ' + (!(row.screenshotFileName||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (required)' }))
           ),
           row.serviceId && e('div', { className: 'flex gap-4 text-xs pt-1 pl-1' },
             e('span', { className: 'text-gray-500' }, 'Amount: ', e('span', { className: 'font-semibold text-gray-800' }, '₹' + getRowPrice(row)), (Math.max(1, parseInt(row.qty)||1) > 1) && e('span', { className: 'text-gray-400' }, ' (₹' + Math.round(getRowPrice(row) / Math.max(1, parseInt(row.qty)||1)) + ' × ' + (parseInt(row.qty)||1) + ')')),
@@ -1268,9 +1600,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           currentUser.role === 'admin' && e('div', null, e('p', { className: 'text-xs font-medium mb-0.5', style: { color: crmProfitTotal >= 0 ? '#16a34a' : '#dc2626' } }, 'Total Profit'), e('p', { className: 'text-lg font-bold', style: { color: crmProfitTotal >= 0 ? '#16a34a' : '#dc2626' } }, '₹' + crmProfitTotal))
         )
       ),
-      e('div', { className: 'flex gap-3 items-center' },
-        e('button', { onClick: editingCustomerId ? () => handleEditCustomer(customers.find(c => c.id === editingCustomerId)) : handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2' }, e(Icon, { name: editingCustomerId ? 'Save' : 'Plus', size: 18 }), editingCustomerId ? 'Update Customer' : 'Save Customer'),
-        editingCustomerId && e('button', { onClick: () => { setEditingCustomerId(null); setNewC({ name: '', phone: '', address: '', dob: '' }); setShowAdd(false); }, className: 'bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium' }, 'Cancel')
+        ),
+        e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex gap-3 items-center shrink-0' },
+          e('button', { onClick: editingCustomerId ? () => handleEditCustomer(customers.find(c => c.id === editingCustomerId)) : handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2' }, e(Icon, { name: editingCustomerId ? 'Save' : 'Plus', size: 18 }), editingCustomerId ? 'Update Customer' : 'Save Customer'),
+          e('button', { onClick: () => { setEditingCustomerId(null); setNewC(blankNewC); setShowAdd(false); }, className: 'bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium' }, 'Cancel')
+        )
       )
     ),
     e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto' },
@@ -1294,7 +1628,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
                 e('div', { className: 'flex justify-end gap-2' },
                   e('button', { onClick: () => setWaCustomer(c), title: 'Send WhatsApp message', className: 'text-green-600 bg-green-50 p-1.5 rounded hover:bg-green-100' }, e(Icon, { name: 'MessageCircle', size: 17 })),
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
-                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', address: c.address || '', dob: c.dob || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
+                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', altPhone: c.altPhone || '', village: c.village || '', post: c.post || '', city: c.city || '', pin: c.pin || '', address: c.address || '', doc1Type: c.doc1Type || '', doc1Number: c.doc1Number || '', doc1Other: c.doc1Other || '', doc2Type: c.doc2Type || '', doc2Number: c.doc2Number || '', doc2Other: c.doc2Other || '', gender: c.gender || '', dob: c.dob || '', notes: c.notes || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
                     onClick: () => {
                       const isRelated = (t) => {
@@ -1314,10 +1648,10 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
                       // Customer IDs are meant to be permanent — this is the only place a customer
                       // profile is ever removed, so confirm with exactly what will be lost first.
                       if (!window.confirm(
-                        (c.custCode || c.name) + ' (' + c.name + ') ডিলিট করবেন?\n\n' +
-                        deletedTasks.length + 'টা service, মোট ₹' + totalPaidOfCust + ' paid মুছে যাবে' +
-                        (onlineReversal > 0 ? ', এবং ₹' + onlineReversal + ' Savings Account Balance থেকে বাদ যাবে' : '') +
-                        '।\n\nএই Customer ID আর ফেরত পাওয়া যাবে না।'
+                        (c.custCode || c.name) + ' (' + c.name + ') Delete?\n\n' +
+                        deletedTasks.length + ' service(s), total ₹' + totalPaidOfCust + ' paid will be deleted' +
+                        (onlineReversal > 0 ? ', and ₹' + onlineReversal + ' Savings Account Balance will be removed from Savings' : '') +
+                        '।\n\nThis Customer ID cannot be recovered.'
                       )) return;
                       const payload = { ...appData, customers: customers.filter(x => x.id !== c.id), tasks: remainingTasks };
                       if (onlineReversal > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) - onlineReversal;
@@ -1335,6 +1669,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     ),
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } }),
     showWaTpl && e(WhatsAppTemplatesModal, { appData, persist, addAuditLog, showMessage, onClose: () => setShowWaTpl(false) }),
+    showMerge && e(CustomerMergeModal, { customers, tasks, appData, persist, showMessage, addAuditLog, onClose: () => setShowMerge(false) }),
     profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt })
   );
 }
@@ -1370,8 +1705,8 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
 
   const markGroupSuccessful = (groupId, mode, utr, screenshot) => {
     const m = mode || 'Cash';
-    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক।', 'error');
-    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক।', 'error');
+    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-UTR Number is required for this payment.', 'error');
+    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment.', 'error');
     let onlineAdd = 0;
     const newTasks = tasks.map(t => {
       if ((t.groupId !== undefined ? t.groupId : t.id) !== groupId) return t;
@@ -1385,8 +1720,8 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   };
   const markItemSuccessful = (id, mode, utr, screenshot) => {
     const m = mode || 'Cash';
-    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক।', 'error');
-    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক।', 'error');
+    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-UTR Number is required for this payment.', 'error');
+    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment.', 'error');
     let onlineAdd = 0;
     const newTasks = tasks.map(t => {
       if (t.id !== id) return t;
@@ -1405,8 +1740,8 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     const t = tasks.find(x => x.id === id);
     if (!t) return;
     const m = mode || 'Cash';
-    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-এর জন্য UTR Number আবশ্যক।', 'error');
-    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-এর জন্য Screenshot File Name আবশ্যক।', 'error');
+    if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-UTR Number is required for this payment.', 'error');
+    if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment.', 'error');
     const newPaid = Math.min(t.price || 0, (t.paidAmount || 0) + amt);
     const applied = newPaid - (t.paidAmount || 0);
     if (applied <= 0) return;
@@ -1511,11 +1846,11 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                               modeOf(t.id) === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200' },
                                 e('div', null,
                                   e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')),
-                                  e('input', { type: 'text', value: itemUtr[t.id] || '', onChange: ev => setItemUtr({ ...itemUtr, [t.id]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(itemUtr[t.id]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (আবশ্যক)' })
+                                  e('input', { type: 'text', value: itemUtr[t.id] || '', onChange: ev => setItemUtr({ ...itemUtr, [t.id]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(itemUtr[t.id]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (required)' })
                                 ),
                                 e('div', null,
                                   e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')),
-                                  e('input', { type: 'text', value: itemScreenshot[t.id] || '', onChange: ev => setItemScreenshot({ ...itemScreenshot, [t.id]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(itemScreenshot[t.id]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (আবশ্যক)' })
+                                  e('input', { type: 'text', value: itemScreenshot[t.id] || '', onChange: ev => setItemScreenshot({ ...itemScreenshot, [t.id]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(itemScreenshot[t.id]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (required)' })
                                 )
                               )
                             )
@@ -1554,11 +1889,11 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                     groupModeOf(g.groupId) === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200' },
                       e('div', null,
                         e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'UTR Number ', e('span', { className: 'text-red-500' }, '*')),
-                        e('input', { type: 'text', value: groupUtr[g.groupId] || '', onChange: ev => setGroupUtr({ ...groupUtr, [g.groupId]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(groupUtr[g.groupId]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (আবশ্যক)' })
+                        e('input', { type: 'text', value: groupUtr[g.groupId] || '', onChange: ev => setGroupUtr({ ...groupUtr, [g.groupId]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(groupUtr[g.groupId]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. 1234567890 (required)' })
                       ),
                       e('div', null,
                         e('label', { className: 'block text-xs font-medium mb-0.5 text-teal-800' }, 'Screenshot File Name ', e('span', { className: 'text-red-500' }, '*')),
-                        e('input', { type: 'text', value: groupScreenshot[g.groupId] || '', onChange: ev => setGroupScreenshot({ ...groupScreenshot, [g.groupId]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(groupScreenshot[g.groupId]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (আবশ্যক)' })
+                        e('input', { type: 'text', value: groupScreenshot[g.groupId] || '', onChange: ev => setGroupScreenshot({ ...groupScreenshot, [g.groupId]: ev.target.value }), className: 'w-full border rounded px-2 py-1 text-xs outline-none ' + (!(groupScreenshot[g.groupId]||'').trim() ? 'border-red-300 bg-red-50' : 'border-teal-300'), placeholder: 'e.g. screenshot.png (required)' })
                       )
                     )
                   )
@@ -1871,7 +2206,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     // ── Self Transfer handler ──
     if (form.location === 'Self Transfer') {
       const amt = Number(form.cashIn) || 0;
-      if (amt <= 0) return showMessage('Transfer Amount দিন।', 'error');
+      if (amt <= 0) return showMessage('Transfer Amount Please provide.', 'error');
       const label = form.selfTransferType === 'deposit'
         ? 'Self Transfer: Account → Savings'
         : 'Self Transfer: Savings → Account';
@@ -1925,7 +2260,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     setOpeningBalanceWithNotes(selectedDate, amount, notes);
     setEditingBase(false);
     setBaseCounts({});
-    showMessage(`${selectedDate} এর Opening Balance সেট হয়ে গেছে!`);
+    showMessage(`${selectedDate} Opening Balance has been set!`);
   };
 
   const handleAddMore = () => {
@@ -2334,7 +2669,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       ),
       form.location === 'Self Transfer' && e('div', { className: 'mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-3' },
         e('p', { className: 'text-xs font-semibold text-purple-700 flex items-center gap-1' },
-          'Self Transfer — Cash balance (Current Balance) e kono change hobe na'
+          'Self Transfer — Cash Balance (Current Balance) will not change'
         ),
         e('div', { className: 'flex gap-2' },
           e('button', {
@@ -2594,12 +2929,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
         ),
         e('button', {
           onClick: () => {
-            if (!expForm.name.trim()) return showMessage('Expense Name দিন।', 'error');
-            if (!expForm.cost || isNaN(expForm.cost) || Number(expForm.cost) <= 0) return showMessage('সঠিক Cost (₹) দিন।', 'error');
+            if (!expForm.name.trim()) return showMessage('Expense Name Please provide.', 'error');
+            if (!expForm.cost || isNaN(expForm.cost) || Number(expForm.cost) <= 0) return showMessage('Please enter a valid Cost (₹).', 'error');
             const newExp = { id: Date.now(), name: expForm.name.trim(), cost: Number(expForm.cost), date: expForm.date || todayStr, remarks: expForm.remarks.trim() };
             setAccountBalanceExpenses([...(accountBalanceExpenses || []), newExp]);
             setExpForm({ name: '', cost: '', date: todayStr, remarks: '' });
-            showMessage('Expense added! Account Balance থেকে ₹' + newExp.cost + ' কাটা হয়েছে।');
+            showMessage('Expense added! Account Balance ₹' + newExp.cost + ' has been deducted from Account Balance.');
           },
           className: 'mt-4 bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors shadow-sm'
         }, e(Icon, { name: 'Plus', size: 17 }), ' Add Expense')
@@ -2687,12 +3022,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
           ),
           e('button', {
             onClick: () => {
-              if (!cscExpForm.name.trim()) return showMessage('Expense Name দিন।', 'error');
-              if (!cscExpForm.cost || isNaN(cscExpForm.cost) || Number(cscExpForm.cost) <= 0) return showMessage('সঠিক Cost (₹) দিন।', 'error');
+              if (!cscExpForm.name.trim()) return showMessage('Expense Name Please provide.', 'error');
+              if (!cscExpForm.cost || isNaN(cscExpForm.cost) || Number(cscExpForm.cost) <= 0) return showMessage('Please enter a valid Cost (₹).', 'error');
               const newExp = { id: Date.now(), name: cscExpForm.name.trim(), cost: Number(cscExpForm.cost), date: cscExpForm.date || todayStr, remarks: cscExpForm.remarks.trim(), addedBy: currentUser.name };
               setCscWalletExpenses([...(cscWalletExpenses || []), newExp]);
               setCscExpForm({ name: '', cost: '', date: todayStr, remarks: '' });
-              showMessage('Expense added! CSC Wallet থেকে ₹' + newExp.cost + ' কাটা হয়েছে।');
+              showMessage('Expense added! CSC Wallet ₹' + newExp.cost + ' has been deducted from Account Balance.');
             },
             className: 'mt-4 bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors shadow-sm'
           }, e(Icon, { name: 'Plus', size: 17 }), ' Add Expense')
@@ -2767,12 +3102,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
         ),
         e('button', {
           onClick: () => {
-            if (!savingsExpForm.name.trim()) return showMessage('Expense Name দিন।', 'error');
-            if (!savingsExpForm.cost || isNaN(savingsExpForm.cost) || Number(savingsExpForm.cost) <= 0) return showMessage('সঠিক Cost (₹) দিন।', 'error');
+            if (!savingsExpForm.name.trim()) return showMessage('Expense Name Please provide.', 'error');
+            if (!savingsExpForm.cost || isNaN(savingsExpForm.cost) || Number(savingsExpForm.cost) <= 0) return showMessage('Please enter a valid Cost (₹).', 'error');
             const newExp = { id: Date.now(), name: savingsExpForm.name.trim(), cost: Number(savingsExpForm.cost), date: savingsExpForm.date || todayStr, remarks: savingsExpForm.remarks.trim(), addedBy: currentUser.name };
             setSavingsExpenses([...(savingsExpenses || []), newExp]);
             setSavingsExpForm({ name: '', cost: '', date: todayStr, remarks: '' });
-            showMessage('Expense added! Savings Account থেকে ₹' + newExp.cost + ' কাটা হয়েছে।');
+            showMessage('Expense added! Savings Account ₹' + newExp.cost + ' has been deducted from Account Balance.');
           },
           className: 'mt-4 bg-teal-600 hover:bg-teal-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors shadow-sm'
         }, e(Icon, { name: 'Plus', size: 17 }), ' Add Expense')
@@ -3647,7 +3982,7 @@ function StaffSalary({ users, appData, persist, showMessage, currentUser, busine
 
   const readOnlyBanner = !isAdmin && e('div', { className: 'flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-2.5 rounded-lg' },
     e(Icon, { name: 'Lock', size: 16 }),
-    'View only — শুধু দেখতে পাবেন, কোনো পরিবর্তন করার অনুমতি নেই।'
+    'View only — View only — you can view but are not allowed to make any changes.'
   );
 
   return e('div', { className: 'space-y-5' },
@@ -4757,7 +5092,7 @@ function App() {
         ...navItems.map(n => e(NavItem, { key: n.id, icon: e(Icon, { name: n.icon, size: 18 }), label: n.label, isActive: activeTab === n.id, onClick: () => setActiveTab(n.id), sideColor })),
         e('div', { className: `pt-3 mt-3 border-t border-${sideColor}-800` },
           e(NavItem, { icon: e(Icon, { name: 'Settings', size: 18 }), label: currentUser.role === 'admin' ? 'System Settings' : 'My Settings', isActive: activeTab === 'settings', onClick: () => setActiveTab('settings'), sideColor }),
-          e('button', { onClick: () => { if (window.confirm('আপনি কি লগ-আউট করতে চান?')) setCurrentUser(null); }, className: 'flex items-center w-full p-3 rounded-lg text-indigo-300 hover:bg-red-600 hover:text-white transition-colors mt-1 text-left gap-3' }, e(Icon, { name: 'LogOut', size: 18 }), e('span', { className: 'font-medium text-sm' }, 'Logout'))
+          e('button', { onClick: () => { if (window.confirm('Are you sure you want to log out?')) setCurrentUser(null); }, className: 'flex items-center w-full p-3 rounded-lg text-indigo-300 hover:bg-red-600 hover:text-white transition-colors mt-1 text-left gap-3' }, e(Icon, { name: 'LogOut', size: 18 }), e('span', { className: 'font-medium text-sm' }, 'Logout'))
         )
       ),
       e('div', { className: `p-3 text-xs border-t text-${sideColor}-400 border-${sideColor}-800` }, syncTime ? `Synced ${syncTime.toLocaleTimeString()}` : '')
