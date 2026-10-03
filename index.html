@@ -179,7 +179,7 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
       head: [['Customer', 'Service(s)', 'Total', 'Paid', 'Due', 'Status']],
       body: data.serviceGroups.map(g => [
         g.customerName,
-        g.items.map(i => i.service).join(', ').substring(0, 40),
+        g.items.map(i => svcLabel(i)).join(', ').substring(0, 40),
         '₹'+g.totalAmount, '₹'+g.totalPaid,
         g.totalDue > 0 ? '₹'+g.totalDue : '—', g.status
       ]),
@@ -304,6 +304,25 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
 // one row) wherever tasks are listed, instead of showing each service separately.
 // Same group key groupTasks() uses, so Pay / Delete handlers always find the right rows.
 function gidOf(t) { return (t.groupId !== undefined && t.groupId !== null) ? t.groupId : ('single-' + t.id); }
+// Service name with quantity, e.g. "PAN Card × 3" (shown everywhere a service is listed)
+function svcLabel(t) { return (t.service || '') + (Number(t.qty) > 1 ? ' × ' + Number(t.qty) : ''); }
+// Gives a discount on an already-added service. `price` always holds the amount the customer
+// really has to pay, so the discount reduces it (capped at the remaining due); the original
+// amount is kept in grossPrice and the total discount in `discount`.
+function applyDiscountTo(taskList, id, d) {
+  let applied = 0;
+  const out = (taskList || []).map(t => {
+    if (t.id !== id) return t;
+    const price = Number(t.price) || 0, paid = Number(t.paidAmount) || 0;
+    const x = Math.min(Math.max(0, Number(d) || 0), Math.max(0, price - paid));
+    if (x <= 0) return t;
+    applied = x;
+    const np = price - x;
+    return { ...t, price: np, grossPrice: t.grossPrice != null ? t.grossPrice : price, discount: (Number(t.discount) || 0) + x,
+      profit: np - (Number(t.portalCost) || 0), status: paid >= np ? 'Successful' : t.status };
+  });
+  return { tasks: out, applied };
+}
 function groupTasks(taskList) {
   const map = {};
   (taskList || []).forEach(t => {
@@ -315,11 +334,12 @@ function groupTasks(taskList) {
   return Object.values(map).map(g => {
     const totalAmount = g.items.reduce((s, i) => s + (Number(i.price) || 0), 0);
     const totalPaid = g.items.reduce((s, i) => s + (Number(i.paidAmount) || 0), 0);
+    const totalDiscount = g.items.reduce((s, i) => s + (Number(i.discount) || 0), 0);
     const totalDue = Math.max(0, totalAmount - totalPaid);
     let status = 'Successful';
     if (g.items.some(i => i.status === 'Pending')) status = 'Pending';
     else if (g.items.some(i => i.status === 'Processing')) status = 'Processing';
-    return { ...g, totalAmount, totalPaid, totalDue, status };
+    return { ...g, totalAmount, totalPaid, totalDue, totalDiscount, status };
   }).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (String(b.groupId)).localeCompare(String(a.groupId))));
 }
 
@@ -346,8 +366,8 @@ function onlinePaidOf(t) {
 function receiptFromGroup(g) {
   return {
     groupId: g.groupId, customerName: g.customerName, date: g.date,
-    items: g.items.map(i => ({ service: i.service, price: i.price || 0, paidAmount: i.paidAmount || 0 })),
-    totalAmount: g.totalAmount, totalPaid: g.totalPaid, totalDue: g.totalDue
+    items: g.items.map(i => ({ service: svcLabel(i), qty: i.qty || 1, discount: i.discount || 0, price: i.price || 0, paidAmount: i.paidAmount || 0 })),
+    totalAmount: g.totalAmount, totalPaid: g.totalPaid, totalDue: g.totalDue, totalDiscount: g.totalDiscount || 0
   };
 }
 
@@ -363,8 +383,8 @@ function getCustomerReceipt(customer, tasks) {
   const totalPaid = items.reduce((s, i) => s + (i.paidAmount || 0), 0);
   return {
     groupId: customer.id, customerName: customer.name, date: customer.lastVisit,
-    items: items.map(i => ({ service: i.service, price: i.price || 0, paidAmount: i.paidAmount || 0 })),
-    totalAmount, totalPaid, totalDue: Math.max(0, totalAmount - totalPaid)
+    items: items.map(i => ({ service: svcLabel(i), qty: i.qty || 1, discount: i.discount || 0, price: i.price || 0, paidAmount: i.paidAmount || 0 })),
+    totalAmount, totalPaid, totalDue: Math.max(0, totalAmount - totalPaid), totalDiscount: items.reduce((s, i) => s + (Number(i.discount) || 0), 0)
   };
 }
 
@@ -764,7 +784,7 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
       e(Card, { title: 'Growth Tips', sub: 'Based on your data' }, e('ul', { className: 'space-y-2 text-sm text-gray-600' }, insights.map((s, i) => e('li', { key: i, className: 'flex gap-2' }, e('span', { style: { color: '#0f9d8a' } }, '●'), s))))),
     e(Card, { title: 'Recent Activity' }, recent.length === 0 ? e('p', { className: 'text-center text-gray-500 py-4' }, 'No data for selected dates.') : e('div', { className: 'space-y-1' }, recent.map(g =>
       e('div', { key: g.groupId, className: 'flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg' },
-        e('div', { className: 'flex items-center' }, e('div', { className: 'w-2 h-2 rounded-full mr-3', style: { background: g.status === 'Successful' ? '#0f9d8a' : g.status === 'Processing' ? '#1565c0' : '#f59e0b' } }), e('div', null, e('p', { className: 'font-medium text-sm' }, g.customerName), e('p', { className: 'text-xs text-gray-500' }, g.items.map(i => i.service).join(', ')))),
+        e('div', { className: 'flex items-center' }, e('div', { className: 'w-2 h-2 rounded-full mr-3', style: { background: g.status === 'Successful' ? '#0f9d8a' : g.status === 'Processing' ? '#1565c0' : '#f59e0b' } }), e('div', null, e('p', { className: 'font-medium text-sm' }, g.customerName), e('p', { className: 'text-xs text-gray-500' }, g.items.map(i => svcLabel(i)).join(', ')))),
         e('div', { className: 'flex items-center gap-3' }, e('div', { className: 'text-right' }, admin && e('p', { className: 'font-medium text-sm' }, inr(g.totalAmount)), e('p', { className: 'text-xs text-gray-500' }, g.date)),
           e('button', { onClick: () => setPrintingReceipt(receiptFromGroup(g)), className: 'p-2 rounded-lg', style: { background: '#e6f6f4', color: '#0f9d8a' } }, e(Icon, { name: 'Printer', size: 16 }))))))));
 }
@@ -832,7 +852,7 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
               e('td', { className: 'p-4 text-gray-600' },
                 e('div', { className: 'space-y-1.5' }, ...g.items.map(task =>
                   e('div', { key: task.id, className: 'flex items-center gap-2' },
-                    e('span', { className: 'text-sm' }, task.service),
+                    e('span', { className: 'text-sm' }, svcLabel(task)),
                     e('select', { value: task.status, onChange: ev => updateStatus(task.id, ev.target.value), className: `text-xs font-medium px-2 py-1 rounded-full border outline-none cursor-pointer ${task.status === 'Successful' ? 'bg-green-50 text-green-700 border-green-200' : task.status === 'Processing' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-orange-50 text-orange-700 border-orange-200'}` },
                       e('option', { value: 'Pending' }, 'Pending'), e('option', { value: 'Processing' }, 'Processing'), e('option', { value: 'Successful' }, 'Successful')
                     ),
@@ -1055,6 +1075,12 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
     setPartial({}); setPayUtr(''); setPayShot('');
     showMessage('₹' + total + ' received (' + payMode + ') — ' + label + (payMode === 'Online' ? ' — added to Savings Account Balance' : ''));
   };
+  const [discIn, setDiscIn] = useState({});
+  const giveDisc = t => {
+    const r = applyDiscountTo(tasks, t.id, Number(discIn[t.id]) || 0);
+    if (r.applied <= 0) return showMessage('Enter a valid discount (cannot be more than the due amount).', 'error');
+    persist({ ...appData, tasks: r.tasks }); setDiscIn({}); showMessage('Discount ₹' + r.applied + ' applied — ' + t.service);
+  };
   const payFull = t => applyPays([{ id: t.id, amt: dueOfTask(t) }], t.service);
   const payPart = t => { const v = Number(partial[t.id]) || 0; if (v <= 0) return showMessage('Enter amount to pay.', 'error'); applyPays([{ id: t.id, amt: v }], t.service); };
   const payAll = () => applyPays(dueTasks.map(t => ({ id: t.id, amt: dueOfTask(t) })), 'all dues cleared');
@@ -1109,11 +1135,13 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
             e('input', { type: 'text', value: payShot, onChange: ev => setPayShot(ev.target.value), placeholder: 'Screenshot File Name *', className: 'border rounded px-2 py-1.5 text-xs outline-none' })),
           e('div', { key: 'l', className: 'space-y-2' }, ...dueTasks.map(t =>
             e('div', { key: t.id, className: 'flex flex-wrap items-center gap-2 bg-white border border-gray-100 rounded-lg p-2 text-sm' },
-              e('div', { className: 'flex-1 min-w-[140px]' }, e('p', { className: 'font-medium text-gray-800' }, t.service), e('p', { className: 'text-xs text-gray-400' }, t.date + ' · ₹' + t.price + ' · Paid ₹' + (Number(t.paidAmount) || 0))),
+              e('div', { className: 'flex-1 min-w-[140px]' }, e('p', { className: 'font-medium text-gray-800' }, svcLabel(t)), e('p', { className: 'text-xs text-gray-400' }, t.date + ' · ₹' + t.price + ' · Paid ₹' + (Number(t.paidAmount) || 0))),
               e('span', { className: 'text-xs font-semibold text-red-500' }, 'Due ₹' + dueOfTask(t)),
               e('button', { onClick: () => payFull(t), className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Full Pay'),
               e('input', { type: 'number', value: partial[t.id] || '', onChange: ev => setPartial({ ...partial, [t.id]: ev.target.value }), placeholder: 'Partial ₹', className: 'w-20 border rounded px-1.5 py-1 text-xs outline-none' }),
-              e('button', { onClick: () => payPart(t), className: 'text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Pay'))))]),
+              e('button', { onClick: () => payPart(t), className: 'text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Pay'),
+              e('input', { type: 'number', value: discIn[t.id] || '', onChange: ev => setDiscIn({ ...discIn, [t.id]: ev.target.value }), placeholder: 'Discount ₹', className: 'w-24 border border-red-200 rounded px-1.5 py-1 text-xs outline-none' }),
+              e('button', { onClick: () => giveDisc(t), className: 'text-red-600 border border-red-200 hover:bg-red-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Discount'))))]),
         e('div', null,
           e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Visit History (' + visits.length + ')'),
           visits.length === 0
@@ -1122,7 +1150,7 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
                 e('div', { key: v.groupId, className: 'border border-gray-200 rounded-xl p-3' },
                   e('div', { className: 'flex flex-wrap justify-between items-start gap-2' },
                     e('div', null,
-                      e('p', { className: 'text-sm font-medium text-gray-800' }, v.items.map(i => i.service).join(', ')),
+                      e('p', { className: 'text-sm font-medium text-gray-800' }, v.items.map(i => svcLabel(i)).join(', ')),
                       e('p', { className: 'text-xs text-gray-400' }, v.date)
                     ),
                     e('div', { className: 'flex items-center gap-2' },
@@ -1386,7 +1414,7 @@ function CustomerMergeModal({ customers, tasks, appData, persist, showMessage, a
   );
 }
 
-function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }) {
+function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [waCustomer, setWaCustomer] = useState(null);
@@ -1423,6 +1451,12 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     setShowAdd(true);
     if (focusService) setTimeout(() => { const el = document.getElementById('crm-add-service'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
   };
+  useEffect(() => {
+    if (!editRequestId) return;
+    const c = customers.find(x => x.id === editRequestId);
+    if (c) openEditFor(c, true);
+    clearEditRequest && clearEditRequest();
+  }, [editRequestId]);
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
   const updateServiceRow = (rowId, field, val) => setSelectedServices(selectedServices.map(s => s.id === rowId ? { ...s, [field]: val } : s));
 
@@ -1499,7 +1533,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
     const cid = Date.now();
-    const allSvcNames = validRows.map(r => getRowName(r)).join(', ');
+    const allSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '')).join(', ');
     const newTasks = validRows.map((row, i) => {
       const svcPrice = getRowPrice(row);
       const svcName = getRowName(row);
@@ -1508,7 +1542,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
     // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
@@ -1545,7 +1579,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
     const gid = Date.now();
-    const newSvcNames = validRows.map(r => getRowName(r)).join(', ');
+    const newSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '')).join(', ');
     const newTasks = validRows.map((row, i) => {
       const svcPrice = getRowPrice(row);
       const svcName = getRowName(row);
@@ -1554,7 +1588,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: cf.name, service: svcName, price: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     const updatedCustomers = customers.map(c => {
       if (c.id !== editingCustomerId) return c;
@@ -1656,7 +1690,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
           existing.length === 0
             ? e('p', { className: 'text-xs text-gray-500' }, 'No services recorded yet.')
             : e('div', { className: 'space-y-0.5' }, ...existing.map(t => e('div', { key: t.id, className: 'flex flex-wrap justify-between gap-2 text-xs text-gray-700' },
-                e('span', null, (t.service || '') + ' (' + (t.date || '') + ')'),
+                e('span', null, svcLabel(t) + ' (' + (t.date || '') + ')'),
                 e('span', null, '₹' + (t.price || 0) + ' | Paid ₹' + (t.paidAmount || 0) + ' | ' + (t.status || 'Pending'))))),
           e('p', { className: 'text-xs text-blue-600 pt-1' }, 'To give this customer another service, pick it below and press Update Customer. (To change status or take a due payment on an existing service, use Service Tracking / Pending Amount.)')
         );
@@ -1829,7 +1863,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
 }
 
 // ── PENDING DUES ──
-function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog }) {
+function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService }) {
   const [waCustomer, setWaCustomer] = useState(null);
   const [fromDate, setFromDate] = useState('2020-01-01');
   const [toDate, setToDate] = useState(todayStr);
@@ -1846,6 +1880,13 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   // Show ALL unpaid tasks — use original entry date for filtering here
   const filteredTasks = tasks.filter(t => t.date >= fromDate && t.date <= toDate);
   const [search, setSearch] = useState('');
+  const [profileC, setProfileC] = useState(null);
+  const giveDiscount = (id, d) => {
+    const r = applyDiscountTo(tasks, id, d);
+    if (r.applied <= 0) return showMessage('Enter a valid discount (cannot be more than the due amount).', 'error');
+    persist({ ...appData, tasks: r.tasks });
+    showMessage('Discount ₹' + r.applied + ' applied.');
+  };
   const allPending = groupTasks(filteredTasks).filter(g => g.totalDue > 0);
   // Search by customer name, customer ID, mobile number or address
   const sq = search.trim().toLowerCase();
@@ -1942,7 +1983,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => {
       const rows = pending.map(g => {
         const c = getCustomer(g.customerId, g.customerName);
-        return { 'Customer ID': c?.custCode || '', Customer: g.customerName, Mobile: c?.phone || '', Address: c?.address || '', DOB: c?.dob || '', Services: g.items.map(i => i.service).join(', '), 'Total Amount': g.totalAmount, 'Amount Paid': g.totalPaid, 'Due Amount': g.totalDue, Date: g.date, Status: g.status };
+        return { 'Customer ID': c?.custCode || '', Customer: g.customerName, Mobile: c?.phone || '', Address: c?.address || '', DOB: c?.dob || '', Services: g.items.map(i => svcLabel(i)).join(', '), 'Total Amount': g.totalAmount, 'Amount Paid': g.totalPaid, 'Due Amount': g.totalDue, Date: g.date, Status: g.status };
       });
       exportToExcel(rows, `PendingDues_${fromDate}_to_${toDate}`);
     }}),
@@ -1966,8 +2007,10 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                   e('div', { className: 'flex items-center gap-3 mb-2' },
                     e('div', { className: 'h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold' }, g.customerName.charAt(0)),
                     e('div', null,
-                      e('p', { className: 'font-bold text-gray-800' }, g.customerName),
-                      e('p', { className: 'text-sm text-gray-500' }, g.items.map(i => i.service).join(', '))
+                      e('div', { className: 'flex items-center gap-2 flex-wrap' },
+                        e('p', { className: 'font-bold text-gray-800' }, g.customerName),
+                        cust && e('button', { onClick: () => setProfileC(cust), title: 'Open customer profile', className: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md text-xs font-mono font-semibold border border-indigo-200' }, cust.custCode || 'Profile')),
+                      e('p', { className: 'text-sm text-gray-500' }, g.items.map(i => svcLabel(i)).join(', '))
                     )
                   ),
                   e('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-3' },
@@ -1980,7 +2023,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                     ...g.items.map(t => {
                       const due = (Number(t.price) || 0) - (Number(t.paidAmount) || 0);
                       return e('div', { key: t.id, className: 'flex items-center justify-between text-sm' },
-                        e('span', { className: 'text-gray-700' }, t.service, ' — ₹', t.price, ' (Paid ₹', t.paidAmount || 0, ')'),
+                        e('span', { className: 'text-gray-700' }, svcLabel(t), ' — ₹', t.price, (Number(t.discount) > 0 ? ' (after ₹' + t.discount + ' discount)' : ''), ' (Paid ₹', t.paidAmount || 0, ')'),
                         due > 0
                           ? e('div', { className: 'flex flex-col gap-1.5 w-full' },
                               e('div', { className: 'flex items-center gap-2 flex-wrap' },
@@ -2014,6 +2057,9 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                                     className: 'text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded text-xs font-medium border border-indigo-200'
                                   }, 'Pay')
                                 ),
+                                e('div', { className: 'flex items-center gap-1' },
+                                  e('input', { type: 'number', placeholder: 'Discount ₹', id: 'disc_' + t.id, className: 'w-24 border border-red-200 rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-red-400' }),
+                                  e('button', { onClick: () => { const inp = document.getElementById('disc_' + t.id); giveDiscount(t.id, Number(inp.value) || 0); inp.value = ''; }, className: 'text-red-600 hover:bg-red-50 px-2 py-0.5 rounded text-xs font-medium border border-red-200' }, 'Discount')),
                                 t.paymentDate && e('span', { className: 'text-gray-400 text-xs' }, 'Paid on: ' + t.paymentDate)
                               ),
                               modeOf(t.id) === 'Online' && e('div', { className: 'grid grid-cols-2 gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200' },
@@ -2075,6 +2121,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
             );
           })
         ),
+    profileC && e(CustomerProfileModal, { customer: profileC, tasks, onClose: () => setProfileC(null), setPrintingReceipt, appData, persist, showMessage, onAddService: () => { const c = profileC; setProfileC(null); goAddService && goAddService(c); } }),
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, preferId: 'due', onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog && addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } })
   );
 }
@@ -3487,7 +3534,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       ['Banking Transactions', todaysBankTxns.length],
       [],
       ['Service Collections —', 'Customer', 'Service(s)', 'Total', 'Paid', 'Due', 'Status'],
-      ...todaysServiceGroups.map(g => [null, g.customerName, g.items.map(i => i.service).join(', '), g.totalAmount, g.totalPaid, g.totalDue, g.status]),
+      ...todaysServiceGroups.map(g => [null, g.customerName, g.items.map(i => svcLabel(i)).join(', '), g.totalAmount, g.totalPaid, g.totalDue, g.status]),
       [],
       ['Banking Transactions —', 'Customer/Details', 'Cash IN', 'Cash OUT', 'Location', 'Running Balance'],
       ...bankRows.map(t => [null, t.customerName, t.cashIn || '', t.cashOut || '', t.location || 'Bank', t.runningBalance]),
@@ -3499,7 +3546,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       ...todaysNewCustomers.map(c => [null, c.name, c.phone || '', c.address || '', c.service || '']),
       [],
       ['Outstanding Pending Dues (reference only, not in cash formula) —', 'Customer', 'Service(s)', 'Due'],
-      ...pendingGroups.map(g => [null, g.customerName, g.items.map(i => i.service).join(', '), g.totalDue])
+      ...pendingGroups.map(g => [null, g.customerName, g.items.map(i => svcLabel(i)).join(', '), g.totalDue])
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
@@ -3563,7 +3610,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
             e('tbody', { className: 'divide-y divide-gray-100' }, ...todaysServiceGroups.map(g =>
               e('tr', { key: g.groupId },
                 e('td', { className: 'p-2 font-medium text-gray-800' }, g.customerName),
-                e('td', { className: 'p-2 text-gray-600' }, g.items.map(i => i.service).join(', ')),
+                e('td', { className: 'p-2 text-gray-600' }, g.items.map(i => svcLabel(i)).join(', ')),
                 e('td', { className: 'p-2 text-gray-800' }, `₹${g.totalAmount}`),
                 e('td', { className: 'p-2 text-green-600 font-medium' }, `₹${g.totalPaid}`),
                 e('td', { className: 'p-2 font-medium' }, g.totalDue > 0 ? e('span', { className: 'text-orange-600' }, `₹${g.totalDue}`) : '—'),
@@ -3637,7 +3684,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
         e('tbody', { className: 'divide-y divide-gray-100' }, ...pendingGroups.map(g =>
           e('tr', { key: g.groupId },
             e('td', { className: 'p-2 font-medium text-gray-800' }, g.customerName),
-            e('td', { className: 'p-2 text-gray-600' }, g.items.map(i => i.service).join(', ')),
+            e('td', { className: 'p-2 text-gray-600' }, g.items.map(i => svcLabel(i)).join(', ')),
             e('td', { className: 'p-2 text-orange-600 font-medium' }, `₹${g.totalDue}`)
           )
         ))
@@ -3698,7 +3745,7 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
 
   return e('div', { className: 'space-y-4' },
     e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Reports & Invoices'),
-    e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(groups.map(g => ({ 'TXN ID': `GRP-${g.groupId}`, Date: g.date, Customer: g.customerName, Services: g.items.map(i => i.service).join(', '), Amount: g.totalAmount, Paid: g.totalPaid, Due: g.totalDue, Status: g.status, Staff: g.staffName || '' })), `Reports_${fromDate}_to_${toDate}`) }),
+    e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(groups.map(g => ({ 'TXN ID': `GRP-${g.groupId}`, Date: g.date, Customer: g.customerName, Services: g.items.map(i => svcLabel(i)).join(', '), Amount: g.totalAmount, Paid: g.totalPaid, Due: g.totalDue, Status: g.status, Staff: g.staffName || '' })), `Reports_${fromDate}_to_${toDate}`) }),
     currentUser.role === 'admin' && e('div', { className: 'grid grid-cols-2 md:grid-cols-3 gap-4' },
       e(StatCard, { title: 'Total Invoiced', value: `₹${totalInvoiced}`, icon: e(Icon, { name: 'FileText', size: 22 }), color: 'bg-indigo-50 text-indigo-600' }),
       e(StatCard, { title: 'Total Collected', value: `₹${totalCollected}`, icon: e(Icon, { name: 'TrendingUp', size: 22 }), color: 'bg-green-50 text-green-600' }),
@@ -3719,7 +3766,7 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
             e('tr', { key: g.groupId, className: 'hover:bg-gray-50' },
               e('td', { className: 'p-4 text-sm text-gray-500 font-mono' }, `GRP-${g.groupId}`),
               e('td', { className: 'p-4 font-medium text-gray-800' }, g.customerName),
-              e('td', { className: 'p-4 text-gray-600' }, g.items.map(i => i.service).join(', ')),
+              e('td', { className: 'p-4 text-gray-600' }, g.items.map(i => svcLabel(i)).join(', ')),
               e('td', { className: 'p-4 text-sm text-gray-500' }, g.date),
               currentUser.role === 'admin' && e('td', { className: 'p-4 font-medium' }, `₹${g.totalAmount}`),
               currentUser.role === 'admin' && e('td', { className: 'p-4' },
@@ -4557,6 +4604,7 @@ function ReceiptModal({ receipt, businessProfile, onClose }) {
           ),
           e('div', { className: 'border-t pt-3 space-y-2' },
             e('div', { className: 'flex justify-between text-base font-semibold' }, e('span', null, 'Total Amount:'), e('span', null, '₹' + totalAmount)),
+            (receipt.totalDiscount > 0) && e('div', { className: 'flex justify-between text-xs text-gray-500' }, e('span', null, 'Discount given (already deducted):'), e('span', null, '₹' + receipt.totalDiscount)),
             e('div', { className: 'flex justify-between text-green-700 font-semibold' }, e('span', null, 'Amount Paid:'), e('span', null, '₹' + totalPaid)),
             totalDue > 0 && e('div', { className: 'flex justify-between text-red-600 font-semibold' }, e('span', null, 'Due Amount:'), e('span', null, '₹' + totalDue)),
             totalDue === 0 && e('div', { className: 'flex justify-between text-green-600 text-xs font-medium' }, e('span', null, 'Payment Status:'), e('span', null, 'PAID IN FULL'))
@@ -4591,6 +4639,8 @@ function App() {
   const [loadError, setLoadError] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [editRequestId, setEditRequestId] = useState(null);
+  const goAddService = c => { setEditRequestId(c.id); setActiveTab('crm'); };
   const [message, setMessage] = useState(null);
   const [printingReceipt, setPrintingReceipt] = useState(null);
   const [syncTime, setSyncTime] = useState(null);
@@ -4887,9 +4937,9 @@ function App() {
       e('div', { className: 'flex-1 overflow-y-auto p-6 relative' },
         activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
-        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }),
+        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null) }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
-        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog }),
+        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
