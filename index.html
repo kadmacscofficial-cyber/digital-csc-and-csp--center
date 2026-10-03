@@ -8,6 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -25,6 +26,28 @@
     .no-print { display: none !important; }
   }
 
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+  body, button, input, select, textarea { font-family: 'Poppins', sans-serif !important; }
+  .aic-side { background: #243447; }
+  .bg-aic-900{background:#243447}.border-aic-800{border-color:#2f4259}.border-aic-700{border-color:#3a506b}.bg-aic-800{background:#2f4259}
+  .text-aic-300{color:#9fb0c3}.text-aic-400{color:#7f93a9}
+  .aic-nav{display:flex;align-items:center;width:100%;padding:.65rem .8rem;border-radius:.5rem;color:#dbe4ee;font-size:.85rem;text-align:left;transition:background .15s}
+  .aic-nav:hover{background:#2f4259;color:#fff}.aic-nav.on{background:#0f9d8a;color:#fff;font-weight:600}
+  .aic-main{background:#f4f6f9}
+  .aic-card{background:#fff;border-radius:.9rem;padding:1.1rem;box-shadow:0 1px 4px rgba(15,34,64,.07)}
+  .aic-card-title{font-weight:600;color:#0f2240;font-size:.9rem;margin-bottom:.8rem}
+  .aic-kpi{background:#fff;border-radius:.8rem;padding:.9rem 1rem;box-shadow:0 1px 4px rgba(15,34,64,.07)}
+  .aic-bar{background:#2f9fd0;color:#fff;font-weight:600;font-size:.7rem;padding:.35rem .5rem;border-radius:.3rem;text-align:center;white-space:nowrap;min-width:0}
+  .aic-tile{color:#fff;padding:.7rem;border-radius:.3rem;display:flex;flex-direction:column;justify-content:space-between;font-size:.75rem;min-height:70px}
+  .aic-pill{background:#fff;border:1px solid #dde4ee;border-radius:2rem;padding:.35rem .9rem;font-size:.75rem;color:#0f2240}
+  .aic-pill.on{background:#0f9d8a;border-color:#0f9d8a;color:#fff}
+  .aic-date{border:1px solid #dde4ee;border-radius:.5rem;padding:.3rem .5rem;font-size:.75rem;background:#fff}
+  /* remap old indigo accents to the new teal/blue theme everywhere */
+  .bg-indigo-600,.bg-indigo-700,.bg-indigo-500{background-color:#0f9d8a!important}.hover\:bg-indigo-700:hover,.hover\:bg-indigo-600:hover{background-color:#0c8575!important}
+  .bg-indigo-50,.bg-indigo-100{background-color:#e6f6f4!important}.text-indigo-600,.text-indigo-500,.text-indigo-700{color:#0f9d8a!important}
+  .border-indigo-200,.border-indigo-300{border-color:#9ad8cf!important}
+  .focus\:ring-indigo-500:focus,.focus\:ring-2:focus{--tw-ring-color:#0f9d8a!important}
+  .from-indigo-50{--tw-gradient-from:#e6f6f4!important}.to-blue-100{--tw-gradient-to:#dbeafe!important}
 </style>
 </head>
 <body>
@@ -554,9 +577,8 @@ function Icon({ name, size = 20, className = '' }) {
   return e('span', { dangerouslySetInnerHTML: { __html: svg }, style: { display: 'inline-flex', alignItems: 'center' } });
 }
 
-function NavItem({ icon, label, isActive, onClick, sideColor = 'indigo' }) {
-  const c = sideColor;
-  return e('button', { onClick, className: `flex items-center w-full p-3 rounded-lg transition-colors text-left ${isActive ? `bg-${c}-700 text-white font-semibold shadow-md` : `text-${c}-200 hover:bg-${c}-800 hover:text-white`}` },
+function NavItem({ icon, label, isActive, onClick }) {
+  return e('button', { onClick, className: 'aic-nav' + (isActive ? ' on' : '') },
     e('span', { className: 'mr-3' }, icon), e('span', null, label));
 }
 
@@ -606,82 +628,143 @@ function LoginScreen({ onLogin, message }) {
   );
 }
 
-// ── DASHBOARD ──
-function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses }) {
-  const [fromDate, setFromDate] = useState(todayStr);
-  const [toDate, setToDate] = useState(todayStr);
-  const filtered = tasks.filter(t => t.date >= fromDate && t.date <= toDate);
-  const filteredC = customers.filter(c => c.lastVisit >= fromDate && c.lastVisit <= toDate);
-  // CORRECT income calculation using paymentHistory:
-  // 1. For each task in date range: count only the initial payment (at entry time)
-  //    = paidAmount MINUS any later payments recorded in paymentHistory
-  // 2. Add paymentHistory entries that fall within the date range (from any task)
-  const getInitialPaid = (t) => {
-    const laterPayments = (t.paymentHistory || []).reduce((s, p) => s + p.amount, 0);
-    // Portal Cost is deducted right here, once, from the initial payment — so Dashboard
-    // Total Income/Net Profit reflect actual profit (customer paid − Portal Cost), not
-    // the raw amount collected. Every other menu (CRM, Service Tracking, Banking, Pending
-    // Amount, receipts) still uses the untouched paidAmount and is unaffected.
-    return Math.max(0, (t.paidAmount || 0) - laterPayments) - (t.portalCost || 0);
-  };
-  // Income from tasks whose ENTRY DATE is in range (initial payment only)
-  const entryIncome = filtered.reduce((s, t) => s + getInitialPaid(t), 0);
-  // Income from paymentHistory entries whose date is in range (from ALL tasks)
-  const historyIncome = tasks.reduce((s, t) => {
-    const histInRange = (t.paymentHistory || [])
-      .filter(p => p.date >= fromDate && p.date <= toDate)
-      .reduce((hs, p) => hs + p.amount, 0);
-    return s + histInRange;
-  }, 0);
-  const totalIncomeAdj = entryIncome + historyIncome;
-  const totalExpense = (expenses || []).filter(x => x.date >= fromDate && x.date <= toDate).reduce((s, x) => s + x.cost, 0);
-  // netProfit now uses totalIncomeAdj (computed above)
-  const pending = filtered.filter(t => t.status === 'Pending').length;
-  const completed = filtered.filter(t => t.status === 'Successful').length;
-  // Pending = tasks where due > 0, based on original entry date
-  const pendingAmt = filtered.filter(t => Math.max(0, (t.price || 0) - (t.paidAmount || 0)) > 0)
-    .reduce((s, t) => s + Math.max(0, (t.price || 0) - (t.paidAmount || 0)), 0);
+// ── DASHBOARD (graphical) ──
+const PAL = ['#0a1f44', '#1565c0', '#1fa5c9', '#5b8fd0', '#0f9d8a', '#8fb8e8', '#2b3f5c'];
+const inr = n => (n < 0 ? '-₹' : '₹') + Math.round(Math.abs(n)).toLocaleString('en-IN');
+const inrK = n => { const a = Math.abs(n); const s = a >= 1e5 ? (a / 1e5).toFixed(1) + 'L' : a >= 1e3 ? (a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + 'K' : Math.round(a); return (n < 0 ? '-₹' : '₹') + s; };
+const dstr = d => d.toISOString().split('T')[0];
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return dstr(d); };
+const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5) + 1;
 
-  return e('div', { className: 'space-y-6' },
-    e('div', { className: 'flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-3' },
-      e('div', null, e('h3', { className: 'text-lg font-bold text-gray-800' }, 'Business Overview'), e('p', { className: 'text-sm text-gray-500' }, 'Filter by date range')),
-      e('div', { className: 'flex flex-wrap gap-3 items-end' },
-        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'From'), e('input', { type: 'date', value: fromDate, onChange: ev => setFromDate(ev.target.value), className: 'border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
-        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'To'), e('input', { type: 'date', value: toDate, onChange: ev => setToDate(ev.target.value), className: 'border rounded-md px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
-        e('button', { onClick: () => exportToExcel(filtered.map(t => ({ Date: t.date, Customer: t.customerName, Service: t.service, Amount: t.price, Status: t.status })), 'Dashboard_Report'), className: 'flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium' }, e(Icon, { name: 'Download', size: 15 }), ' Excel')
-      )
-    ),
-    e('div', { className: `grid gap-4 ${currentUser.role === 'admin' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'}` },
-      currentUser.role === 'admin' && e(StatCard, { title: 'Total Income', value: `₹${totalIncomeAdj}`, icon: e(Icon, { name: 'TrendingUp', size: 22 }), color: 'bg-green-50 text-green-600' }),
-      currentUser.role === 'admin' && e(StatCard, { title: 'Net Profit', value: fmtR(totalIncomeAdj - totalExpense), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: `${(totalIncomeAdj - totalExpense) >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`, sub: `Expense: ₹${totalExpense}` }),
-      e(StatCard, { title: 'Pending Dues', value: `₹${pendingAmt}`, icon: e(Icon, { name: 'AlertCircle', size: 22 }), color: 'bg-red-50 text-red-500' }),
-      e(StatCard, { title: 'Customers', value: filteredC.length, icon: e(Icon, { name: 'Users', size: 22 }), color: 'bg-blue-50 text-blue-600' }),
-      e(StatCard, { title: 'Pending Tasks', value: pending, icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-orange-50 text-orange-600' }),
-      e(StatCard, { title: 'Successful', value: completed, icon: e(Icon, { name: 'CheckCircle', size: 22 }), color: 'bg-indigo-50 text-indigo-600' })
-    ),
-    e('div', { className: 'bg-white p-6 rounded-xl shadow-sm border border-gray-100' },
-      e('h4', { className: 'font-bold text-gray-800 mb-4' }, 'Recent Activity'),
-      (() => {
-        const recentGroups = groupTasks(filtered).slice(0, 6);
-        return recentGroups.length === 0 ? e('p', { className: 'text-center text-gray-500 py-4' }, 'No data for selected dates.')
-        : e('div', { className: 'space-y-3' }, ...recentGroups.map(g =>
-          e('div', { key: g.groupId, className: 'flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg border border-gray-50' },
-            e('div', { className: 'flex items-center' },
-              e('div', { className: `w-2 h-2 rounded-full mr-3 ${g.status === 'Successful' ? 'bg-green-500' : g.status === 'Processing' ? 'bg-blue-500' : 'bg-orange-500'}` }),
-              e('div', null, e('p', { className: 'font-medium text-sm' }, g.customerName), e('p', { className: 'text-xs text-gray-500' }, g.items.map(i => i.service).join(', ')))
-            ),
-            e('div', { className: 'flex items-center gap-3' },
-              e('div', { className: 'text-right' },
-                currentUser.role === 'admin' && e('p', { className: 'font-medium text-sm' }, `₹${g.totalAmount}`),
-                e('p', { className: 'text-xs text-gray-500' }, g.date)
-              ),
-              e('button', { onClick: () => setPrintingReceipt(receiptFromGroup(g)), className: 'text-indigo-500 bg-indigo-50 p-2 rounded-lg hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 16 }))
-            )
-          )
-        ));
-      })()
-    )
-  );
+function ChartBox({ type, data, options, height = 240 }) {
+  const ref = React.useRef(null), inst = React.useRef(null);
+  const key = JSON.stringify(data) + type;
+  React.useEffect(() => {
+    if (!window.Chart || !ref.current) return;
+    if (inst.current) inst.current.destroy();
+    inst.current = new Chart(ref.current, { type, data, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, ...options } });
+    return () => { inst.current && inst.current.destroy(); inst.current = null; };
+  }, [key]);
+  return e('div', { style: { height, position: 'relative' } }, e('canvas', { ref }));
+}
+const Card = ({ title, sub, children, className = '' }) => e('div', { className: 'aic-card ' + className },
+  e('h4', { className: 'aic-card-title' }, title), sub && e('p', { className: 'text-xs text-gray-400 -mt-2 mb-3' }, sub), children);
+const donut = (labels, values) => ({ data: { labels, datasets: [{ data: values, backgroundColor: PAL, borderWidth: 2, borderColor: '#fff' }] },
+  options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } }, tooltip: { callbacks: { label: c => ` ${c.label}: ${inr(c.parsed)}` } } } } });
+const axis = { grid: { color: '#eef1f5' }, ticks: { callback: v => inrK(v), font: { size: 10 } }, border: { display: false } };
+const xaxis = { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 60 } };
+const Kpi = ({ icon, title, value, delta, color }) => e('div', { className: 'aic-kpi' },
+  e('div', { className: 'flex items-center gap-2 text-xs text-gray-500 font-medium' }, e(Icon, { name: icon, size: 14 }), title),
+  e('div', { className: 'text-xl font-semibold mt-2', style: { color: color || '#0f2240' } }, value),
+  delta != null && isFinite(delta) && e('div', { className: 'text-xs mt-1 font-medium', style: { color: delta >= 0 ? '#0f9d8a' : '#dc2626' } }, (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% vs previous'));
+
+function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses }) {
+  const admin = currentUser.role === 'admin';
+  const [range, setRange] = useState('month');
+  const [cFrom, setCFrom] = useState(curMonth + '-01'), [cTo, setCTo] = useState(todayStr);
+  let fromDate = curMonth + '-01', toDate = todayStr;
+  if (range === 'today') fromDate = todayStr;
+  else if (range === '7d') fromDate = addDays(todayStr, -6);
+  else if (range === '30d') fromDate = addDays(todayStr, -29);
+  else if (range === 'year') fromDate = todayStr.slice(0, 4) + '-01-01';
+  else if (range === 'all') fromDate = '2000-01-01';
+  else if (range === 'custom') { fromDate = cFrom; toDate = cTo; }
+  const span = range === 'all' ? 0 : daysBetween(fromDate, toDate);
+  const pFrom = span ? addDays(fromDate, -span) : null, pTo = span ? addDays(fromDate, -1) : null;
+
+  const initPaid = t => Math.max(0, (t.paidAmount || 0) - (t.paymentHistory || []).reduce((s, p) => s + p.amount, 0)) - (t.portalCost || 0);
+  const calc = (f, to) => {
+    const ts = tasks.filter(t => t.date >= f && t.date <= to);
+    const sales = ts.reduce((s, t) => s + (t.price || 0), 0);
+    const hist = tasks.reduce((s, t) => s + (t.paymentHistory || []).filter(p => p.date >= f && p.date <= to).reduce((a, p) => a + p.amount, 0), 0);
+    const collected = ts.reduce((s, t) => s + initPaid(t), 0) + hist;
+    const exp = (expenses || []).filter(x => x.date >= f && x.date <= to).reduce((s, x) => s + x.cost, 0);
+    return { ts, sales, collected, exp, profit: collected - exp, custs: new Set(ts.map(t => t.customerId || t.customerName)).size };
+  };
+  const cur = calc(fromDate, toDate), prev = pFrom ? calc(pFrom, pTo) : null;
+  const dl = k => prev && prev[k] > 0 ? (cur[k] - prev[k]) / prev[k] * 100 : null;
+  const ts = cur.ts;
+  const dueOf = t => Math.max(0, (t.price || 0) - (t.paidAmount || 0));
+  const pendingAmt = tasks.reduce((s, t) => s + dueOf(t), 0);
+  const sumBy = (arr, kf, vf) => { const m = {}; arr.forEach(x => { const k = kf(x) || 'Unknown'; m[k] = (m[k] || 0) + vf(x); }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const bySvc = sumBy(ts, t => t.service, t => t.price || 0);
+  const byCust = sumBy(ts, t => t.customerName, t => t.price || 0).slice(0, 10);
+  const byStaff = sumBy(ts, t => t.staffName, t => t.price || 0);
+  const dueCust = sumBy(tasks, t => t.customerName, dueOf).filter(x => x[1] > 0).slice(0, 8);
+  const mode = [['Cash', ts.filter(t => t.paymentMode !== 'Online').reduce((s, t) => s + Math.max(0, initPaid(t)), 0)], ['Online', ts.filter(t => t.paymentMode === 'Online').reduce((s, t) => s + Math.max(0, initPaid(t)), 0)]];
+  const status = ['Successful', 'Processing', 'Pending'].map(s => [s, ts.filter(t => t.status === s).length]);
+  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], wdv = [0, 0, 0, 0, 0, 0, 0];
+  ts.forEach(t => { wdv[new Date(t.date + 'T00:00:00Z').getUTCDay()] += t.price || 0; });
+  const svcProfit = sumBy(ts, t => t.service, t => (t.price || 0) - (t.portalCost || 0)).slice(0, 8);
+  const byExp = sumBy((expenses || []).filter(x => x.date >= fromDate && x.date <= toDate), x => x.name, x => x.cost).slice(0, 7);
+
+  // trend: daily (<=62 days) else monthly
+  const monthly = span === 0 || span > 62;
+  const keyOf = d => monthly ? d.slice(0, 7) : d;
+  const tk = {}; ts.forEach(t => { const k = keyOf(t.date); tk[k] = tk[k] || { s: 0, x: 0 }; tk[k].s += t.price || 0; });
+  (expenses || []).filter(x => x.date >= fromDate && x.date <= toDate).forEach(x => { const k = keyOf(x.date); tk[k] = tk[k] || { s: 0, x: 0 }; tk[k].x += x.cost; });
+  const tkeys = Object.keys(tk).sort();
+  // last 12 months
+  const m12 = []; for (let i = 11; i >= 0; i--) { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - i); m12.push(dstr(d).slice(0, 7)); }
+  const m12d = m12.map(m => { const s = tasks.filter(t => t.date.startsWith(m)).reduce((a, t) => a + (t.price || 0), 0); const x = (expenses || []).filter(q => q.date.startsWith(m)).reduce((a, q) => a + q.cost, 0); return { m, s, x }; });
+
+  const best = bySvc[0], bestWd = wdv.indexOf(Math.max(...wdv)), rate = cur.sales ? Math.min(100, cur.collected / cur.sales * 100) : 0;
+  const insights = [
+    best && `Top earner: ${best[0]} (${inr(best[1])}, ${(best[1] / (cur.sales || 1) * 100).toFixed(0)}% of sales). Promote it and bundle related services.`,
+    Math.max(...wdv) > 0 && `Busiest day is ${wd[bestWd]}. Keep full staff then; run offers on the slowest day.`,
+    pendingAmt > 0 && `${inr(pendingAmt)} is pending from ${dueCust.length ? dueCust.length + '+' : ''} customers. Send WhatsApp reminders from Pending Amount.`,
+    admin && cur.sales > 0 && `Profit margin ${(cur.profit / cur.sales * 100).toFixed(0)}%. Collection rate ${rate.toFixed(0)}%.`,
+    byCust[0] && `Best customer: ${byCust[0][0]} (${inr(byCust[0][1])}). Keep loyal customers with follow-ups.`,
+  ].filter(Boolean);
+  const none = ts.length === 0;
+  const pill = (id, l) => e('button', { key: id, onClick: () => setRange(id), className: 'aic-pill' + (range === id ? ' on' : '') }, l);
+  const recent = groupTasks(ts).slice(0, 6);
+
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Dashboard'), e('p', { className: 'text-sm text-gray-500' }, 'Key trends and business insights')),
+      e('div', { className: 'flex flex-wrap gap-2 items-center' },
+        [['today', 'Today'], ['7d', '7 Days'], ['month', 'This Month'], ['30d', '30 Days'], ['year', 'This Year'], ['all', 'All'], ['custom', 'Custom']].map(p => pill(p[0], p[1])),
+        range === 'custom' && e('input', { type: 'date', value: cFrom, onChange: ev => setCFrom(ev.target.value), className: 'aic-date' }),
+        range === 'custom' && e('input', { type: 'date', value: cTo, onChange: ev => setCTo(ev.target.value), className: 'aic-date' }),
+        e('button', { onClick: () => exportToExcel(ts.map(t => ({ Date: t.date, Customer: t.customerName, Service: t.service, Amount: t.price, Paid: t.paidAmount, Status: t.status })), 'Dashboard_Report'), className: 'aic-pill on' }, 'Excel'))),
+    e('div', { className: 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3' },
+      admin && e(Kpi, { icon: 'TrendingUp', title: 'Total Sales', value: inr(cur.sales), delta: dl('sales') }),
+      admin && e(Kpi, { icon: 'Wallet', title: 'Collected', value: inr(cur.collected), delta: dl('collected') }),
+      admin && e(Kpi, { icon: 'ShoppingBag', title: 'Total Expense', value: inr(cur.exp), delta: dl('exp'), color: '#b45309' }),
+      admin && e(Kpi, { icon: 'DollarSign', title: 'Net Profit', value: inr(cur.profit), color: cur.profit >= 0 ? '#0f9d8a' : '#dc2626' }),
+      e(Kpi, { icon: 'AlertCircle', title: 'Pending Dues', value: inr(pendingAmt), color: '#dc2626' }),
+      e(Kpi, { icon: 'Users', title: 'Customers', value: cur.custs, delta: dl('custs') }),
+      e(Kpi, { icon: 'Briefcase', title: 'Tasks', value: ts.length + ' (' + (status[0][1]) + ' done)' }),
+      e(Kpi, { icon: 'Tag', title: 'Top Service', value: best ? best[0] : '-' })),
+    none && e('div', { className: 'aic-card text-center text-gray-500' }, 'No data in this period. Choose a longer range.'),
+    e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
+      e(Card, { title: 'Sales Trend', sub: monthly ? 'Monthly' : 'Daily', className: 'xl:col-span-2' },
+        e(ChartBox, { type: 'line', height: 260, data: { labels: tkeys, datasets: [{ label: 'Sales', data: tkeys.map(k => tk[k].s), borderColor: '#0a1f44', backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: .35, pointRadius: 3 }, ...(admin ? [{ label: 'Expense', data: tkeys.map(k => tk[k].x), borderColor: '#1fa5c9', tension: .35, pointRadius: 2, fill: false }] : [])] },
+          options: { scales: { y: axis, x: xaxis }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
+      e(Card, { title: 'Top 10 Customers', sub: 'By sales' }, byCust.length ? e('div', { className: 'space-y-2' }, byCust.map(([n, v], i) =>
+        e('div', { key: n + i, className: 'flex items-center gap-2 text-xs' }, e('span', { className: 'w-24 truncate text-gray-600' }, n),
+          e('div', { className: 'flex-1' }, e('div', { className: 'aic-bar', style: { width: Math.max(18, v / byCust[0][1] * 100) + '%' } }, inrK(v)))))) : e('p', { className: 'text-sm text-gray-400' }, 'No data'))),
+    e('div', { className: 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4' },
+      e(Card, { title: 'Sales By Service' }, e(ChartBox, { type: 'doughnut', ...donut(bySvc.slice(0, 7).map(x => x[0]), bySvc.slice(0, 7).map(x => x[1])) })),
+      admin && e(Card, { title: 'Payment Mode', sub: 'Cash vs Online collected' }, e(ChartBox, { type: 'doughnut', ...donut(mode.map(x => x[0]), mode.map(x => x[1])) })),
+      e(Card, { title: 'Sales By Staff' }, e(ChartBox, { type: 'bar', data: { labels: byStaff.map(x => x[0]), datasets: [{ data: byStaff.map(x => x[1]), backgroundColor: '#1565c0', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: axis, x: xaxis } } })),
+      e(Card, { title: 'Task Status' }, e(ChartBox, { type: 'doughnut', data: { labels: status.map(x => x[0]), datasets: [{ data: status.map(x => x[1]), backgroundColor: ['#0f9d8a', '#1565c0', '#f59e0b'], borderWidth: 2, borderColor: '#fff' }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } } } } }))),
+    e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
+      admin && e(Card, { title: 'Last 12 Months', sub: 'Sales vs Expense', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', data: { labels: m12, datasets: [{ label: 'Sales', data: m12d.map(x => x.s), backgroundColor: '#0a1f44', borderRadius: 4 }, { label: 'Expense', data: m12d.map(x => x.x), backgroundColor: '#1fa5c9', borderRadius: 4 }, { label: 'Profit (Sales - Expense)', data: m12d.map(x => x.s - x.x), backgroundColor: '#5b8fd0', borderRadius: 4 }] }, options: { scales: { y: axis, x: xaxis }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
+      e(Card, { title: 'Busiest Weekdays', sub: 'Sales by day of week', className: admin ? '' : 'xl:col-span-2' }, e(ChartBox, { type: 'bar', data: { labels: wd, datasets: [{ data: wdv, backgroundColor: wdv.map((v, i) => i === bestWd ? '#0f9d8a' : '#1565c0'), borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: axis, x: xaxis } } })),
+      e(Card, { title: 'Services Map', sub: 'Bigger tile = more sales', className: 'xl:col-span-2' }, e('div', { className: 'flex flex-wrap gap-1', style: { minHeight: 180 } }, bySvc.slice(0, 10).map(([n, v], i) =>
+        e('div', { key: n, className: 'aic-tile', style: { flexGrow: Math.max(1, Math.round(v / (bySvc[0][1] || 1) * 10)), flexBasis: Math.max(70, v / (bySvc[0][1] || 1) * 160) + 'px', background: ['#0a1f44', '#0d47a1', '#1565c0', '#2979d0', '#1fa5c9'][Math.min(i, 4)] } }, e('b', null, n), e('span', null, inrK(v)))))),
+      e(Card, { title: 'Collect Now', sub: 'Highest pending dues' }, dueCust.length ? e('div', { className: 'space-y-2' }, dueCust.map(([n, v], i) => e('div', { key: n + i, className: 'flex items-center gap-2 text-xs' }, e('span', { className: 'w-24 truncate text-gray-600' }, n), e('div', { className: 'flex-1' }, e('div', { className: 'aic-bar', style: { background: '#dc2626', width: Math.max(18, v / dueCust[0][1] * 100) + '%' } }, inrK(v)))))) : e('p', { className: 'text-sm text-gray-400' }, 'No pending dues 🎉'))),
+    e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
+      admin && e(Card, { title: 'Profit By Service', sub: 'Sales minus portal cost' }, e(ChartBox, { type: 'bar', data: { labels: svcProfit.map(x => x[0]), datasets: [{ data: svcProfit.map(x => x[1]), backgroundColor: '#1fa5c9', borderRadius: 6 }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: axis, y: { grid: { display: false }, ticks: { font: { size: 10 } } } } } })),
+      admin && e(Card, { title: 'Expense Breakdown' }, byExp.length ? e(ChartBox, { type: 'doughnut', ...donut(byExp.map(x => x[0]), byExp.map(x => x[1])) }) : e('p', { className: 'text-sm text-gray-400' }, 'No expenses')),
+      e(Card, { title: 'Growth Tips', sub: 'Based on your data' }, e('ul', { className: 'space-y-2 text-sm text-gray-600' }, insights.map((s, i) => e('li', { key: i, className: 'flex gap-2' }, e('span', { style: { color: '#0f9d8a' } }, '●'), s))))),
+    e(Card, { title: 'Recent Activity' }, recent.length === 0 ? e('p', { className: 'text-center text-gray-500 py-4' }, 'No data for selected dates.') : e('div', { className: 'space-y-1' }, recent.map(g =>
+      e('div', { key: g.groupId, className: 'flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg' },
+        e('div', { className: 'flex items-center' }, e('div', { className: 'w-2 h-2 rounded-full mr-3', style: { background: g.status === 'Successful' ? '#0f9d8a' : g.status === 'Processing' ? '#1565c0' : '#f59e0b' } }), e('div', null, e('p', { className: 'font-medium text-sm' }, g.customerName), e('p', { className: 'text-xs text-gray-500' }, g.items.map(i => i.service).join(', ')))),
+        e('div', { className: 'flex items-center gap-3' }, e('div', { className: 'text-right' }, admin && e('p', { className: 'font-medium text-sm' }, inr(g.totalAmount)), e('p', { className: 'text-xs text-gray-500' }, g.date)),
+          e('button', { onClick: () => setPrintingReceipt(receiptFromGroup(g)), className: 'p-2 rounded-lg', style: { background: '#e6f6f4', color: '#0f9d8a' } }, e(Icon, { name: 'Printer', size: 16 }))))))));
 }
 
 // ── SERVICE TRACKING (simple) ──
@@ -1972,57 +2055,14 @@ function Expenses({ expenses, setExpenses, appData, currentUser, showMessage, ad
 }
 
 
-// ── NOTE COUNTER ──
-function NoteCounter({ selectedDate, baseInput, setBaseInput, counts, setCounts, saveBase, onCancel }) {
-  const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
-
-  const total = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
-
-  const updateCount = (note, val) => {
-    const updated = { ...counts, [note]: val };
-    setCounts(updated);
-    const newTotal = NOTES.reduce((s, n) => s + n * (Number(updated[n]) || 0), 0);
-    setBaseInput(String(newTotal));
-  };
-
-  const reset = () => { setCounts({}); setBaseInput('0'); };
-
+// ── OPENING BALANCE EDITOR ──
+function OpeningBalanceEditor({ selectedDate, baseInput, setBaseInput, saveBase, onCancel }) {
   return e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-indigo-200 space-y-4' },
-    e('div', { className: 'flex justify-between items-center' },
-      e('div', null,
-        e('h4', { className: 'font-semibold text-gray-800' }, 'Set Opening Balance — ' + selectedDate),
-        e('p', { className: 'text-xs text-gray-400 mt-0.5' }, 'Enter note counts to auto-calculate, or type amount directly')
-      ),
-      e('button', { onClick: reset, className: 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 px-2 py-1 rounded' }, 'Reset')
-    ),
-    e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
-      ...NOTES.map(note =>
-        e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
-          e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
-          e('input', {
-            type: 'number', min: '0',
-            value: counts[note] || '',
-            onChange: ev => updateCount(note, ev.target.value),
-            className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-400',
-            placeholder: '0'
-          }),
-          e('p', { className: 'text-xs text-indigo-500 mt-1 font-medium' },
-            (Number(counts[note]) || 0) > 0 ? '₹' + (note * (Number(counts[note]) || 0)) : '\u2014'
-          )
-        )
-      )
-    ),
-    e('div', { className: 'flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100' },
-      e('div', { className: 'flex-1' },
-        e('p', { className: 'text-xs text-gray-500 mb-1' }, 'Total from notes: ₹' + total.toLocaleString('en-IN')),
-        e('div', { className: 'flex items-center gap-2' },
-          e('label', { className: 'text-xs text-gray-500 whitespace-nowrap' }, 'Or enter directly:'),
-          e('input', { type: 'number', value: baseInput,
-            onChange: ev => { setBaseInput(ev.target.value); setCounts({}); },
-            className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 w-36 text-sm',
-            placeholder: '0'
-          })
-        )
+    e('h4', { className: 'font-semibold text-gray-800' }, 'Set Opening Balance — ' + selectedDate),
+    e('div', { className: 'flex flex-wrap items-center gap-4' },
+      e('div', { className: 'flex items-center gap-2' },
+        e('span', { className: 'text-gray-500 font-bold' }, '₹'),
+        e('input', { type: 'number', value: baseInput, autoFocus: true, onChange: ev => setBaseInput(ev.target.value), onKeyDown: ev => ev.key === 'Enter' && saveBase(), className: 'border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 w-44 text-sm', placeholder: '0' })
       ),
       e('div', { className: 'flex gap-2' },
         e('button', { onClick: saveBase, className: 'bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium' }, 'Save ₹' + (Number(baseInput) || 0).toLocaleString('en-IN')),
@@ -2032,70 +2072,11 @@ function NoteCounter({ selectedDate, baseInput, setBaseInput, counts, setCounts,
   );
 }
 
-// ── CASH NOTE MODAL (popup shown after a Banking transaction, to log note-wise breakdown into Cash Count) ──
-function CashNoteModal({ noteModal, counts, setCounts, onSave, onSkip }) {
-  const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
-  const total = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
-  const remaining = noteModal.amount - total;
-  const updateCount = (note, val) => setCounts({ ...counts, [note]: val });
-  const canSave = remaining === 0 && total > 0;
-
-  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4' },
-    e('div', { className: 'bg-white rounded-xl w-full max-w-lg shadow-2xl flex flex-col', style: { maxHeight: '92vh' } },
-      e('div', { className: `flex items-center justify-between px-5 py-3 border-b rounded-t-xl ${noteModal.type === 'deposit' ? 'bg-green-50' : 'bg-red-50'}` },
-        e('div', null,
-          e('p', { className: 'text-sm font-semibold text-gray-800' }, 'New Cash Transaction (note-wise)'),
-          e('p', { className: 'text-xs text-gray-500' }, (noteModal.type === 'deposit' ? 'Cash IN — ' : 'Cash OUT — ') + noteModal.customerName + ' — ₹' + noteModal.amount.toLocaleString('en-IN'))
-        ),
-        e('button', { onClick: onSkip, className: 'text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-200' }, e(Icon, { name: 'X', size: 18 }))
-      ),
-      e('div', { className: 'p-5 space-y-4 overflow-y-auto' },
-        e('p', { className: 'text-xs text-gray-500' }, 'Enter which notes were ' + (noteModal.type === 'deposit' ? 'received from' : 'given to') + ' the customer — this will be saved to Cash Count and totalled automatically.'),
-        e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
-          ...NOTES.map(note =>
-            e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
-              e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
-              e('input', {
-                type: 'number', min: '0',
-                value: counts[note] || '',
-                onChange: ev => updateCount(note, ev.target.value),
-                className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-teal-400',
-                placeholder: '0'
-              }),
-              e('p', { className: 'text-xs text-teal-600 mt-1 font-medium' },
-                (Number(counts[note]) || 0) > 0 ? '₹' + (note * (Number(counts[note]) || 0)) : '—'
-              )
-            )
-          )
-        ),
-        e('div', { className: 'flex justify-between items-center bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm' },
-          e('span', { className: 'text-gray-500' }, 'Transaction Amount:'),
-          e('span', { className: 'font-bold text-gray-800' }, '₹' + noteModal.amount.toLocaleString('en-IN'))
-        ),
-        e('div', { className: `flex justify-between items-center rounded-lg px-4 py-3 text-sm ${remaining === 0 ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}` },
-          e('span', { className: remaining === 0 ? 'text-green-700 font-medium' : 'text-orange-700' }, remaining === 0 ? 'Notes match the amount ✓' : 'Remaining to allocate:'),
-          remaining !== 0 && e('span', { className: 'font-bold text-orange-700' }, '₹' + remaining.toLocaleString('en-IN'))
-        )
-      ),
-      e('div', { className: 'flex justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl' },
-        e('button', { onClick: onSkip, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-100' }, "Skip — Don't Record Notes"),
-        e('button', {
-          onClick: () => canSave && onSave(counts),
-          disabled: !canSave,
-          className: 'text-white px-5 py-2 rounded-lg text-sm font-medium ' + (canSave ? (noteModal.type === 'deposit' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700') : 'bg-gray-300 cursor-not-allowed')
-        }, 'Save to Cash Count')
-      )
-    )
-  );
-}
-
-// ── BANKING LEDGER (CSP Cash Ledger) ──
-function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }) {
+function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank', selfTransferType: 'deposit' });
   const [editingBase, setEditingBase] = useState(false);
   const [baseInput, setBaseInput] = useState(String(openingBalances[todayStr] || 0));
-  const [baseCounts, setBaseCounts] = useState({});
   const [showArchive, setShowArchive] = useState(false);
   const [archFrom, setArchFrom] = useState('');
   const [archTo, setArchTo] = useState('');
@@ -2109,15 +2090,6 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   const [topupInput, setTopupInput] = useState('');
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
-  const [addMoreCounts, setAddMoreCounts] = useState({});
-  const [showAddMoreNotes, setShowAddMoreNotes] = useState(false);
-  // Queue of pending "note-wise" popups triggered after adding a Banking transaction —
-  // a queue (not a single value) so a transaction with BOTH Cash IN and Cash OUT shows
-  // two popups one after another instead of losing one.
-  const [noteModalQueue, setNoteModalQueue] = useState([]);
-  const [noteModalCounts, setNoteModalCounts] = useState({});
-  const noteModal = noteModalQueue[0] || null;
-  const closeNoteModal = () => { setNoteModalQueue(q => q.slice(1)); setNoteModalCounts({}); };
   const [bankingTab, setBankingTab] = useState('ledger');
   const [expForm, setExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' }); // 'ledger' | 'reports'
   const [cscExpForm, setCscExpForm] = useState({ name: '', cost: '', date: todayStr, remarks: '' });
@@ -2228,66 +2200,28 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     const cashOut = Number(form.cashOut) || 0;
     if (cashIn === 0 && cashOut === 0) return showMessage('Please enter a Cash IN or Cash OUT amount.', 'error');
     setBankTransactions([...bankTransactions, { id: Date.now(), date: selectedDate, customerName: form.customerName, cashIn, cashOut, location: form.location, staffId: currentUser.id, staffName: currentUser.name }]);
-    // Queue the "New Cash Transaction (note-wise)" popup so the note breakdown for this
-    // transaction can be logged straight into Cash Count — Banking's own data above is
-    // already saved either way, so skipping the popup never blocks the ledger entry.
-    const queued = [];
-    if (cashIn > 0) queued.push({ type: 'deposit', amount: cashIn, customerName: form.customerName, date: selectedDate, location: form.location });
-    if (cashOut > 0) queued.push({ type: 'withdrawal', amount: cashOut, customerName: form.customerName, date: selectedDate, location: form.location });
-    if (queued.length) setNoteModalQueue(q => [...q, ...queued]);
     setForm(f => ({ ...f, customerName: '', cashIn: '', cashOut: '' }));
     showMessage(`Transaction added (${form.location})!`);
-  };
-
-  const handleSaveNoteModal = (notes) => {
-    const safeCC = Array.isArray(cashCountEntries) ? cashCountEntries : [];
-    setCashCountEntries([...safeCC, {
-      id: Date.now(), date: noteModal.date, type: noteModal.type,
-      customerName: noteModal.customerName, remarks: 'Banking Txn (' + noteModal.location + ')',
-      amount: noteModal.amount, notes, addedBy: currentUser.name
-    }]);
-    showMessage('Note breakdown saved to Cash Count!');
-    closeNoteModal();
   };
 
   const deleteTxn = (id) => { setBankTransactions(bankTransactions.filter(t => t.id !== id)); showMessage('Deleted', 'error'); };
 
   const saveBase = () => {
     const amount = Number(baseInput) || 0;
-    // Only pass the note breakdown along when the note counter was actually used — a plain
-    // typed-in amount records no note history, exactly as before this feature existed.
-    const notes = (baseCounts && Object.keys(baseCounts).length > 0) ? baseCounts : null;
-    setOpeningBalanceWithNotes(selectedDate, amount, notes);
+    setOpeningBalanceFor(selectedDate, amount);
     setEditingBase(false);
-    setBaseCounts({});
     showMessage(`${selectedDate} Opening Balance has been set!`);
   };
 
   const handleAddMore = () => {
     const amt = Number(addMoreInput) || 0;
     if (!amt || amt <= 0) return showMessage('Please enter a valid amount.', 'error');
-    // Opening Balance + Add-More-history are now written in one atomic persist() call
-    // (see addMoreBalance in the App component) so the update can no longer be clobbered.
-    // Note breakdown (if the note counter was used) is folded into that same call too.
-    const notes = (addMoreCounts && Object.keys(addMoreCounts).length > 0) ? addMoreCounts : null;
-    const newBal = addMoreBalance(selectedDate, amt, notes);
+    // Opening Balance + Add-More-history are written in one atomic persist() call (see addMoreBalance in App).
+    const newBal = addMoreBalance(selectedDate, amt);
     setAddMoreInput('');
-    setAddMoreCounts({});
-    setShowAddMoreNotes(false);
     setShowAddMore(false);
     showMessage('₹' + amt + ' added! New Opening Balance: ₹' + newBal);
   };
-
-  // Note-counting for Add More Balance — same denominations/logic as the Opening Balance
-  // note counter, kept local to this panel so it doesn't touch NoteCounter's own state.
-  const ADD_MORE_NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
-  const updateAddMoreCount = (note, val) => {
-    const updated = { ...addMoreCounts, [note]: val };
-    setAddMoreCounts(updated);
-    const newTotal = ADD_MORE_NOTES.reduce((s, n) => s + n * (Number(updated[n]) || 0), 0);
-    setAddMoreInput(String(newTotal));
-  };
-  const resetAddMoreCounts = () => { setAddMoreCounts({}); setAddMoreInput('0'); };
 
   const exportLedger = () => {
     const aoa = [
@@ -2516,12 +2450,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
         e(StatCard, { title: `Opening Balance (${selectedDate})`, value: `₹${openingBalance}`, icon: e(Icon, { name: 'Landmark', size: 22 }), color: 'bg-indigo-50 text-indigo-600' }),
         currentUser.role === 'admin' && e('div', { className: 'absolute top-1 right-1 flex gap-0.5' },
           e('button', {
-            onClick: () => { setAddMoreInput(''); setAddMoreCounts({}); setShowAddMoreNotes(false); setShowAddMore(true); setEditingBase(false); },
+            onClick: () => { setAddMoreInput(''); setShowAddMore(true); setEditingBase(false); },
             title: 'Add More Balance',
             className: 'text-green-500 hover:text-green-700 p-1.5 rounded hover:bg-green-50'
           }, e(Icon, { name: 'Plus', size: 15 })),
           e('button', {
-            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setBaseCounts({}); setEditingBase(true); setShowAddMore(false); setShowSetAccBal(false); },
+            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setEditingBase(true); setShowAddMore(false); setShowSetAccBal(false); },
             title: 'Edit Opening Balance',
             className: 'text-gray-400 hover:text-indigo-600 p-1.5 rounded hover:bg-indigo-50'
           }, e(Icon, { name: 'Edit3', size: 15 }))
@@ -2532,10 +2466,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       e(StatCard, { title: 'Current Balance', value: fmtR(currentBalance), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: 'bg-blue-50 text-blue-600' })
     ),
 
-    editingBase && e(NoteCounter, {
-      selectedDate, baseInput, setBaseInput, counts: baseCounts, setCounts: setBaseCounts, saveBase,
-      onCancel: () => { setEditingBase(false); setBaseCounts({}); }
-    }),
+    editingBase && e(OpeningBalanceEditor, { selectedDate, baseInput, setBaseInput, saveBase, onCancel: () => setEditingBase(false) }),
 
     showSetAccBal && currentUser.role === 'admin' && e('div', { className: 'bg-purple-50 p-4 rounded-xl shadow-sm border border-purple-300 flex flex-wrap items-end gap-4' },
       e('div', null,
@@ -2576,17 +2507,11 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     showAddMore && e('div', { className: 'bg-green-50 p-4 rounded-xl shadow-sm border border-green-300 space-y-4' },
       e('div', { className: 'flex flex-wrap items-end gap-4' },
         e('div', null,
-          e('div', { className: 'flex items-center justify-between gap-3' },
-            e('label', { className: 'block text-sm font-semibold text-green-800 mb-1' }, 'Add More Balance — ' + selectedDate),
-            e('button', {
-              onClick: () => { setShowAddMoreNotes(!showAddMoreNotes); },
-              className: 'text-xs font-medium text-green-700 border border-green-300 bg-white px-2 py-1 rounded hover:bg-green-100 whitespace-nowrap'
-            }, showAddMoreNotes ? 'Hide Note Count' : '🧮 Count Notes')
-          ),
+          e('label', { className: 'block text-sm font-semibold text-green-800 mb-1' }, 'Add More Balance — ' + selectedDate),
           e('p', { className: 'text-xs text-green-600 mb-3' }, 'This amount will be added to the current Opening Balance'),
           e('div', { className: 'flex items-center gap-2' },
             e('span', { className: 'text-green-700 font-bold' }, '₹'),
-            e('input', { type: 'number', value: addMoreInput, onChange: ev => { setAddMoreInput(ev.target.value); setAddMoreCounts({}); }, className: 'border border-green-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 w-44 text-sm', placeholder: '0' })
+            e('input', { type: 'number', value: addMoreInput, onChange: ev => setAddMoreInput(ev.target.value), className: 'border border-green-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 w-44 text-sm', placeholder: '0' })
           )
         ),
         e('div', { className: 'flex flex-col gap-1.5 text-sm bg-white border border-green-200 rounded-xl px-4 py-3 min-w-44' },
@@ -2607,32 +2532,10 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
           e('button', { onClick: handleAddMore, className: 'bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 text-sm font-medium flex items-center gap-2' },
             e(Icon, { name: 'Plus', size: 16 }), 'Add Balance'
           ),
-          e('button', { onClick: () => { setShowAddMore(false); setAddMoreInput(''); setAddMoreCounts({}); setShowAddMoreNotes(false); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel')
+          e('button', { onClick: () => { setShowAddMore(false); setAddMoreInput(''); }, className: 'text-gray-500 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel')
         )
       ),
-      showAddMoreNotes && e('div', { className: 'bg-white border border-green-200 rounded-xl p-4 space-y-3' },
-        e('div', { className: 'flex justify-between items-center' },
-          e('p', { className: 'text-xs text-gray-500' }, 'Enter note counts to auto-calculate the amount to add'),
-          e('button', { onClick: resetAddMoreCounts, className: 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 px-2 py-1 rounded' }, 'Reset')
-        ),
-        e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
-          ...ADD_MORE_NOTES.map(note =>
-            e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
-              e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
-              e('input', {
-                type: 'number', min: '0',
-                value: addMoreCounts[note] || '',
-                onChange: ev => updateAddMoreCount(note, ev.target.value),
-                className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-green-400',
-                placeholder: '0'
-              }),
-              e('p', { className: 'text-xs text-green-600 mt-1 font-medium' },
-                (Number(addMoreCounts[note]) || 0) > 0 ? '₹' + (note * (Number(addMoreCounts[note]) || 0)) : '—'
-              )
-            )
-          )
-        )
-      )
+
     ),
 
     showArchive && e('div', { className: 'bg-orange-50 p-4 rounded-xl shadow-sm border border-orange-200 space-y-3' },
@@ -3162,11 +3065,6 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       )
     ) // end savingsexpense tab
 
-    ,
-    noteModal && e(CashNoteModal, {
-      noteModal, counts: noteModalCounts, setCounts: setNoteModalCounts,
-      onSave: handleSaveNoteModal, onSkip: closeNoteModal
-    })
   );
 }
 
@@ -4597,209 +4495,6 @@ function ReceiptModal({ receipt, businessProfile, onClose }) {
   );
 }
 
-// ── CASH COUNT (physical note tracker — separate from Banking Ledger) ──
-function CashCount({ noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }) {
-  const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
-  const safeHistory = Array.isArray(noteBreakdownHistory) ? noteBreakdownHistory : [];
-  const safeEntries = Array.isArray(cashCountEntries) ? cashCountEntries : [];
-
-  const [entryType, setEntryType] = useState('deposit');
-  const [entryDate, setEntryDate] = useState(todayStr);
-  const [customerName, setCustomerName] = useState('');
-  const [remarks, setRemarks] = useState('');
-  const [counts, setCounts] = useState({});
-
-  const formTotal = NOTES.reduce((s, n) => s + n * (Number(counts[n]) || 0), 0);
-  const updateCount = (note, val) => setCounts({ ...counts, [note]: val });
-  const resetForm = () => { setCounts({}); setCustomerName(''); setRemarks(''); };
-
-  const handleSave = () => {
-    if (!formTotal || formTotal <= 0) return showMessage('Please enter at least one note count.', 'error');
-    const entry = {
-      id: Date.now(), date: entryDate || todayStr, type: entryType,
-      customerName: customerName.trim(), remarks: remarks.trim(),
-      amount: formTotal, notes: counts, addedBy: currentUser.name
-    };
-    setCashCountEntries([...safeEntries, entry]);
-    resetForm();
-    showMessage((entryType === 'deposit' ? 'Deposit' : 'Withdrawal') + ' of ₹' + formTotal.toLocaleString('en-IN') + ' recorded!');
-  };
-
-  const handleDeleteEntry = (id) => {
-    if (!window.confirm('Delete this entry? This cannot be undone.')) return;
-    setCashCountEntries(safeEntries.filter(x => x.id !== id));
-    showMessage('Entry deleted.', 'error');
-  };
-
-  const handleDeleteHistory = (id) => {
-    if (!window.confirm('Delete this note-history record? This cannot be undone.')) return;
-    setNoteBreakdownHistory(safeHistory.filter(x => x.id !== id));
-    showMessage('Note-history record deleted.', 'error');
-  };
-
-  const handleResetAll = () => {
-    const ok = window.confirm('Are you sure you want to RESET all Cash Count data?\n\nThis will clear:\n\u2022 All Cash Transactions (Deposit/Withdrawal entries)\n\u2022 All Note History (Opening Balance & Add More Balance breakdowns)\n\nThis only clears Cash Count data — Banking Ledger amounts (Opening Balance, Account Balance, transactions) are NOT affected.\n\nThis action cannot be undone!');
-    if (!ok) return;
-    setCashCountEntries([]);
-    setNoteBreakdownHistory([]);
-    showMessage('Cash Count data reset to zero!', 'error');
-  };
-
-  // ── Current cash-in-hand, denomination-wise ──
-  // Opening Balance / Add More Balance note history ADD to the drawer; Cash Count
-  // Deposit entries ADD, Withdrawal entries SUBTRACT. Purely additive over all recorded
-  // note-breakdowns — does not read or modify any Banking Ledger amount directly.
-  const denomTotals = {};
-  NOTES.forEach(n => { denomTotals[n] = 0; });
-  safeHistory.forEach(h => { NOTES.forEach(n => { denomTotals[n] += Number((h.notes || {})[n]) || 0; }); });
-  safeEntries.forEach(en => {
-    const sign = en.type === 'withdrawal' ? -1 : 1;
-    NOTES.forEach(n => { denomTotals[n] += sign * (Number((en.notes || {})[n]) || 0); });
-  });
-  const grandTotal = NOTES.reduce((s, n) => s + n * denomTotals[n], 0);
-
-  const noteChips = (notes) => NOTES.filter(n => (Number((notes || {})[n]) || 0) > 0)
-    .map(n => '₹' + n + '×' + notes[n]).join('  ');
-
-  const sourceLabel = { opening: 'Opening Balance', addmore: 'Add More Balance' };
-  const sortedHistory = [...safeHistory].sort((a, b) => (b.id || 0) - (a.id || 0));
-  const sortedEntries = [...safeEntries].sort((a, b) => (b.id || 0) - (a.id || 0));
-
-  return e('div', { className: 'space-y-4' },
-    e('div', { className: 'flex flex-wrap justify-between items-start gap-3' },
-      e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Cash Count'), e('p', { className: 'text-sm text-gray-500' }, 'Physical note tracking — Opening/Add-More history, note-wise Deposit & Withdrawal entries, and current cash in hand')),
-      currentUser.role === 'admin' && e('button', {
-        onClick: handleResetAll,
-        className: 'flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm'
-      }, e(Icon, { name: 'RefreshCw', size: 16 }), ' Reset All')
-    ),
-
-    // ── Total cash summary ──
-    e('div', { className: 'bg-gradient-to-r from-teal-600 to-emerald-700 rounded-xl p-4 text-white shadow-md space-y-3' },
-      e('div', null,
-        e('p', { className: 'text-teal-100 text-xs font-medium uppercase tracking-widest mb-1' }, 'Total Cash In Hand (note-wise)'),
-        e('p', { className: 'text-3xl font-bold' }, '₹' + grandTotal.toLocaleString('en-IN'))
-      ),
-      e('div', { className: 'grid grid-cols-3 md:grid-cols-9 gap-2' },
-        ...NOTES.map(note =>
-          e('div', { key: note, className: 'bg-white/10 rounded-lg p-2 text-center' },
-            e('p', { className: 'text-xs font-bold text-teal-100' }, '₹' + note),
-            e('p', { className: `text-sm font-semibold ${denomTotals[note] < 0 ? 'text-red-300' : 'text-white'}` }, denomTotals[note] || 0),
-            e('p', { className: 'text-[10px] text-teal-200' }, '₹' + (note * (denomTotals[note] || 0)).toLocaleString('en-IN'))
-          )
-        )
-      )
-    ),
-
-    // ── Note history from Opening Balance / Add More Balance ──
-    e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100' },
-      e('h4', { className: 'font-semibold text-gray-800 mb-1' }, 'Note History — Opening Balance & Add More Balance'),
-      e('p', { className: 'text-xs text-gray-400 mb-3' }, 'Recorded automatically whenever note counting is used in Banking'),
-      sortedHistory.length === 0
-        ? e('p', { className: 'text-sm text-gray-400 py-4 text-center' }, 'No note-count history yet.')
-        : e('div', { className: 'overflow-x-auto' },
-            e('table', { className: 'w-full text-sm' },
-              e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' },
-                e('th', { className: 'p-2' }, 'Date'), e('th', { className: 'p-2' }, 'Source'), e('th', { className: 'p-2' }, 'Amount'), e('th', { className: 'p-2' }, 'Notes'),
-                currentUser.role === 'admin' && e('th', { className: 'p-2' }, '')
-              )),
-              e('tbody', null,
-                ...sortedHistory.map(h =>
-                  e('tr', { key: h.id, className: 'border-b border-gray-50' },
-                    e('td', { className: 'p-2 whitespace-nowrap' }, h.date),
-                    e('td', { className: 'p-2' }, e('span', { className: `text-xs px-2 py-0.5 rounded-full font-medium ${h.source === 'opening' ? 'bg-indigo-100 text-indigo-700' : 'bg-green-100 text-green-700'}` }, sourceLabel[h.source] || h.source)),
-                    e('td', { className: 'p-2 font-medium' }, '₹' + (h.amount || 0).toLocaleString('en-IN')),
-                    e('td', { className: 'p-2 text-xs text-gray-500' }, noteChips(h.notes)),
-                    currentUser.role === 'admin' && e('td', { className: 'p-2' },
-                      e('button', { onClick: () => handleDeleteHistory(h.id), className: 'text-gray-400 hover:text-red-500 p-1' }, e(Icon, { name: 'Trash2', size: 15 }))
-                    )
-                  )
-                )
-              )
-            )
-          )
-    ),
-
-    // ── New Deposit / Withdrawal entry ──
-    e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-4' },
-      e('div', { className: 'flex flex-wrap items-center justify-between gap-3' },
-        e('h4', { className: 'font-semibold text-gray-800' }, 'New Cash Transaction (note-wise)'),
-        e('div', { className: 'flex gap-2' },
-          e('button', { onClick: () => setEntryType('deposit'), className: 'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ' + (entryType === 'deposit' ? 'bg-green-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-green-50') }, 'Deposit (Cash In)'),
-          e('button', { onClick: () => setEntryType('withdrawal'), className: 'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ' + (entryType === 'withdrawal' ? 'bg-red-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-red-50') }, 'Withdrawal (Cash Out)')
-        )
-      ),
-      e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-3' },
-        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Date'),
-          e('input', { type: 'date', value: entryDate, onChange: ev => setEntryDate(ev.target.value), className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500' })),
-        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Customer Name (optional)'),
-          e('input', { type: 'text', value: customerName, onChange: ev => setCustomerName(ev.target.value), placeholder: 'e.g. Ramesh Mondal', className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500' })),
-        e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Remarks (optional)'),
-          e('input', { type: 'text', value: remarks, onChange: ev => setRemarks(ev.target.value), placeholder: 'e.g. Aadhaar service fee', className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-teal-500' }))
-      ),
-      e('div', { className: 'grid grid-cols-3 md:grid-cols-5 gap-2' },
-        ...NOTES.map(note =>
-          e('div', { key: note, className: 'bg-gray-50 border border-gray-200 rounded-lg p-2 text-center' },
-            e('p', { className: 'text-xs font-bold text-gray-600 mb-1' }, '₹' + note),
-            e('input', {
-              type: 'number', min: '0',
-              value: counts[note] || '',
-              onChange: ev => updateCount(note, ev.target.value),
-              className: 'w-full border rounded px-2 py-1 text-sm text-center outline-none focus:ring-2 focus:ring-teal-400',
-              placeholder: '0'
-            }),
-            e('p', { className: 'text-xs text-teal-600 mt-1 font-medium' },
-              (Number(counts[note]) || 0) > 0 ? '₹' + (note * (Number(counts[note]) || 0)) : '—'
-            )
-          )
-        )
-      ),
-      e('div', { className: 'flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100' },
-        e('p', { className: 'text-sm text-gray-600' }, 'Auto-calculated total: ', e('span', { className: 'font-bold text-gray-800' }, '₹' + formTotal.toLocaleString('en-IN'))),
-        e('div', { className: 'flex gap-2' },
-          e('button', { onClick: () => setCounts({}), className: 'text-xs text-gray-400 hover:text-red-500 border border-gray-200 px-3 py-2 rounded-lg' }, 'Reset Notes'),
-          e('button', {
-            onClick: handleSave,
-            className: 'text-white px-5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ' + (entryType === 'deposit' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')
-          }, e(Icon, { name: 'Plus', size: 16 }), entryType === 'deposit' ? ' Save Deposit' : ' Save Withdrawal')
-        )
-      )
-    ),
-
-    // ── Entries list ──
-    e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100' },
-      e('h4', { className: 'font-semibold text-gray-800 mb-3' }, 'Cash Transactions'),
-      sortedEntries.length === 0
-        ? e('p', { className: 'text-sm text-gray-400 py-6 text-center' }, 'No cash transactions recorded yet.')
-        : e('div', { className: 'overflow-x-auto' },
-            e('table', { className: 'w-full text-sm' },
-              e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' },
-                e('th', { className: 'p-2' }, 'Date'), e('th', { className: 'p-2' }, 'Type'), e('th', { className: 'p-2' }, 'Customer'),
-                e('th', { className: 'p-2' }, 'Amount'), e('th', { className: 'p-2' }, 'Notes'), e('th', { className: 'p-2' }, 'Remarks'),
-                currentUser.role === 'admin' && e('th', { className: 'p-2' }, '')
-              )),
-              e('tbody', null,
-                ...sortedEntries.map(en =>
-                  e('tr', { key: en.id, className: 'border-b border-gray-50' },
-                    e('td', { className: 'p-2 whitespace-nowrap' }, en.date),
-                    e('td', { className: 'p-2' }, e('span', { className: `text-xs px-2 py-0.5 rounded-full font-medium ${en.type === 'deposit' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}` }, en.type === 'deposit' ? 'Deposit' : 'Withdrawal')),
-                    e('td', { className: 'p-2' }, en.customerName || '—'),
-                    e('td', { className: 'p-2 font-medium' }, '₹' + (en.amount || 0).toLocaleString('en-IN')),
-                    e('td', { className: 'p-2 text-xs text-gray-500' }, noteChips(en.notes)),
-                    e('td', { className: 'p-2 text-xs text-gray-500' }, en.remarks || '—'),
-                    currentUser.role === 'admin' && e('td', { className: 'p-2' },
-                      e('button', { onClick: () => handleDeleteEntry(en.id), className: 'text-gray-400 hover:text-red-500 p-1' }, e(Icon, { name: 'Trash2', size: 15 }))
-                    )
-                  )
-                )
-              )
-            )
-          )
-    )
-  );
-}
-
-// ── MAIN APP ──
 function App() {
   const [appData, setAppData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -4812,10 +4507,10 @@ function App() {
   const [syncOk, setSyncOk] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const isBanking    = activeTab === 'banking';
-  const isDashboard  = activeTab === 'dashboard';
-  const isCashClose  = activeTab === 'cashclosing';
-  const sideColor = isBanking ? 'green' : isDashboard ? 'purple' : isCashClose ? 'orange' : 'indigo';
+  const isBanking = false;
+  const isDashboard = false;
+  const isCashClose = false;
+  const sideColor = 'aic';
   const sc = (g, s, d) => isBanking ? g : isDashboard ? d : isCashClose ? s : g.replace('green','indigo');
   // sc(green-ver, orange-ver, purple-ver) helper not used directly — we use sideColor
   const SB = (cls) => {
@@ -4921,7 +4616,7 @@ function App() {
   // persist() call (the new customers/tasks/expenses/etc. list) as basePayload. The log
   // is folded into that one object and written in a SINGLE persist() call — exactly the
   // same "single atomic persist()" rule used everywhere else in this file (see
-  // PendingDues.commitPayment, setAccountBalancePermanent, setOpeningBalanceWithNotes).
+  // PendingDues.commitPayment, setAccountBalancePermanent, setOpeningBalanceFor).
   // Calling persist(payload) and then addAuditLog(...) separately (two back-to-back
   // persist() calls) makes the second call spread the FIRST call's now-stale appData,
   // silently undoing whatever the first call just saved — this was the cause of
@@ -4947,12 +4642,6 @@ function App() {
   const accountBalanceOverrides = (appData && appData.accountBalanceOverrides) || {};
   const setAccountBalanceOverrides = v => persist({ ...appData, accountBalanceOverrides: typeof v === 'function' ? v(appData.accountBalanceOverrides || {}) : v });
   const setAccountBalanceArchivedOffset = v => persist({ ...appData, accountBalanceArchivedOffset: typeof v === 'function' ? v(appData.accountBalanceArchivedOffset || 0) : v });
-  // ── Cash Count menu data — kept fully separate from Banking's own figures; only reads
-  // note-breakdowns that Banking's Opening Balance / Add More Balance actions record. ──
-  const noteBreakdownHistory = gl('noteBreakdownHistory');
-  const setNoteBreakdownHistory = v => persist({ ...appData, noteBreakdownHistory: typeof v === 'function' ? v(gl('noteBreakdownHistory')) : v });
-  const cashCountEntries = gl('cashCountEntries');
-  const setCashCountEntries = v => persist({ ...appData, cashCountEntries: typeof v === 'function' ? v(gl('cashCountEntries')) : v });
   // Combined, atomic update used by the "Set Balance" action — folding the offset delta AND
   // clearing all overrides in a SINGLE persist() call, so one write doesn't clobber the other
   // (two separate persist() calls back-to-back would each spread the same stale appData and
@@ -4967,35 +4656,21 @@ function App() {
   // the other (two separate persist() calls back-to-back would each spread the same stale
   // appData and the second call would silently wipe out the first one's change — this was the
   // cause of Opening Balance not increasing while Account Balance (Auto) still decreased).
-  // Optional 3rd arg `notes` — only passed when the Add More Balance panel's note-counting
-  // was used. When present, it's folded into the SAME atomic persist() call as a
-  // noteBreakdownHistory entry, purely for the separate Cash Count menu to read; it never
-  // affects Opening Balance / Account Balance figures, which are unchanged from before.
-  const addMoreBalance = (date, amt, notes) => {
+  const addMoreBalance = (date, amt) => {
     const curBalances = appData.bankingOpeningBalances || {};
     const newBal = (curBalances[date] || 0) + amt;
     const curHistory = (appData.addMoreHistory && typeof appData.addMoreHistory === 'object') ? appData.addMoreHistory : {};
     const existing = curHistory[date] || [];
-    const payload = {
+    persist({
       ...appData,
       bankingOpeningBalances: { ...curBalances, [date]: newBal },
       addMoreHistory: { ...curHistory, [date]: [...existing, amt] }
-    };
-    if (notes && Object.keys(notes).length > 0) {
-      payload.noteBreakdownHistory = [...gl('noteBreakdownHistory'), { id: Date.now(), date, source: 'addmore', amount: amt, notes }];
-    }
-    persist(payload);
+    });
     return newBal;
   };
-  // Same idea for Opening Balance's "Save" action (via the NoteCounter) — atomic single
-  // persist() so the Opening Balance write and the note-history write can't clobber each other.
-  const setOpeningBalanceWithNotes = (date, amount, notes) => {
+  const setOpeningBalanceFor = (date, amount) => {
     const curBalances = appData.bankingOpeningBalances || {};
-    const payload = { ...appData, bankingOpeningBalances: { ...curBalances, [date]: amount } };
-    if (notes && Object.keys(notes).length > 0) {
-      payload.noteBreakdownHistory = [...gl('noteBreakdownHistory'), { id: Date.now(), date, source: 'opening', amount, notes }];
-    }
-    persist(payload);
+    persist({ ...appData, bankingOpeningBalances: { ...curBalances, [date]: amount } });
   };
   // Net (Withdrawal − Deposit) of every archived transaction ever removed, kept forever so the
   // all-time Account Balance auto-calculation stays correct even after old entries are archived out.
@@ -5064,7 +4739,6 @@ function App() {
     { id: 'reports', label: 'Reports & Invoice', icon: 'FileText' },
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
-    { id: 'cashcount', label: 'Cash Count', icon: 'Wallet' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
@@ -5076,10 +4750,10 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', cashcount: 'Cash Count', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
-  return e('div', { className: 'flex h-screen font-sans overflow-hidden bg-gray-50' },
-    e('aside', { className: `w-64 text-white flex flex-col transition-colors duration-300 bg-${sideColor}-900` },
+  return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
+    e('aside', { className: `aic-side w-64 text-white flex flex-col` },
       e('div', { className: `p-5 border-b border-${sideColor}-800` },
         e('h1', { className: 'text-base font-bold text-white leading-tight' }, businessProfile.name),
         e('p', { className: `text-xs mt-0.5 text-${sideColor}-300` }, businessProfile.cscId),
@@ -5097,7 +4771,7 @@ function App() {
       ),
       e('div', { className: `p-3 text-xs border-t text-${sideColor}-400 border-${sideColor}-800` }, syncTime ? `Synced ${syncTime.toLocaleTimeString()}` : '')
     ),
-    e('main', { className: `flex-1 flex flex-col overflow-hidden relative transition-colors duration-300 ${isBanking ? 'bg-green-50' : isDashboard ? 'bg-purple-50' : isCashClose ? 'bg-orange-50' : 'bg-gray-50'}` },
+    e('main', { className: 'flex-1 flex flex-col overflow-hidden relative aic-main' },
       e('header', { className: `border-b px-6 py-3 flex justify-between items-center z-10 shadow-sm transition-colors duration-300 ${isBanking ? 'bg-green-700 text-white' : isDashboard ? 'bg-purple-700 text-white' : isCashClose ? 'bg-orange-600 text-white' : 'bg-white'}` },
         e('h2', { className: `text-xl font-bold ${(isBanking || isDashboard || isCashClose) ? 'text-white' : 'text-gray-800'}` }, headerTitle[activeTab] || activeTab),
         e('div', { className: 'flex items-center gap-3' },
@@ -5126,8 +4800,7 @@ function App() {
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceWithNotes, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, cashCountEntries, setCashCountEntries, currentUser, showMessage, businessProfile }),
-        activeTab === 'cashcount' && e(CashCount, { noteBreakdownHistory, setNoteBreakdownHistory, cashCountEntries, setCashCountEntries, currentUser, showMessage }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
