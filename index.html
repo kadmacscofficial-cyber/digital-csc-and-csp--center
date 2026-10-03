@@ -302,6 +302,8 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
 // Multiple services added together for one customer share the same groupId.
 // These helpers combine them back into a single logical entry (one receipt,
 // one row) wherever tasks are listed, instead of showing each service separately.
+// Same group key groupTasks() uses, so Pay / Delete handlers always find the right rows.
+function gidOf(t) { return (t.groupId !== undefined && t.groupId !== null) ? t.groupId : ('single-' + t.id); }
 function groupTasks(taskList) {
   const map = {};
   (taskList || []).forEach(t => {
@@ -311,8 +313,8 @@ function groupTasks(taskList) {
     if (t.date > map[gid].date) map[gid].date = t.date;
   });
   return Object.values(map).map(g => {
-    const totalAmount = g.items.reduce((s, i) => s + (i.price || 0), 0);
-    const totalPaid = g.items.reduce((s, i) => s + (i.paidAmount || 0), 0);
+    const totalAmount = g.items.reduce((s, i) => s + (Number(i.price) || 0), 0);
+    const totalPaid = g.items.reduce((s, i) => s + (Number(i.paidAmount) || 0), 0);
     const totalDue = Math.max(0, totalAmount - totalPaid);
     let status = 'Successful';
     if (g.items.some(i => i.status === 'Pending')) status = 'Pending';
@@ -660,8 +662,8 @@ const Kpi = ({ icon, title, value, delta, color }) => e('div', { className: 'aic
 
 function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses }) {
   const admin = currentUser.role === 'admin';
-  const [range, setRange] = useState('month');
-  const [cFrom, setCFrom] = useState(curMonth + '-01'), [cTo, setCTo] = useState(todayStr);
+  const [range, setRange] = useState('today');
+  const [cFrom, setCFrom] = useState(todayStr), [cTo, setCTo] = useState(todayStr);
   let fromDate = curMonth + '-01', toDate = todayStr;
   if (range === 'today') fromDate = todayStr;
   else if (range === '7d') fromDate = addDays(todayStr, -6);
@@ -794,8 +796,8 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
     showMessage('Deleted' + (onlineReversal > 0 ? ' ₹' + onlineReversal + ' removed from Savings Account Balance.' : ''), 'error');
   };
   const deleteGroup = (groupId) => {
-    const groupTasks_ = tasks.filter(t => (t.groupId !== undefined ? t.groupId : t.id) === groupId);
-    const newTasks = tasks.filter(t => (t.groupId !== undefined ? t.groupId : t.id) !== groupId);
+    const groupTasks_ = tasks.filter(t => gidOf(t) === groupId);
+    const newTasks = tasks.filter(t => gidOf(t) !== groupId);
     // Same permanent-profile change as deleteTask above.
     const onlineReversal = groupTasks_.reduce((sum, t) => sum + onlinePaidOf(t), 0);
     const payload = { ...appData, tasks: newTasks };
@@ -1018,8 +1020,44 @@ function WhatsAppTemplatesModal({ appData, persist, addAuditLog, showMessage, on
 // Opened from Customer CRM by clicking a customer's Customer ID. Read-only — shows every
 // visit this customer has ever made, so staff no longer need to change date filters or dig
 // through Service Tracking to see someone's full history.
-function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt }) {
+function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, appData, persist, showMessage }) {
   const mine = tasksOfCustomer(customer, tasks);
+  // ── Clear pending dues right from the profile ──
+  const [payMode, setPayMode] = useState('Cash');
+  const [payUtr, setPayUtr] = useState('');
+  const [payShot, setPayShot] = useState('');
+  const [partial, setPartial] = useState({});
+  const dueOfTask = t => Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0));
+  const dueTasks = mine.filter(t => dueOfTask(t) > 0);
+  // pays = [{ id, amt }]. Same bookkeeping as the Pending Amount menu: paymentHistory entry,
+  // status -> Successful when fully paid, Online amounts go to Savings Account Balance.
+  const applyPays = (pays, label) => {
+    if (!persist || !appData) return;
+    if (payMode === 'Online' && !payUtr.trim()) return showMessage('Online payment: UTR Number is required.', 'error');
+    if (payMode === 'Online' && !payShot.trim()) return showMessage('Online payment: Screenshot File Name is required.', 'error');
+    const todayS = todayStr;
+    let total = 0;
+    const newTasks = tasks.map(t => {
+      const p = pays.find(x => x.id === t.id);
+      if (!p) return t;
+      const price = Number(t.price) || 0, paid = Number(t.paidAmount) || 0;
+      const newPaid = Math.min(price, paid + p.amt), applied = newPaid - paid;
+      if (applied <= 0) return t;
+      total += applied;
+      return { ...t, paidAmount: newPaid, status: newPaid >= price ? 'Successful' : t.status, paymentDate: todayS,
+        paymentHistory: [...(t.paymentHistory || []), { date: todayS, amount: applied, mode: payMode }],
+        ...(payMode === 'Online' ? { utrNumber: payUtr.trim(), screenshotFileName: payShot.trim() } : {}) };
+    });
+    if (total <= 0) return showMessage('Enter a valid amount.', 'error');
+    const payload = { ...appData, tasks: newTasks };
+    if (payMode === 'Online') payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + total;
+    persist(payload);
+    setPartial({}); setPayUtr(''); setPayShot('');
+    showMessage('₹' + total + ' received (' + payMode + ') — ' + label + (payMode === 'Online' ? ' — added to Savings Account Balance' : ''));
+  };
+  const payFull = t => applyPays([{ id: t.id, amt: dueOfTask(t) }], t.service);
+  const payPart = t => { const v = Number(partial[t.id]) || 0; if (v <= 0) return showMessage('Enter amount to pay.', 'error'); applyPays([{ id: t.id, amt: v }], t.service); };
+  const payAll = () => applyPays(dueTasks.map(t => ({ id: t.id, amt: dueOfTask(t) })), 'all dues cleared');
   const visits = groupTasks(mine); // one row per visit (groupId), newest first
   const totalAmount = mine.reduce((s, t) => s + (t.price || 0), 0);
   const totalPaid = mine.reduce((s, t) => s + (t.paidAmount || 0), 0);
@@ -1037,6 +1075,11 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt }) 
         e('button', { onClick: onClose, className: 'text-white text-2xl leading-none px-2' }, '×')
       ),
       e('div', { className: 'p-5 overflow-y-auto space-y-4' },
+        e('div', { className: 'flex flex-wrap items-center gap-2' },
+          onAddService && e('button', { onClick: onAddService, className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm', style: { background: '#0f9d8a' } }, e(Icon, { name: 'Plus', size: 16 }), 'Add New Service'),
+          customer.phone && e('a', { href: 'tel:' + customer.phone, className: 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50' }, e(Icon, { name: 'Phone', size: 16 }), 'Call ' + customer.phone),
+          totalDue > 0 && e('span', { className: 'ml-auto text-xs font-semibold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200' }, 'Pending Due: ₹' + totalDue)
+        ),
         e('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 text-sm bg-gray-50 rounded-xl p-3 border border-gray-100' },
           e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Mobile'), e('p', { className: 'font-medium text-gray-800' }, customer.phone || '—')),
           e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Alt. Mobile'), e('p', { className: 'font-medium text-gray-800' }, customer.altPhone || '—')),
@@ -1053,6 +1096,24 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt }) 
           e('div', { className: 'bg-green-50 rounded-xl p-3' }, e('p', { className: 'text-xs text-green-600' }, 'Total Paid'), e('p', { className: 'text-lg font-bold text-green-700' }, '₹' + totalPaid)),
           e('div', { className: totalDue > 0 ? 'bg-red-50 rounded-xl p-3' : 'bg-gray-50 rounded-xl p-3' }, e('p', { className: 'text-xs ' + (totalDue > 0 ? 'text-red-500' : 'text-gray-400') }, 'Total Due'), e('p', { className: 'text-lg font-bold ' + (totalDue > 0 ? 'text-red-600' : 'text-gray-500') }, '₹' + totalDue))
         ),
+        e('div', { className: totalDue > 0 ? 'rounded-xl border border-red-200 bg-red-50/40 p-4 space-y-3' : 'rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700 font-medium' },
+          totalDue <= 0 ? '✓ No pending dues — all payments cleared.' : [
+          e('div', { key: 'h', className: 'flex flex-wrap items-center justify-between gap-2' },
+            e('p', { className: 'text-sm font-semibold text-red-600' }, 'Clear Pending Dues — ₹' + totalDue),
+            e('div', { className: 'flex items-center gap-2' },
+              e('select', { value: payMode, onChange: ev => setPayMode(ev.target.value), className: 'border rounded-lg px-2 py-1.5 text-sm font-medium outline-none ' + (payMode === 'Online' ? 'text-teal-700 border-teal-300 bg-teal-50' : 'bg-white') },
+                e('option', { value: 'Cash' }, 'Cash'), e('option', { value: 'Online' }, 'Online')),
+              e('button', { onClick: payAll, className: 'text-white px-4 py-1.5 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Clear All Dues'))),
+          payMode === 'Online' && e('div', { key: 'o', className: 'grid grid-cols-2 gap-2 p-2 bg-teal-50 rounded-lg border border-teal-200' },
+            e('input', { type: 'text', value: payUtr, onChange: ev => setPayUtr(ev.target.value), placeholder: 'UTR Number *', className: 'border rounded px-2 py-1.5 text-xs outline-none' }),
+            e('input', { type: 'text', value: payShot, onChange: ev => setPayShot(ev.target.value), placeholder: 'Screenshot File Name *', className: 'border rounded px-2 py-1.5 text-xs outline-none' })),
+          e('div', { key: 'l', className: 'space-y-2' }, ...dueTasks.map(t =>
+            e('div', { key: t.id, className: 'flex flex-wrap items-center gap-2 bg-white border border-gray-100 rounded-lg p-2 text-sm' },
+              e('div', { className: 'flex-1 min-w-[140px]' }, e('p', { className: 'font-medium text-gray-800' }, t.service), e('p', { className: 'text-xs text-gray-400' }, t.date + ' · ₹' + t.price + ' · Paid ₹' + (Number(t.paidAmount) || 0))),
+              e('span', { className: 'text-xs font-semibold text-red-500' }, 'Due ₹' + dueOfTask(t)),
+              e('button', { onClick: () => payFull(t), className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Full Pay'),
+              e('input', { type: 'number', value: partial[t.id] || '', onChange: ev => setPartial({ ...partial, [t.id]: ev.target.value }), placeholder: 'Partial ₹', className: 'w-20 border rounded px-1.5 py-1 text-xs outline-none' }),
+              e('button', { onClick: () => payPart(t), className: 'text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Pay'))))]),
         e('div', null,
           e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Visit History (' + visits.length + ')'),
           visits.length === 0
@@ -1078,7 +1139,8 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt }) 
               ))
         )
       ),
-      e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex justify-end' },
+      e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex justify-end gap-2' },
+        onAddService && e('button', { onClick: onAddService, className: 'text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, '+ Add New Service'),
         e('button', { onClick: onClose, className: 'text-gray-600 bg-white border px-4 py-2 rounded-lg text-sm' }, 'Close')
       )
     )
@@ -1352,6 +1414,15 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     .filter(c => !searchQ || [c.name, c.phone, c.altPhone, c.address, c.dob, c.custCode, c.doc1Number, c.doc2Number].some(v => (v || '').toLowerCase().includes(searchQ)));
 
   const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+  // Opens the Update Customer form for a customer with one empty service row ready.
+  // Used by the Edit button AND by "Add New Service" inside the customer profile.
+  const openEditFor = (c, focusService) => {
+    setEditingCustomerId(c.id);
+    setNewC({ name: c.name || '', phone: c.phone || '', altPhone: c.altPhone || '', village: c.village || '', post: c.post || '', city: c.city || '', pin: c.pin || '', address: c.address || '', doc1Type: c.doc1Type || '', doc1Number: c.doc1Number || '', doc1Other: c.doc1Other || '', doc2Type: c.doc2Type || '', doc2Number: c.doc2Number || '', doc2Other: c.doc2Other || '', gender: c.gender || '', dob: c.dob || '', notes: c.notes || '' });
+    setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+    setShowAdd(true);
+    if (focusService) setTimeout(() => { const el = document.getElementById('crm-add-service'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
+  };
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
   const updateServiceRow = (rowId, field, val) => setSelectedServices(selectedServices.map(s => s.id === rowId ? { ...s, [field]: val } : s));
 
@@ -1523,7 +1594,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100' },
       e('div', { className: 'relative max-w-md' },
         e('div', { className: 'absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400' }, e(Icon, { name: 'Search', size: 16 })),
-        e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search by Name, Mobile, Address or DOB...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })
+        e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search by Customer ID, Name, Mobile, Address or DOB...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })
       )
     ),
     showAdd && e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-start md:items-center justify-center z-50 p-2 md:p-4 overflow-y-auto' },
@@ -1592,7 +1663,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       })(),
       e('div', { className: 'space-y-3' },
         e('div', { className: 'flex justify-between items-center' },
-          e('label', { className: 'block text-sm font-semibold text-gray-700' }, editingCustomerId ? 'Add New Service (optional)' : 'Services *'),
+          e('label', { id: 'crm-add-service', className: 'block text-sm font-semibold text-gray-700' }, editingCustomerId ? 'Add New Service (optional)' : 'Services *'),
           e('button', { onClick: addServiceRow, className: 'flex items-center gap-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-sm font-medium border border-indigo-200' }, e(Icon, { name: 'Plus', size: 15 }), ' Add Another Service')
         ),
         ...selectedServices.map((row, idx) => e('div', { key: row.id, className: 'p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2' },
@@ -1711,7 +1782,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
                 e('div', { className: 'flex justify-end gap-2' },
                   e('button', { onClick: () => setWaCustomer(c), title: 'Send WhatsApp message', className: 'text-green-600 bg-green-50 p-1.5 rounded hover:bg-green-100' }, e(Icon, { name: 'MessageCircle', size: 17 })),
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
-                  e('button', { onClick: () => { setEditingCustomerId(c.id); setNewC({ name: c.name || '', phone: c.phone || '', altPhone: c.altPhone || '', village: c.village || '', post: c.post || '', city: c.city || '', pin: c.pin || '', address: c.address || '', doc1Type: c.doc1Type || '', doc1Number: c.doc1Number || '', doc1Other: c.doc1Other || '', doc2Type: c.doc2Type || '', doc2Number: c.doc2Number || '', doc2Other: c.doc2Other || '', gender: c.gender || '', dob: c.dob || '', notes: c.notes || '' }); setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]); setShowAdd(true); }, className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
+                  e('button', { onClick: () => openEditFor(c), title: 'Edit customer / add service', className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
                     onClick: () => {
                       const isRelated = (t) => {
@@ -1753,7 +1824,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } }),
     showWaTpl && e(WhatsAppTemplatesModal, { appData, persist, addAuditLog, showMessage, onClose: () => setShowWaTpl(false) }),
     showMerge && e(CustomerMergeModal, { customers, tasks, appData, persist, showMessage, addAuditLog, onClose: () => setShowMerge(false) }),
-    profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt })
+    profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt, appData, persist, showMessage, onAddService: () => { const c = customers.find(x => x.id === profileCustomer.id) || profileCustomer; setProfileCustomer(null); openEditFor(c, true); } })
   );
 }
 
@@ -1774,7 +1845,20 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   const groupModeOf = (id) => groupMode[id] || 'Cash';
   // Show ALL unpaid tasks — use original entry date for filtering here
   const filteredTasks = tasks.filter(t => t.date >= fromDate && t.date <= toDate);
-  const pending = groupTasks(filteredTasks).filter(g => g.totalDue > 0);
+  const [search, setSearch] = useState('');
+  const allPending = groupTasks(filteredTasks).filter(g => g.totalDue > 0);
+  // Search by customer name, customer ID, mobile number or address
+  const sq = search.trim().toLowerCase();
+  const sqDigits = sq.replace(/\D/g, '');
+  const pending = !sq ? allPending : allPending.filter(g => {
+    const c = (g.customerId !== undefined && g.customerId !== null && customers.find(x => x.id === g.customerId)) || customers.find(x => x.name === g.customerName);
+    const phone = String((c && c.phone) || '');
+    return String(g.customerName || '').toLowerCase().includes(sq)
+      || String((c && c.custCode) || '').toLowerCase().includes(sq)
+      || String((c && c.address) || '').toLowerCase().includes(sq)
+      || phone.toLowerCase().includes(sq)
+      || (sqDigits.length >= 3 && phone.replace(/\D/g, '').includes(sqDigits));
+  });
 
   // Single atomic write for every due clearance below. Tasks and (when the payment was
   // Online) the Savings Account Balance go out in ONE persist() call — two back-to-back
@@ -1782,7 +1866,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   const commitPayment = (newTasks, onlineAdd, msg) => {
     const payload = { ...appData, tasks: newTasks };
     if (onlineAdd > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlineAdd;
-    persist(payload);
+    try { persist(payload); } catch (err) { showMessage('Payment could not be saved: ' + (err && err.message ? err.message : err), 'error'); return; }
     showMessage(msg + (onlineAdd > 0 ? ' — ₹' + onlineAdd + ' added to Savings Account Balance' : ''));
   };
 
@@ -1792,12 +1876,12 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment.', 'error');
     let onlineAdd = 0;
     const newTasks = tasks.map(t => {
-      if ((t.groupId !== undefined ? t.groupId : t.id) !== groupId) return t;
-      const remaining = Math.max(0, (t.price || 0) - (t.paidAmount || 0));
+      if (gidOf(t) !== groupId) return t;
+      const remaining = Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0));
       if (remaining <= 0) return t;
       if (m === 'Online') onlineAdd += remaining;
       const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining, mode: m }];
-      return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) };
+      return { ...t, status: 'Successful', paidAmount: Number(t.price) || 0, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) };
     });
     commitPayment(newTasks, onlineAdd, 'Marked as Successful (' + m + ')! Payment date: ' + todayStr);
   };
@@ -1808,11 +1892,11 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     let onlineAdd = 0;
     const newTasks = tasks.map(t => {
       if (t.id !== id) return t;
-      const remaining = Math.max(0, (t.price || 0) - (t.paidAmount || 0));
+      const remaining = Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0));
       if (remaining <= 0) return t;
       if (m === 'Online') onlineAdd += remaining;
       const hist = [...(t.paymentHistory || []), { date: todayStr, amount: remaining, mode: m }];
-      return { ...t, status: 'Successful', paidAmount: t.price, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) };
+      return { ...t, status: 'Successful', paidAmount: Number(t.price) || 0, paymentDate: todayStr, paymentHistory: hist, ...(m === 'Online' ? { utrNumber: (utr||'').trim(), screenshotFileName: (screenshot||'').trim() } : {}) };
     });
     commitPayment(newTasks, onlineAdd, 'Marked as Successful (' + m + ')! Payment date: ' + todayStr);
   };
@@ -1825,10 +1909,10 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     const m = mode || 'Cash';
     if (m === 'Online' && !(utr||'').trim()) return showMessage('Online payment-UTR Number is required for this payment.', 'error');
     if (m === 'Online' && !(screenshot||'').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment.', 'error');
-    const newPaid = Math.min(t.price || 0, (t.paidAmount || 0) + amt);
-    const applied = newPaid - (t.paidAmount || 0);
+    const newPaid = Math.min(Number(t.price) || 0, (Number(t.paidAmount) || 0) + amt);
+    const applied = newPaid - (Number(t.paidAmount) || 0);
     if (applied <= 0) return;
-    const done = newPaid >= (t.price || 0);
+    const done = newPaid >= (Number(t.price) || 0);
     const hist = [...(t.paymentHistory || []), { date: todayStr, amount: applied, mode: m }];
     const newTasks = tasks.map(x =>
       x.id === id
@@ -1862,10 +1946,16 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
       });
       exportToExcel(rows, `PendingDues_${fromDate}_to_${toDate}`);
     }}),
+    e('div', { className: 'flex items-center gap-2 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-2' },
+      e(Icon, { name: 'Search', size: 18 }),
+      e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search by Customer Name, ID, Mobile No or Address...', className: 'flex-1 outline-none text-sm py-1 bg-transparent' }),
+      search && e('button', { onClick: () => setSearch(''), className: 'text-xs text-gray-500 hover:text-gray-800 px-2' }, 'Clear'),
+      e('span', { className: 'text-xs text-gray-400 whitespace-nowrap' }, pending.length + ' of ' + allPending.length)
+    ),
     pending.length === 0
       ? e('div', { className: 'bg-white rounded-xl p-12 text-center border border-gray-100 shadow-sm' },
           e(Icon, { name: 'CheckCircle', size: 48 }),
-          e('p', { className: 'text-gray-500 mt-3 font-medium' }, 'No pending amounts! All cleared.')
+          e('p', { className: 'text-gray-500 mt-3 font-medium' }, sq ? 'No pending customer matches your search.' : 'No pending amounts! All cleared.')
         )
       : e('div', { className: 'space-y-3' },
           ...pending.map(g => {
@@ -1888,7 +1978,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
                   ),
                   e('div', { className: 'space-y-1.5 bg-gray-50 rounded-lg p-3' },
                     ...g.items.map(t => {
-                      const due = (t.price || 0) - (t.paidAmount || 0);
+                      const due = (Number(t.price) || 0) - (Number(t.paidAmount) || 0);
                       return e('div', { key: t.id, className: 'flex items-center justify-between text-sm' },
                         e('span', { className: 'text-gray-700' }, t.service, ' — ₹', t.price, ' (Paid ₹', t.paidAmount || 0, ')'),
                         due > 0
@@ -3643,8 +3733,8 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
                 e('div', { className: 'flex justify-end gap-2 items-center' },
                   e('button', { onClick: () => setPrintingReceipt(receiptFromGroup(g)), className: 'text-indigo-600 text-sm flex items-center gap-1 font-medium' }, e(Icon, { name: 'Printer', size: 16 }), ' Print'),
                   currentUser.role === 'admin' && e('button', { onClick: () => {
-                    const groupTasks_ = tasks.filter(t => (t.groupId !== undefined ? t.groupId : t.id) === g.groupId);
-                    const newTasks = tasks.filter(t => (t.groupId !== undefined ? t.groupId : t.id) !== g.groupId);
+                    const groupTasks_ = tasks.filter(t => gidOf(t) === g.groupId);
+                    const newTasks = tasks.filter(t => gidOf(t) !== g.groupId);
                     // Customer ID profiles are permanent now — deleting a service no longer
                     // removes the customer from Customer CRM (use its own delete button for that).
                     // Reverse any "Online" paid amounts out of Savings Account Balance too —
