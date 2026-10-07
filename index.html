@@ -30,13 +30,22 @@
 
   @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
   body, button, input, select, textarea { font-family: 'Poppins', sans-serif !important; }
-  .sc-login{background:#fff}
-  .sc-poster{background:#fff;padding:0;overflow:hidden}
-  @media (min-width:1024px){.sc-poster-img{transform:scale(1.16);transform-origin:14% 50%}}
-  .sc-poster-img{width:100%;height:auto;max-height:100vh;object-fit:contain;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 12%,#000 88%,transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 12%,#000 88%,transparent 100%)}
-  .sc-panel{background:#f5f8fd;border-left:1px solid #e1e8f3}
-  .sc-input{background:#fff;border:1px solid #cdd9ec;color:#0f2240}.sc-input:focus{border-color:#10b45f;box-shadow:0 0 0 2px rgba(16,180,95,.25)}
-  .sc-btn{background:linear-gradient(90deg,#1565c0,#10b45f);box-shadow:0 4px 14px rgba(16,180,95,.3)}.sc-btn:hover{filter:brightness(1.08)}
+  .sl-wrap{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow:hidden;background-color:#f5f8fd;background-size:cover;background-position:center}
+  .sl-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.66),rgba(245,249,255,.8));-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  .sl-card{position:relative;z-index:1;width:100%;max-width:430px;background:rgba(255,255,255,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.95);border-radius:24px;padding:40px 38px 30px;box-shadow:0 30px 80px -20px rgba(10,42,107,.28),0 8px 24px rgba(10,42,107,.08);overflow:hidden;animation:slUp .6s cubic-bezier(.2,.8,.2,1) both}
+  .sl-card:before{content:'';position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,#1565c0,#1fa5c9 50%,#10b45f)}
+  @keyframes slUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+  .sl-label{display:block;font-size:.78rem;font-weight:600;color:#3b4a66;margin-bottom:.4rem;letter-spacing:.02em}
+  .sl-field{position:relative}
+  .sl-ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#7d8fb0;display:flex}
+  .sl-input{width:100%;height:48px;padding:0 70px 0 44px;border:1.5px solid #d5e0f0;border-radius:12px;background:#f9fbff;color:#0f2240;font-size:.92rem;outline:none;transition:all .18s}
+  .sl-input:focus{border-color:#10b45f;background:#fff;box-shadow:0 0 0 4px rgba(16,180,95,.14)}
+  .sl-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:.72rem;font-weight:600;color:#1565c0;padding:6px 8px;border-radius:8px}
+  .sl-toggle:hover{background:#eaf2ff}
+  .sl-btn{width:100%;height:50px;border-radius:12px;color:#fff;font-weight:700;font-size:.95rem;letter-spacing:.02em;background:linear-gradient(90deg,#1565c0,#12a3a8 55%,#10b45f);box-shadow:0 10px 24px -8px rgba(16,180,95,.55);transition:transform .15s,box-shadow .15s,filter .15s}
+  .sl-btn:hover{transform:translateY(-1px);filter:brightness(1.06);box-shadow:0 14px 28px -8px rgba(16,180,95,.6)}
+  .sl-btn:active{transform:translateY(0)}
+  .sl-foot{display:flex;align-items:center;justify-content:center;gap:6px;font-size:.72rem;color:#7d8fb0}
   .aic-side { background: #243447; }
   .bg-aic-900{background:#243447}.border-aic-800{border-color:#2f4259}.border-aic-700{border-color:#3a506b}.bg-aic-800{background:#2f4259}
   .text-aic-300{color:#9fb0c3}.text-aic-400{color:#7f93a9}
@@ -642,25 +651,28 @@ function ExportBar({ fromDate, setFromDate, toDate, setToDate, onExport, label }
 function LoginScreen({ onLogin, message }) {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const go = () => { if (userId && password) onLogin(userId, password); };
-  const field = (label, icon, type, val, set) => e('div', null,
-    e('label', { className: 'block text-sm font-medium mb-1', style: { color: '#3b4a66' } }, label),
-    e('div', { className: 'relative' },
-      e('div', { className: 'absolute inset-y-0 left-0 pl-3 flex items-center', style: { color: '#7d8fb0' } }, e(Icon, { name: icon, size: 18 })),
-      e('input', { type, value: val, onChange: ev => set(ev.target.value), onKeyDown: ev => ev.key === 'Enter' && go(), className: 'sc-input w-full pl-10 pr-3 py-2.5 rounded-lg outline-none' })));
-  return e('div', { className: 'sc-login min-h-screen flex flex-col lg:flex-row' },
-    e('div', { className: 'sc-poster lg:flex-1 flex items-center justify-center' },
-      e('img', { src: SC_POSTER, alt: 'SevaCore — Powering Your Digital Seva Business', className: 'sc-poster-img' })),
-    e('div', { className: 'sc-panel flex flex-col justify-center items-center p-6 lg:p-10 w-full lg:w-[400px]' },
-      e('div', { className: 'w-full max-w-sm' },
-        e('h2', { className: 'text-2xl font-bold text-center', style: { color: '#0a2a6b' } }, 'Welcome to SevaCore'),
-        e('p', { className: 'text-xs mt-1 mb-6 flex items-center justify-center gap-1', style: { color: '#0e9a52' } }, e(Icon, { name: 'Wifi', size: 12 }), ' Live — Synced with all staff'),
-        message && e('div', { className: `mb-4 p-3 text-sm rounded-lg text-center font-medium border ${message.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}` }, message.text),
-        e('div', { className: 'space-y-5' },
-          field('User ID', 'User', 'text', userId, setUserId),
-          field('Password', 'Lock', 'password', password, setPassword),
-          e('button', { onClick: go, className: 'sc-btn w-full text-white font-bold py-3 rounded-lg' }, 'Login to Dashboard')),
-        e('p', { className: 'text-center text-xs mt-8', style: { color: '#7d8fb0' } }, 'Powering Your Digital Seva Business'))));
+  const field = (label, icon, type, val, set, extra) => e('div', null,
+    e('label', { className: 'sl-label' }, label),
+    e('div', { className: 'sl-field' },
+      e('span', { className: 'sl-ico' }, e(Icon, { name: icon, size: 18 })),
+      e('input', { type, value: val, autoComplete: type === 'password' ? 'current-password' : 'username', placeholder: extra && extra.ph, onChange: ev => set(ev.target.value), onKeyDown: ev => ev.key === 'Enter' && go(), className: 'sl-input' }),
+      extra && extra.toggle));
+  return e('div', { className: 'sl-wrap', style: { backgroundImage: 'url(' + SC_POSTER + ')' } },
+    e('div', { className: 'sl-veil' }),
+    e('div', { className: 'sl-card' },
+      e('img', { src: SC_LOGO_LIGHT, alt: 'SevaCore', style: { width: 230, maxWidth: '75%', height: 'auto', display: 'block', margin: '4px auto 22px' } }),
+      e('h2', { className: 'text-2xl font-bold text-center', style: { color: '#0a2a6b' } }, 'Welcome back'),
+      e('p', { className: 'text-sm text-center mt-1 mb-6', style: { color: '#6b7a96' } }, 'Sign in to continue to your SevaCore workspace'),
+      message && e('div', { className: `mb-4 p-3 text-sm rounded-xl text-center font-medium border ${message.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}` }, message.text),
+      e('div', { className: 'space-y-4' },
+        field('User ID', 'User', 'text', userId, setUserId, { ph: 'Enter your User ID' }),
+        field('Password', 'Lock', showPw ? 'text' : 'password', password, setPassword, { ph: 'Enter your password', toggle: e('button', { type: 'button', onClick: () => setShowPw(!showPw), className: 'sl-toggle' }, showPw ? 'Hide' : 'Show') }),
+        e('button', { onClick: go, className: 'sl-btn mt-2' }, 'Login to Dashboard')),
+      e('div', { className: 'mt-6 pt-5 border-t', style: { borderColor: '#e6edf7' } },
+        e('div', { className: 'sl-foot' }, e(Icon, { name: 'Shield', size: 13 }), 'Secure login', e('span', null, '•'), e(Icon, { name: 'Wifi', size: 13 }), 'Live — synced with all staff'))),
+    e('p', { className: 'relative text-xs mt-6', style: { color: '#6b7a96', zIndex: 1 } }, 'SevaCore — Powering Your Digital Seva Business'));
 }
 
 // ── DASHBOARD (graphical) ──
