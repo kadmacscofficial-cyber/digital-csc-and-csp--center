@@ -1115,7 +1115,7 @@ function WhatsAppTemplatesModal({ appData, persist, addAuditLog, showMessage, on
 const FAMILY_RELATIONS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Grandfather', 'Grandmother', 'Other'];
 const blankMember = () => ({ id: Date.now() + Math.floor(Math.random() * 100000), name: '', relation: 'Father', phone: '', gender: '', dob: '', docType: '', docNumber: '', work: '', notes: '' });
 // Same shape every time, no undefined values (Firebase rejects undefined)
-const cleanMember = m => ({ id: m.id, name: (m.name || '').trim(), relation: m.relation || 'Other', phone: String(m.phone || '').replace(/\D/g, '').slice(-10), gender: m.gender || '', dob: m.dob || '', docType: m.docType || '', docNumber: (m.docNumber || '').trim(), work: (m.work || '').trim(), notes: (m.notes || '').trim() });
+const cleanMember = m => ({ id: m.id, name: (m.name || '').trim(), relation: m.relation || 'Other', phone: _normPhone(m.phone), gender: m.gender || '', dob: m.dob || '', docType: m.docType || '', docNumber: (m.docNumber || '').trim(), work: (m.work || '').trim(), notes: (m.notes || '').trim() });
 const familyOf = c => Array.isArray(c && c.family) ? c.family : (c && c.family ? Object.values(c.family) : []);
 
 function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, appData, persist, showMessage }) {
@@ -1586,11 +1586,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     // number only, or one whose address was never broken into these fields), keep whatever
     // address was already on file (newC.address, populated from the customer record when
     // Edit was opened) instead of overwriting it with a blank string.
-    const famRaw = (newC.family || []).filter(m => (m.name || '').trim() || (m.phone || '').trim());
+    const famRaw = (newC.family || []).filter(m => ['name', 'phone', 'work', 'dob', 'docNumber', 'notes'].some(k => String(m[k] || '').trim()));
     for (const m of famRaw) {
       if (!(m.name || '').trim()) { showMessage('Family member name is required (or remove that row).', 'error'); return null; }
-      const mp = String(m.phone || '').replace(/\D/g, '');
-      if (mp && mp.length !== 10) { showMessage('Family member "' + m.name.trim() + '": mobile must be 10 digits (or leave blank).', 'error'); return null; }
+      const mp = _normPhone(m.phone);
+      if ((m.phone || '').trim() && mp.length !== 10) { showMessage('Family member "' + m.name.trim() + '": mobile must be 10 digits (or leave blank).', 'error'); return null; }
     }
     const family = famRaw.map(cleanMember);
     const addrBits = [newC.village, newC.post, newC.city].map(s => (s || '').trim()).filter(Boolean);
@@ -5103,7 +5103,7 @@ function App() {
           e('div', { className: `h-10 w-10 rounded-full flex items-center justify-center font-bold border ${isBanking?'bg-green-600 text-white border-green-500':isDashboard?'bg-purple-600 text-white border-purple-500':isCashClose?'bg-orange-500 text-white border-orange-400':'bg-indigo-100 text-indigo-600 border-indigo-200'}` }, currentUser.name.charAt(0))
         )
       ),
-      message && e('div', { className: `absolute top-20 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-lg font-medium text-white ${message.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`, style: { whiteSpace: 'nowrap' } }, message.text),
+      message && e('div', { className: `fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg font-medium text-white ${message.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`, style: { whiteSpace: 'normal', zIndex: 99999, maxWidth: '92vw', textAlign: 'center' } }, message.text),
       e('div', { className: 'flex-1 overflow-y-auto p-6 relative' },
         activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
