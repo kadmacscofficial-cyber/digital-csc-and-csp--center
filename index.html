@@ -327,7 +327,7 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
 // Same group key groupTasks() uses, so Pay / Delete handlers always find the right rows.
 function gidOf(t) { return (t.groupId !== undefined && t.groupId !== null) ? t.groupId : ('single-' + t.id); }
 // Service name with quantity, e.g. "PAN Card × 3" (shown everywhere a service is listed)
-function svcLabel(t) { return (t.service || '') + (Number(t.qty) > 1 ? ' × ' + Number(t.qty) : ''); }
+function svcLabel(t) { return (t.service || '') + (Number(t.qty) > 1 ? ' × ' + Number(t.qty) : '') + (t.forMemberName ? ' — for ' + t.forMemberName + (t.forMemberRelation ? ' (' + t.forMemberRelation + ')' : '') : ''); }
 // Gives a discount on an already-added service. `price` always holds the amount the customer
 // really has to pay, so the discount reduces it (capped at the remaining due); the original
 // amount is kept in grossPrice and the total discount in `discount`.
@@ -1229,7 +1229,10 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
               m.phone && e('p', null, '📞 ', m.phone),
               (m.gender || m.dob) && e('p', null, [m.gender, m.dob && ('DOB: ' + m.dob)].filter(Boolean).join(' · ')),
               m.docNumber && e('p', null, '🪪 ' + (m.docType || 'Document') + ': ' + m.docNumber),
-              m.notes && e('p', { className: 'text-gray-400' }, m.notes)))))),
+              m.notes && e('p', { className: 'text-gray-400' }, m.notes)),
+            (() => { const ms = mine.filter(t => t.forMemberId && String(t.forMemberId) === String(m.id)); return ms.length > 0 && e('div', { className: 'mt-2 pt-2 border-t border-blue-100 space-y-1' },
+              e('p', { className: 'text-xs font-semibold text-blue-700' }, 'Services (' + ms.length + ')'),
+              ms.map(t => { const du = Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0)); return e('div', { key: t.id, className: 'flex justify-between text-xs text-gray-600' }, e('span', null, (t.service || '') + (Number(t.qty) > 1 ? ' × ' + t.qty : '') + ' · ' + (t.date || '')), e('span', { className: du > 0 ? 'text-red-500 font-medium' : 'text-green-600' }, du > 0 ? 'Due ₹' + du : 'Paid')); })); })())))),
         e('div', null,
           e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Visit History (' + visits.length + ')'),
           visits.length === 0
@@ -1611,6 +1614,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     };
   };
 
+  // Which person a service row is for: the customer (self) or one of the family members in the form
+  const memberFields = row => {
+    const m = row.forMember && row.forMember !== 'self' ? (newC.family || []).find(x => String(x.id) === String(row.forMember) && (x.name || '').trim()) : null;
+    return m ? { forMemberId: m.id, forMemberName: m.name.trim(), forMemberRelation: m.relation || '' } : { forMemberId: '', forMemberName: '', forMemberRelation: '' };
+  };
   const handleAdd = () => {
     const cf = buildCustomerFields();
     if (!cf) return;
@@ -1628,7 +1636,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
     const cid = Date.now();
-    const allSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '')).join(', ');
+    const allSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '') + (memberFields(r).forMemberName ? ' (' + memberFields(r).forMemberName + ')' : '')).join(', ');
     const newTasks = validRows.map((row, i) => {
       const svcPrice = getRowPrice(row);
       const svcName = getRowName(row);
@@ -1637,7 +1645,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
     // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
@@ -1674,7 +1682,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
     const gid = Date.now();
-    const newSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '')).join(', ');
+    const newSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '') + (memberFields(r).forMemberName ? ' (' + memberFields(r).forMemberName + ')' : '')).join(', ');
     const newTasks = validRows.map((row, i) => {
       const svcPrice = getRowPrice(row);
       const svcName = getRowName(row);
@@ -1683,7 +1691,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     const updatedCustomers = customers.map(c => {
       if (c.id !== editingCustomerId) return c;
@@ -1826,6 +1834,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('option', { value: '' }, '-- Service ' + (idx + 1) + ' --'),
               ...allSvcs.map(s => e('option', { key: s.id, value: s.id }, s.id === 'others' ? 'Others (Custom)' : s.name + ' (₹' + s.price + ')'))
             ),
+            e('div', { className: 'flex flex-col' },
+              e('label', { className: 'text-xs text-blue-600 font-medium mb-0.5' }, 'Service For'),
+              e('select', { value: (row.forMember && (newC.family || []).some(m => String(m.id) === String(row.forMember) && (m.name || '').trim())) ? row.forMember : 'self', onChange: ev => updateServiceRow(row.id, 'forMember', ev.target.value), className: 'max-w-[170px] border border-blue-200 rounded-lg px-2 py-2 bg-blue-50 text-blue-800 outline-none focus:ring-2 focus:ring-blue-300 text-sm' },
+                e('option', { value: 'self' }, 'Self (' + ((newC.name || '').trim() || 'Customer') + ')'),
+                (newC.family || []).filter(m => (m.name || '').trim()).map(m => e('option', { key: m.id, value: m.id }, m.name.trim() + ' (' + (m.relation || 'Member') + ')')))),
             e('div', { className: 'flex flex-col' },
               e('label', { className: 'text-xs text-gray-400 mb-0.5' }, 'Qty'),
               e('input', { type: 'number', min: '1', value: row.qty || '1', onChange: ev => updateServiceRow(row.id, 'qty', ev.target.value), className: 'w-16 border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm text-center', placeholder: '1' })
