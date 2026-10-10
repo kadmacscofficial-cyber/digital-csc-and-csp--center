@@ -609,7 +609,6 @@ function Icon({ name, size = 20, className = '' }) {
     BarChart2: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
     AlertCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     DollarSign: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
-    Package: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
     ShoppingBag: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
     Landmark: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>`,
     Edit3: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -1112,6 +1111,13 @@ function WhatsAppTemplatesModal({ appData, persist, addAuditLog, showMessage, on
 // Opened from Customer CRM by clicking a customer's Customer ID. Read-only — shows every
 // visit this customer has ever made, so staff no longer need to change date filters or dig
 // through Service Tracking to see someone's full history.
+// ── FAMILY MEMBERS (stored on the customer as customer.family[]) ──
+const FAMILY_RELATIONS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Grandfather', 'Grandmother', 'Other'];
+const blankMember = () => ({ id: Date.now() + Math.floor(Math.random() * 100000), name: '', relation: 'Father', phone: '', gender: '', dob: '', docType: '', docNumber: '', work: '', notes: '' });
+// Same shape every time, no undefined values (Firebase rejects undefined)
+const cleanMember = m => ({ id: m.id, name: (m.name || '').trim(), relation: m.relation || 'Other', phone: String(m.phone || '').replace(/\D/g, '').slice(-10), gender: m.gender || '', dob: m.dob || '', docType: m.docType || '', docNumber: (m.docNumber || '').trim(), work: (m.work || '').trim(), notes: (m.notes || '').trim() });
+const familyOf = c => Array.isArray(c && c.family) ? c.family : (c && c.family ? Object.values(c.family) : []);
+
 function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, appData, persist, showMessage }) {
   const mine = tasksOfCustomer(customer, tasks);
   // ── Clear pending dues right from the profile ──
@@ -1214,6 +1220,16 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
               e('button', { onClick: () => payPart(t), className: 'text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Pay'),
               e('input', { type: 'number', value: discIn[t.id] || '', onChange: ev => setDiscIn({ ...discIn, [t.id]: ev.target.value }), placeholder: 'Discount ₹', className: 'w-24 border border-red-200 rounded px-1.5 py-1 text-xs outline-none' }),
               e('button', { onClick: () => giveDisc(t), className: 'text-red-600 border border-red-200 hover:bg-red-50 px-2.5 py-1 rounded text-xs font-medium' }, 'Discount'))))]),
+        familyOf(customer).length > 0 && e('div', null,
+          e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Family Members (' + familyOf(customer).length + ')'),
+          e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-2' }, familyOf(customer).map(m => e('div', { key: m.id, className: 'border border-blue-100 bg-blue-50/40 rounded-xl p-3 text-sm' },
+            e('div', { className: 'flex items-center justify-between' }, e('p', { className: 'font-semibold text-gray-800' }, m.name), e('span', { className: 'text-xs px-2 py-0.5 rounded-full bg-white border border-blue-200 text-blue-700' }, m.relation)),
+            e('div', { className: 'mt-1.5 space-y-0.5 text-xs text-gray-600' },
+              m.work && e('p', null, '💼 ', e('b', null, m.work)),
+              m.phone && e('p', null, '📞 ', m.phone),
+              (m.gender || m.dob) && e('p', null, [m.gender, m.dob && ('DOB: ' + m.dob)].filter(Boolean).join(' · ')),
+              m.docNumber && e('p', null, '🪪 ' + (m.docType || 'Document') + ': ' + m.docNumber),
+              m.notes && e('p', { className: 'text-gray-400' }, m.notes)))))),
         e('div', null,
           e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Visit History (' + visits.length + ')'),
           visits.length === 0
@@ -1498,7 +1514,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   // c.address and c.dob directly — the structured village/post/city/pin below are ALSO
   // kept on the customer record and are what the popup actually edits; address is the
   // auto-composed "Village, Post, City - PIN" string built from them on save.
-  const blankNewC = { name: '', phone: '', altPhone: '', village: '', post: '', city: '', pin: '', address: '', doc1Type: '', doc1Number: '', doc1Other: '', doc2Type: '', doc2Number: '', doc2Other: '', gender: '', dob: '', notes: '' };
+  const blankNewC = { name: '', phone: '', altPhone: '', village: '', post: '', city: '', pin: '', address: '', doc1Type: '', doc1Number: '', doc1Other: '', doc2Type: '', doc2Number: '', doc2Other: '', gender: '', dob: '', notes: '', family: [] };
   const [newC, setNewC] = useState(blankNewC);
   const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const [search, setSearch] = useState('');
@@ -1511,14 +1527,14 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   // returning customer from months ago must be findable without hunting for the right dates.
   // Customer ID is searchable too, so typing "12" finds CUS-0012.
   const filtered = (searchQ ? customers : dateFilteredCustomers)
-    .filter(c => !searchQ || [c.name, c.phone, c.altPhone, c.address, c.dob, c.custCode, c.doc1Number, c.doc2Number].some(v => (v || '').toLowerCase().includes(searchQ)));
+    .filter(c => !searchQ || [c.name, c.phone, c.altPhone, c.address, c.dob, c.custCode, c.doc1Number, c.doc2Number, ...familyOf(c).flatMap(m => [m.name, m.phone, m.docNumber])].some(v => (v || '').toLowerCase().includes(searchQ)));
 
   const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   // Opens the Update Customer form for a customer with one empty service row ready.
   // Used by the Edit button AND by "Add New Service" inside the customer profile.
   const openEditFor = (c, focusService) => {
     setEditingCustomerId(c.id);
-    setNewC({ name: c.name || '', phone: c.phone || '', altPhone: c.altPhone || '', village: c.village || '', post: c.post || '', city: c.city || '', pin: c.pin || '', address: c.address || '', doc1Type: c.doc1Type || '', doc1Number: c.doc1Number || '', doc1Other: c.doc1Other || '', doc2Type: c.doc2Type || '', doc2Number: c.doc2Number || '', doc2Other: c.doc2Other || '', gender: c.gender || '', dob: c.dob || '', notes: c.notes || '' });
+    setNewC({ name: c.name || '', phone: c.phone || '', altPhone: c.altPhone || '', village: c.village || '', post: c.post || '', city: c.city || '', pin: c.pin || '', address: c.address || '', doc1Type: c.doc1Type || '', doc1Number: c.doc1Number || '', doc1Other: c.doc1Other || '', doc2Type: c.doc2Type || '', doc2Number: c.doc2Number || '', doc2Other: c.doc2Other || '', gender: c.gender || '', dob: c.dob || '', notes: c.notes || '', family: familyOf(c).map(m => ({ ...m })) });
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(true);
     if (focusService) setTimeout(() => { const el = document.getElementById('crm-add-service'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
@@ -1570,6 +1586,13 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     // number only, or one whose address was never broken into these fields), keep whatever
     // address was already on file (newC.address, populated from the customer record when
     // Edit was opened) instead of overwriting it with a blank string.
+    const famRaw = (newC.family || []).filter(m => (m.name || '').trim() || (m.phone || '').trim());
+    for (const m of famRaw) {
+      if (!(m.name || '').trim()) { showMessage('Family member name is required (or remove that row).', 'error'); return null; }
+      const mp = String(m.phone || '').replace(/\D/g, '');
+      if (mp && mp.length !== 10) { showMessage('Family member "' + m.name.trim() + '": mobile must be 10 digits (or leave blank).', 'error'); return null; }
+    }
+    const family = famRaw.map(cleanMember);
     const addrBits = [newC.village, newC.post, newC.city].map(s => (s || '').trim()).filter(Boolean);
     let address;
     if (addrBits.length || pin) {
@@ -1584,7 +1607,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       address,
       doc1Type: newC.doc1Type || '', doc1Number: (newC.doc1Number || '').trim(), doc1Other: newC.doc1Type === 'Others' ? (newC.doc1Other || '').trim() : '',
       doc2Type: newC.doc2Type || '', doc2Number: (newC.doc2Number || '').trim(), doc2Other: newC.doc2Type === 'Others' ? (newC.doc2Other || '').trim() : '',
-      gender: newC.gender || '', dob: newC.dob || '', notes: (newC.notes || '').trim()
+      gender: newC.gender || '', dob: newC.dob || '', notes: (newC.notes || '').trim(), family
     };
   };
 
@@ -1630,12 +1653,11 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       customerIdSeq: nextSeq + 1
     };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
-    const stockRes = applyServiceStock(payload, services, validRows, cf.name, currentUser.name, todayStr);
     addAuditLog('Customer Added', custCode + ' — ' + cf.name, 'Phone: ' + cf.phone, payload);
     setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(false);
-    showMessage(custCode + ' created! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
+    showMessage(custCode + ' created! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
 
   const handleEditCustomer = (cust) => {
@@ -1680,13 +1702,12 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
     const payload = { ...appData, customers: updatedCustomers, tasks: updatedTasks };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
-    const stockRes = applyServiceStock(payload, services, validRows, cf.name, currentUser.name, todayStr);
     addAuditLog('Customer Updated', cust.name + ' → ' + cf.name, 'Phone: ' + cf.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
     setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
-    showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
+    showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
 
   return e('div', { className: 'space-y-4' },
@@ -1754,6 +1775,31 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
         })
       ),
       e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Others / Notes'), e('textarea', { value: newC.notes, onChange: ev => setNewC({...newC, notes: ev.target.value}), rows: 2, className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-sm', placeholder: 'Any other information about this customer (optional)' })),
+      // ── Family Members ──
+      e('div', { className: 'border border-blue-100 bg-blue-50/40 rounded-xl p-3 space-y-3' },
+        e('div', { className: 'flex items-center justify-between' },
+          e('div', null, e('p', { className: 'text-sm font-semibold text-gray-800' }, 'Family Members (' + (newC.family || []).length + ')'), e('p', { className: 'text-xs text-gray-500' }, 'Add the customer\'s family — each member\'s details and what work they do')),
+          e('button', { type: 'button', onClick: () => setNewC({ ...newC, family: [...(newC.family || []), blankMember()] }), className: 'text-white px-3 py-1.5 rounded-lg text-xs font-semibold', style: { background: '#0f9d8a' } }, '+ Add Member')),
+        (newC.family || []).map((m, idx) => {
+          const upd = (k, v) => setNewC({ ...newC, family: newC.family.map(x => x.id === m.id ? { ...x, [k]: v } : x) });
+          const ip = 'w-full border rounded-lg px-2 py-2 outline-none focus:ring-2 focus:ring-indigo-400 text-sm bg-white';
+          return e('div', { key: m.id, className: 'bg-white border border-gray-200 rounded-lg p-3 space-y-2' },
+            e('div', { className: 'flex items-center justify-between' }, e('span', { className: 'text-xs font-semibold text-blue-700' }, 'Member ' + (idx + 1)),
+              e('button', { type: 'button', onClick: () => setNewC({ ...newC, family: newC.family.filter(x => x.id !== m.id) }), className: 'text-xs text-red-500 hover:text-red-700' }, 'Remove')),
+            e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-2' },
+              e('input', { value: m.name, onChange: ev => upd('name', ev.target.value), placeholder: 'Full Name *', className: ip }),
+              e('select', { value: m.relation, onChange: ev => upd('relation', ev.target.value), className: ip }, FAMILY_RELATIONS.map(r => e('option', { key: r, value: r }, r))),
+              e('input', { value: m.phone, onChange: ev => upd('phone', ev.target.value), placeholder: 'Mobile (optional)', maxLength: 10, className: ip })),
+            e('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-2' },
+              e('select', { value: m.gender, onChange: ev => upd('gender', ev.target.value), className: ip }, e('option', { value: '' }, 'Gender'), e('option', null, 'Male'), e('option', null, 'Female'), e('option', null, 'Other')),
+              e('input', { type: 'date', value: m.dob, onChange: ev => upd('dob', ev.target.value), title: 'Date of Birth', className: ip }),
+              e('select', { value: m.docType, onChange: ev => upd('docType', ev.target.value), className: ip }, e('option', { value: '' }, 'Document'), ['Aadhaar Card', 'Voter ID', 'PAN Card', 'Ration Card', 'Others'].map(d => e('option', { key: d }, d))),
+              e('input', { value: m.docNumber, onChange: ev => upd('docNumber', ev.target.value), placeholder: 'Document No.', className: ip })),
+            e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-2' },
+              e('input', { value: m.work, onChange: ev => upd('work', ev.target.value), placeholder: 'Work / Occupation (e.g. Farmer, Student, Service)', className: ip }),
+              e('input', { value: m.notes, onChange: ev => upd('notes', ev.target.value), placeholder: 'Note (optional)', className: ip })));
+        }),
+        (newC.family || []).length === 0 && e('p', { className: 'text-xs text-gray-400 text-center py-1' }, 'No family members added.')),
       // Edit mode only: show what this customer already has, so it is clear the rows below
       // are ADDITIONAL services that will be added when "Update Customer" is pressed.
       editingCustomerId && (() => {
@@ -1880,7 +1926,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('td', { className: 'p-4' },
                 e('button', { onClick: () => setProfileCustomer(c), title: 'View full profile & visit history', className: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-xs font-mono font-semibold border border-indigo-200' }, c.custCode || '—')
               ),
-              e('td', { className: 'p-4 font-medium text-gray-800' }, c.name),
+              e('td', { className: 'p-4 font-medium text-gray-800' }, c.name, familyOf(c).length > 0 && e('button', { onClick: () => setProfileCustomer(c), title: 'View family members', className: 'ml-2 text-xs px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 font-medium' }, '👪 ' + familyOf(c).length)),
               e('td', { className: 'p-4 text-gray-600' }, c.phone),
               e('td', { className: 'p-4 text-gray-500 text-sm' }, c.address || '—'),
               e('td', { className: 'p-4 text-gray-500 text-sm' }, c.dob || '—'),
@@ -2222,161 +2268,6 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
 }
 
 // ── EXPENSES ──
-// Deducts stock for services linked to a stock item (e.g. "PVC Card Print" uses PVC Card).
-// Mutates `payload` (stockItems + stockLog) so it is saved in the same write as the customer/task.
-// Never blocks a sale: if stock is short it goes to 0 and the shortage is reported.
-function applyServiceStock(payload, services, rows, customerName, staffName, dateStr) {
-  const toArr = v => !v ? [] : (Array.isArray(v) ? v : Object.values(v));
-  let items = toArr(payload.stockItems), log = toArr(payload.stockLog);
-  const used = [], short = [];
-  (rows || []).forEach(row => {
-    const svc = services.find(x => x.id === parseInt(row.serviceId));
-    if (!svc || !svc.stockItemId) return;
-    const idx = items.findIndex(i => i.id === svc.stockItemId);
-    if (idx < 0) return;
-    const it = items[idx];
-    const need = (Number(svc.stockQty) || 1) * Math.max(1, parseInt(row.qty) || 1);
-    const take = Math.min(need, Math.max(0, Number(it.qty) || 0));
-    if (need > take) short.push(it.name + ' (needed ' + need + ', had ' + take + ')');
-    if (take <= 0) return;
-    const bal = (Number(it.qty) || 0) - take;
-    items = items.map((x, k) => k === idx ? { ...x, qty: bal } : x);
-    log = [...log, { id: Date.now() + log.length + Math.floor(Math.random() * 1000), itemId: it.id, itemName: it.name, type: 'out', qty: take, unitCost: Number(it.cost) || 0, date: dateStr, reason: 'Used for customer', note: customerName + ' — ' + svc.name, by: staffName, balance: bal }];
-    used.push(it.name + ' −' + take);
-  });
-  if (used.length || short.length) { payload.stockItems = items; payload.stockLog = log; }
-  return { used, short };
-}
-const stockNote = r => (r.used.length ? ' — Stock: ' + r.used.join(', ') : '') + (r.short.length ? ' ⚠ Low stock: ' + r.short.join(', ') : '');
-
-// ── STOCK MANAGEMENT ──
-const STOCK_UNITS = ['Pcs', 'Box', 'Packet', 'Roll', 'Sheet', 'Set', 'Bottle', 'Ltr', 'Kg'];
-const STOCK_QUICK = [['PVC Card', 'Pcs', 20], ['A4 Paper', 'Packet', 2], ['Lamination Pouch', 'Pcs', 20], ['Photo Paper', 'Packet', 2], ['Printer Ink', 'Bottle', 2]];
-
-function StockManager({ stockItems, stockLog, expenses, appData, currentUser, showMessage, addAuditLog }) {
-  const admin = currentUser.role === 'admin';
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [modal, setModal] = useState(null); // { type: 'item'|'in'|'out'|'history', item? , prefill? }
-  const [f, setF] = useState({});
-  const num = v => Number(v) || 0;
-  const stat = it => num(it.qty) <= 0 ? 'out' : (num(it.minQty) > 0 && num(it.qty) <= num(it.minQty) ? 'low' : 'ok');
-  const statUi = { out: ['Out of Stock', 'bg-red-50 text-red-600 border-red-200'], low: ['Low Stock', 'bg-amber-50 text-amber-700 border-amber-200'], ok: ['In Stock', 'bg-green-50 text-green-700 border-green-200'] };
-
-  const items = stockItems.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  const lowN = items.filter(i => stat(i) === 'low').length, outN = items.filter(i => stat(i) === 'out').length;
-  const value = items.reduce((s, i) => s + num(i.qty) * num(i.cost), 0);
-  const shown = items.filter(i => (filter === 'all' || stat(i) === filter || (filter === 'alert' && stat(i) !== 'ok')) && (!q.trim() || String(i.name).toLowerCase().includes(q.trim().toLowerCase())));
-  const recent = stockLog.slice().sort((a, b) => b.id - a.id).slice(0, 8);
-
-  const open = (type, item, prefill) => { setModal({ type, item, prefill }); setF(type === 'item' ? { name: (item && item.name) || (prefill && prefill[0]) || '', unit: (item && item.unit) || (prefill && prefill[1]) || 'Pcs', qty: '', cost: item ? item.cost : '', minQty: item ? item.minQty : (prefill ? prefill[2] : ''), } : type === 'in' ? { qty: '', cost: item.cost || '', date: todayStr, note: '', addExp: true } : { qty: '', reason: 'Used for customer', date: todayStr, note: '' }); };
-  const save = (items2, log2, exp2, action, details, related) => {
-    const payload = { ...appData, stockItems: items2, stockLog: log2, ...(exp2 ? { expenses: exp2 } : {}) };
-    addAuditLog(action, details, related, payload);
-    setModal(null);
-  };
-  const mkLog = (it, type, qty, unitCost, date, reason, note, balance) => ({ id: Date.now() + Math.floor(Math.random() * 100), itemId: it.id, itemName: it.name, type, qty, unitCost: unitCost || 0, date, reason: reason || '', note: note || '', by: currentUser.name, balance });
-
-  const submit = () => {
-    const m = modal;
-    if (m.type === 'item') {
-      if (!f.name.trim()) return showMessage('Item name is required.', 'error');
-      if (m.item) {
-        const items2 = stockItems.map(i => i.id === m.item.id ? { ...i, name: f.name.trim(), unit: f.unit, cost: num(f.cost), minQty: num(f.minQty) } : i);
-        return save(items2, stockLog, null, 'Stock Item Edited', f.name.trim(), '');
-      }
-      if (stockItems.some(i => String(i.name).toLowerCase() === f.name.trim().toLowerCase())) return showMessage('This item already exists.', 'error');
-      const it = { id: Date.now(), name: f.name.trim(), unit: f.unit, qty: num(f.qty), cost: num(f.cost), minQty: num(f.minQty), createdAt: todayStr };
-      const log2 = num(f.qty) > 0 ? [...stockLog, mkLog(it, 'in', num(f.qty), num(f.cost), todayStr, 'Opening stock', '', num(f.qty))] : stockLog;
-      return save([...stockItems, it], log2, null, 'Stock Item Added', it.name, 'Opening ' + it.qty + ' ' + it.unit);
-    }
-    const it = m.item, qty = num(f.qty);
-    if (qty <= 0) return showMessage('Enter a valid quantity.', 'error');
-    if (m.type === 'in') {
-      const cost = f.cost === '' ? num(it.cost) : num(f.cost);
-      const newQty = num(it.qty) + qty;
-      // weighted-average cost keeps stock value correct across purchases at different prices
-      const avg = newQty > 0 ? ((num(it.qty) * num(it.cost)) + qty * cost) / newQty : cost;
-      const items2 = stockItems.map(i => i.id === it.id ? { ...i, qty: newQty, cost: Math.round(avg * 100) / 100 } : i);
-      const exp2 = f.addExp && cost > 0 ? [...expenses, { id: Date.now() + 1, name: 'Stock: ' + it.name + ' × ' + qty, remarks: (f.note || 'Stock purchase'), cost: Math.round(qty * cost * 100) / 100, date: f.date || todayStr, addedBy: currentUser.name }] : null;
-      return save(items2, [...stockLog, mkLog(it, 'in', qty, cost, f.date || todayStr, 'Purchase', f.note, newQty)], exp2, 'Stock In', it.name + ' +' + qty + ' ' + it.unit, cost ? '₹' + cost + '/unit' : '');
-    }
-    if (qty > num(it.qty)) return showMessage('Only ' + num(it.qty) + ' ' + it.unit + ' in stock.', 'error');
-    const newQty = num(it.qty) - qty;
-    save(stockItems.map(i => i.id === it.id ? { ...i, qty: newQty } : i), [...stockLog, mkLog(it, 'out', qty, num(it.cost), f.date || todayStr, f.reason, f.note, newQty)], null, 'Stock Out', it.name + ' -' + qty + ' ' + it.unit, f.reason);
-  };
-  const del = it => {
-    if (!window.confirm('Delete "' + it.name + '" and its history?')) return;
-    save(stockItems.filter(i => i.id !== it.id), stockLog.filter(l => l.itemId !== it.id), null, 'Stock Item Deleted', it.name, '');
-  };
-
-  const kpi = (title, val, color, icon) => e('div', { className: 'aic-kpi' }, e('div', { className: 'flex items-center gap-2 text-xs text-gray-500 font-medium' }, e(Icon, { name: icon, size: 14 }), title), e('div', { className: 'text-xl font-semibold mt-2', style: { color } }, val));
-  const inp = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400';
-  const lbl = t => e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, t);
-  const set = (k, v) => setF({ ...f, [k]: v });
-  const m = modal, it = m && m.item;
-  const titles = { item: it ? 'Edit Item' : 'Add Stock Item', in: 'Stock In — ' + (it && it.name), out: 'Stock Out — ' + (it && it.name), history: 'History — ' + (it && it.name) };
-  const hist = it ? stockLog.filter(l => l.itemId === it.id).sort((a, b) => b.id - a.id) : [];
-  const pill = (id, l) => e('button', { key: id, onClick: () => setFilter(id), className: 'aic-pill' + (filter === id ? ' on' : '') }, l);
-
-  return e('div', { className: 'space-y-5' },
-    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
-      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Stock Management'), e('p', { className: 'text-sm text-gray-500' }, 'PVC card, paper, ink and every item your center uses')),
-      admin && e('button', { onClick: () => open('item'), className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, e(Icon, { name: 'Plus', size: 16 }), 'Add Item')),
-    e('div', { className: 'grid grid-cols-2 xl:grid-cols-4 gap-3' },
-      kpi('Total Items', items.length, '#0f2240', 'ShoppingBag'),
-      admin && kpi('Stock Value', inr(value), '#1565c0', 'DollarSign'),
-      kpi('Low Stock', lowN, lowN ? '#b45309' : '#0f9d8a', 'AlertCircle'),
-      kpi('Out of Stock', outN, outN ? '#dc2626' : '#0f9d8a', 'AlertCircle')),
-    (lowN + outN) > 0 && e('div', { className: 'rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800' },
-      e('b', null, 'Reorder needed: '), items.filter(i => stat(i) !== 'ok').map(i => i.name + ' (' + num(i.qty) + ' ' + i.unit + ' left)').join(', ')),
-    items.length === 0 ? e('div', { className: 'aic-card text-center py-10' },
-      e('p', { className: 'text-gray-600 font-medium' }, 'No stock items yet.'),
-      e('p', { className: 'text-sm text-gray-400 mt-1 mb-4' }, admin ? 'Start with a common item or add your own:' : 'Ask admin to add stock items.'),
-      admin && e('div', { className: 'flex flex-wrap justify-center gap-2' }, STOCK_QUICK.map(x => e('button', { key: x[0], onClick: () => open('item', null, x), className: 'aic-pill' }, '+ ' + x[0])))) : [
-    e('div', { key: 'chart', className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
-      e(Card, { title: 'Stock Level vs Alert Level', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', height: 240, data: { labels: items.slice(0, 14).map(i => i.name), datasets: [{ label: 'In stock', data: items.slice(0, 14).map(i => num(i.qty)), backgroundColor: items.slice(0, 14).map(i => ({ ok: '#1565c0', low: '#f59e0b', out: '#dc2626' })[stat(i)]), borderRadius: 6 }, { label: 'Alert level', data: items.slice(0, 14).map(i => num(i.minQty)), backgroundColor: '#cbd5e1', borderRadius: 6 }] }, options: { scales: { y: { grid: { color: '#eef1f5' }, ticks: { font: { size: 10 } }, border: { display: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
-      e(Card, { title: 'Recent Movements' }, recent.length ? e('div', { className: 'space-y-2' }, recent.map(l => e('div', { key: l.id, className: 'flex items-center justify-between text-xs' },
-        e('div', null, e('p', { className: 'font-medium text-gray-700' }, l.itemName), e('p', { className: 'text-gray-400' }, l.date + ' · ' + (l.reason || '') + ' · ' + l.by)),
-        e('span', { className: 'font-semibold ' + (l.type === 'in' ? 'text-green-600' : 'text-red-500') }, (l.type === 'in' ? '+' : '-') + l.qty)))) : e('p', { className: 'text-sm text-gray-400' }, 'No movements yet.'))),
-    e('div', { key: 'tbl', className: 'aic-card' },
-      e('div', { className: 'flex flex-wrap items-center justify-between gap-3 mb-3' },
-        e('div', { className: 'flex gap-2' }, pill('all', 'All'), pill('alert', 'Needs Reorder'), pill('out', 'Out of Stock')),
-        e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search item...', className: 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none w-56' })),
-      e('div', { className: 'overflow-x-auto' }, e('table', { className: 'w-full text-sm' },
-        e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['Item', 'In Stock', 'Alert At', admin && 'Unit Cost', admin && 'Value', 'Status', 'Actions'].filter(Boolean).map(h => e('th', { key: h, className: 'py-2 pr-3 font-semibold' }, h)))),
-        e('tbody', null, shown.length === 0 ? e('tr', null, e('td', { colSpan: 7, className: 'py-6 text-center text-gray-400' }, 'No items found.')) : shown.map(i => e('tr', { key: i.id, className: 'border-b border-gray-50 hover:bg-gray-50' },
-          e('td', { className: 'py-2.5 pr-3 font-medium text-gray-800' }, i.name),
-          e('td', { className: 'py-2.5 pr-3 font-semibold', style: { color: stat(i) === 'out' ? '#dc2626' : stat(i) === 'low' ? '#b45309' : '#0f2240' } }, num(i.qty) + ' ', e('span', { className: 'text-xs text-gray-400 font-normal' }, i.unit)),
-          e('td', { className: 'py-2.5 pr-3 text-gray-500' }, num(i.minQty) || '-'),
-          admin && e('td', { className: 'py-2.5 pr-3 text-gray-600' }, inr(num(i.cost))),
-          admin && e('td', { className: 'py-2.5 pr-3 text-gray-600' }, inr(num(i.qty) * num(i.cost))),
-          e('td', { className: 'py-2.5 pr-3' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + statUi[stat(i)][1] }, statUi[stat(i)][0])),
-          e('td', { className: 'py-2.5' }, e('div', { className: 'flex flex-wrap gap-1' },
-            admin && e('button', { onClick: () => open('in', i), className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2 py-1 rounded text-xs font-medium' }, '+ In'),
-            e('button', { onClick: () => open('out', i), className: 'text-red-600 border border-red-200 hover:bg-red-50 px-2 py-1 rounded text-xs font-medium' }, '− Out'),
-            e('button', { onClick: () => open('history', i), className: 'text-gray-600 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded text-xs' }, 'History'),
-            admin && e('button', { onClick: () => open('item', i), className: 'text-blue-600 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded text-xs' }, 'Edit'),
-            admin && e('button', { onClick: () => del(i), className: 'text-gray-400 hover:text-red-600 px-1', title: 'Delete' }, e(Icon, { name: 'Trash2', size: 15 }))))))))))],
-    m && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-4', style: { background: 'rgba(7,26,58,.45)' }, onClick: () => setModal(null) },
-      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ' + (m.type === 'history' ? 'max-w-2xl' : 'max-w-md'), onClick: ev => ev.stopPropagation() },
-        e('div', { className: 'flex items-center justify-between px-5 py-4 border-b' }, e('h3', { className: 'font-semibold', style: { color: '#0f2240' } }, titles[m.type]), e('button', { onClick: () => setModal(null), className: 'text-gray-400 hover:text-gray-700' }, e(Icon, { name: 'X', size: 18 }))),
-        m.type === 'history' ? e('div', { className: 'p-5' }, hist.length === 0 ? e('p', { className: 'text-center text-gray-400 py-4' }, 'No history yet.') : e('table', { className: 'w-full text-xs' },
-          e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' }, ['Date', 'Type', 'Qty', 'Reason / Note', 'By', 'Balance'].map(h => e('th', { key: h, className: 'py-2 pr-2' }, h)))),
-          e('tbody', null, hist.map(l => e('tr', { key: l.id, className: 'border-b border-gray-50' }, e('td', { className: 'py-2 pr-2' }, l.date), e('td', { className: 'py-2 pr-2 font-semibold ' + (l.type === 'in' ? 'text-green-600' : 'text-red-500') }, l.type === 'in' ? 'IN' : 'OUT'), e('td', { className: 'py-2 pr-2 font-semibold' }, l.qty), e('td', { className: 'py-2 pr-2 text-gray-500' }, [l.reason, l.note].filter(Boolean).join(' — ')), e('td', { className: 'py-2 pr-2 text-gray-500' }, l.by), e('td', { className: 'py-2 pr-2' }, l.balance)))))) :
-        e('div', { className: 'p-5 space-y-3' },
-          m.type === 'item' && e('div', null, lbl('Item Name *'), e('input', { value: f.name, onChange: ev => set('name', ev.target.value), placeholder: 'e.g. PVC Card', className: inp })),
-          m.type === 'item' && e('div', { className: 'grid grid-cols-2 gap-3' }, e('div', null, lbl('Unit'), e('select', { value: f.unit, onChange: ev => set('unit', ev.target.value), className: inp }, STOCK_UNITS.map(u => e('option', { key: u }, u)))), e('div', null, lbl('Alert when stock ≤'), e('input', { type: 'number', value: f.minQty, onChange: ev => set('minQty', ev.target.value), placeholder: 'e.g. 10', className: inp }))),
-          m.type === 'item' && e('div', { className: 'grid grid-cols-2 gap-3' }, !it && e('div', null, lbl('Opening Stock'), e('input', { type: 'number', value: f.qty, onChange: ev => set('qty', ev.target.value), placeholder: '0', className: inp })), e('div', null, lbl('Cost per unit (₹)'), e('input', { type: 'number', value: f.cost, onChange: ev => set('cost', ev.target.value), placeholder: '0', className: inp }))),
-          m.type !== 'item' && e('div', { className: 'text-xs text-gray-500 bg-gray-50 rounded-lg p-2' }, 'Current stock: ', e('b', null, num(it.qty) + ' ' + it.unit)),
-          m.type !== 'item' && e('div', { className: 'grid grid-cols-2 gap-3' }, e('div', null, lbl('Quantity *'), e('input', { type: 'number', value: f.qty, onChange: ev => set('qty', ev.target.value), className: inp })), e('div', null, lbl('Date'), e('input', { type: 'date', value: f.date, onChange: ev => set('date', ev.target.value), className: inp }))),
-          m.type === 'in' && e('div', null, lbl('Cost per unit (₹)'), e('input', { type: 'number', value: f.cost, onChange: ev => set('cost', ev.target.value), className: inp })),
-          m.type === 'out' && e('div', null, lbl('Reason'), e('select', { value: f.reason, onChange: ev => set('reason', ev.target.value), className: inp }, ['Used for customer', 'Sold', 'Damaged / Wasted', 'Lost', 'Other'].map(r => e('option', { key: r }, r)))),
-          m.type !== 'item' && e('div', null, lbl('Note (optional)'), e('input', { value: f.note, onChange: ev => set('note', ev.target.value), placeholder: m.type === 'in' ? 'Supplier / bill no.' : 'Customer name etc.', className: inp })),
-          m.type === 'in' && e('label', { className: 'flex items-center gap-2 text-sm text-gray-600' }, e('input', { type: 'checkbox', checked: !!f.addExp, onChange: ev => set('addExp', ev.target.checked) }), 'Also add this purchase to Expenses'),
-          e('button', { onClick: submit, className: 'w-full text-white font-semibold py-2.5 rounded-lg', style: { background: m.type === 'out' ? '#dc2626' : '#0f9d8a' } }, m.type === 'item' ? (it ? 'Save Changes' : 'Add Item') : m.type === 'in' ? 'Add Stock' : 'Remove Stock')))));
-}
-
 function Expenses({ expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }) {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', remarks: '', cost: '', date: todayStr });
@@ -4766,7 +4657,7 @@ function StaffPerformance({ tasks, users, expenses }) {
 }
 
 // ── SETTINGS ──
-function SystemSettings({ currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage, stockItems = [] }) {
+function SystemSettings({ currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage }) {
   const [tab, setTab] = useState(currentUser.role === 'admin' ? 'profile' : 'security');
   const adminTabs = [{ id: 'profile', label: 'Business Profile', icon: 'Building2' }, { id: 'services', label: 'Services & Pricing', icon: 'Tag' }, { id: 'staff', label: 'Staff Management', icon: 'Users' }, { id: 'security', label: 'Security', icon: 'Lock' }];
   const tabs = currentUser.role === 'admin' ? adminTabs : [{ id: 'security', label: 'Security', icon: 'Lock' }];
@@ -4811,9 +4702,6 @@ function SystemSettings({ currentUser, users, setUsers, services, setServices, b
             e('div', { key: s.id, className: 'flex items-center justify-between bg-white border rounded-xl px-4 py-3' },
               e('span', { className: 'font-medium text-gray-800' }, s.name),
               e('div', { className: 'flex items-center gap-3' },
-                e('div', { className: 'flex items-center gap-1 text-xs text-gray-500', title: 'When this service is added for a customer, this stock item is reduced automatically' },
-                  e('select', { value: s.stockItemId || '', onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, stockItemId: ev.target.value ? Number(ev.target.value) : '', stockQty: x.stockQty || 1 } : x)), className: 'border rounded px-1.5 py-1 text-xs outline-none max-w-[140px]' }, e('option', { value: '' }, 'No stock link'), stockItems.map(i => e('option', { key: i.id, value: i.id }, 'Uses: ' + i.name))),
-                  s.stockItemId && e('input', { type: 'number', min: 1, value: s.stockQty || 1, onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, stockQty: Math.max(1, Number(ev.target.value) || 1) } : x)), className: 'w-14 border rounded px-1.5 py-1 text-xs outline-none', title: 'Quantity used per service' }), s.stockItemId && '/ service'),
                 e('div', { className: 'flex items-center gap-1 text-sm' }, '₹', e('input', { type: 'number', value: s.price, onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, price: Number(ev.target.value) } : x)), className: 'w-24 border rounded px-2 py-1 outline-none' })),
                 e('button', { onClick: () => { setServices(services.filter(x => x.id !== s.id)); showMessage('Removed', 'error'); }, className: 'text-red-500 hover:bg-red-50 p-1.5 rounded-lg' }, e(Icon, { name: 'Trash2', size: 17 }))
               )
@@ -5161,7 +5049,6 @@ function App() {
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
-    { id: 'stock', label: 'Stock', icon: 'Package' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
     { id: 'sss', label: 'SSS Reports', icon: 'Shield' },
@@ -5172,7 +5059,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -5225,14 +5112,13 @@ function App() {
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
-        activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
         activeTab === 'sss' && e(SSSReports, { appData, persist, currentUser, showMessage }),
         activeTab === 'performance' && currentUser.role === 'admin' && e(StaffPerformance, { tasks, users, expenses }),
         activeTab === 'auditlog' && currentUser.role === 'admin' && e(AuditLog, { auditLogs: gl('auditLogs') || [] }),
         activeTab === 'salary'      && activeTab === 'salary' && e(StaffSalary, { users, appData, persist, showMessage, currentUser, businessProfile }),
-        activeTab === 'settings' && e(SystemSettings, { stockItems: gl('stockItems'), currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage })
+        activeTab === 'settings' && e(SystemSettings, { currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage })
       )
     ),
     printingReceipt && e(ReceiptModal, { receipt: printingReceipt, businessProfile, onClose: () => setPrintingReceipt(null) })
