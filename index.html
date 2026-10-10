@@ -54,6 +54,36 @@
   @keyframes pmPop{from{opacity:0;transform:translateY(24px) scale(.94)}to{opacity:1;transform:none}}
   @keyframes pmUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){.pm-overlay,.pm-card,.pm-card .pm-col>*{animation:none!important}}
+  /* ===== SevaCore motion system ===== */
+  @keyframes pgIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @keyframes cardIn{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+  @keyframes rowIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+  @keyframes navIn{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+  @keyframes hdIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,-18px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+  @keyframes scPulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.045);opacity:1}}
+  .pg-enter{animation:pgIn .45s cubic-bezier(.2,.8,.2,1) backwards}
+  .hd-in{animation:hdIn .4s cubic-bezier(.2,.8,.2,1) backwards}
+  .toast-in{animation:toastIn .38s cubic-bezier(.2,.9,.25,1.1) backwards}
+  .aic-kpi,.aic-card,.anim-card{animation:cardIn .55s cubic-bezier(.2,.8,.2,1) backwards;transition:transform .25s ease,box-shadow .25s ease}
+  .aic-kpi:hover,.anim-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px -12px rgba(15,34,64,.28)}
+  .aic-card:hover{box-shadow:0 10px 26px -14px rgba(15,34,64,.25)}
+  .aic-kpi:nth-child(1),.anim-card:nth-child(1){animation-delay:0.08s}.aic-kpi:nth-child(2),.anim-card:nth-child(2){animation-delay:0.13s}.aic-kpi:nth-child(3),.anim-card:nth-child(3){animation-delay:0.18s}.aic-kpi:nth-child(4),.anim-card:nth-child(4){animation-delay:0.23s}.aic-kpi:nth-child(5),.anim-card:nth-child(5){animation-delay:0.28s}.aic-kpi:nth-child(6),.anim-card:nth-child(6){animation-delay:0.33s}.aic-kpi:nth-child(7),.anim-card:nth-child(7){animation-delay:0.38s}.aic-kpi:nth-child(8),.anim-card:nth-child(8){animation-delay:0.43s}.aic-kpi:nth-child(9),.anim-card:nth-child(9){animation-delay:0.48s}.aic-kpi:nth-child(10),.anim-card:nth-child(10){animation-delay:0.53s}.aic-kpi:nth-child(11),.anim-card:nth-child(11){animation-delay:0.58s}.aic-kpi:nth-child(12),.anim-card:nth-child(12){animation-delay:0.63s}.aic-card:nth-child(1){animation-delay:0.12s}.aic-card:nth-child(2){animation-delay:0.19s}.aic-card:nth-child(3){animation-delay:0.26s}.aic-card:nth-child(4){animation-delay:0.33s}.aic-card:nth-child(5){animation-delay:0.4s}.aic-card:nth-child(6){animation-delay:0.47s}.aic-card:nth-child(7){animation-delay:0.54s}.aic-card:nth-child(8){animation-delay:0.61s}
+  tbody tr{animation:rowIn .38s ease backwards;transition:background-color .15s}
+  tbody tr:nth-child(1){animation-delay:0.05s}tbody tr:nth-child(2){animation-delay:0.08s}tbody tr:nth-child(3){animation-delay:0.11s}tbody tr:nth-child(4){animation-delay:0.14s}tbody tr:nth-child(5){animation-delay:0.17s}tbody tr:nth-child(6){animation-delay:0.2s}tbody tr:nth-child(7){animation-delay:0.23s}tbody tr:nth-child(8){animation-delay:0.26s}tbody tr:nth-child(9){animation-delay:0.29s}tbody tr:nth-child(10){animation-delay:0.32s}tbody tr:nth-child(11){animation-delay:0.35s}tbody tr:nth-child(12){animation-delay:0.38s}
+  .aic-nav{animation:navIn .45s cubic-bezier(.2,.8,.2,1) backwards;transition:background .2s,transform .2s,box-shadow .2s}
+  .aic-nav:hover{transform:translateX(4px)}
+  .aic-nav.on{box-shadow:0 6px 16px -6px rgba(15,157,138,.65)}
+  .aic-nav span:first-child{transition:transform .25s}
+  .aic-nav:hover span:first-child{transform:scale(1.18) rotate(-4deg)}
+  .aic-nav:nth-child(1){animation-delay:0.09s}.aic-nav:nth-child(2){animation-delay:0.13s}.aic-nav:nth-child(3){animation-delay:0.17s}.aic-nav:nth-child(4){animation-delay:0.21s}.aic-nav:nth-child(5){animation-delay:0.25s}.aic-nav:nth-child(6){animation-delay:0.29s}.aic-nav:nth-child(7){animation-delay:0.33s}.aic-nav:nth-child(8){animation-delay:0.37s}.aic-nav:nth-child(9){animation-delay:0.41s}.aic-nav:nth-child(10){animation-delay:0.45s}.aic-nav:nth-child(11){animation-delay:0.49s}.aic-nav:nth-child(12){animation-delay:0.53s}.aic-nav:nth-child(13){animation-delay:0.57s}.aic-nav:nth-child(14){animation-delay:0.61s}.aic-nav:nth-child(15){animation-delay:0.65s}.aic-nav:nth-child(16){animation-delay:0.69s}.aic-nav:nth-child(17){animation-delay:0.73s}.aic-nav:nth-child(18){animation-delay:0.77s}.aic-nav:nth-child(19){animation-delay:0.81s}.aic-nav:nth-child(20){animation-delay:0.85s}
+  .fixed.inset-0.z-50:not(.pm-overlay){animation:pmFade .22s ease backwards}
+  .fixed.inset-0.z-50:not(.pm-overlay)>div{animation:pmPop .36s cubic-bezier(.2,.9,.25,1.08) backwards}
+  button{transition:background-color .18s,color .18s,border-color .18s,box-shadow .18s,filter .18s,transform .12s}
+  button:not(:disabled):active{transform:scale(.97)}
+  input,select,textarea{transition:border-color .18s,box-shadow .18s,background-color .18s}
+  @media (prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+  @media print{*,*:before,*:after{animation:none!important;transition:none!important;transform:none!important}}
   .aic-side { background: #243447; }
   .bg-aic-900{background:#243447}.border-aic-800{border-color:#2f4259}.border-aic-700{border-color:#3a506b}.bg-aic-800{background:#2f4259}
   .text-aic-300{color:#9fb0c3}.text-aic-400{color:#7f93a9}
@@ -617,6 +647,7 @@ function Icon({ name, size = 20, className = '' }) {
     BarChart2: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
     AlertCircle: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     DollarSign: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    Package: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
     ShoppingBag: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
     Landmark: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>`,
     Edit3: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -630,17 +661,42 @@ function Icon({ name, size = 20, className = '' }) {
   return e('span', { dangerouslySetInnerHTML: { __html: svg }, style: { display: 'inline-flex', alignItems: 'center' } });
 }
 
+// Animated number: counts up from the previous value (or 0) whenever the value changes.
+function CountUp({ value }) {
+  const [shown, setShown] = useState(value);
+  const prev = React.useRef(null);
+  useEffect(() => {
+    if (typeof value !== 'string' && typeof value !== 'number') { setShown(value); return; }
+    const m = String(value).match(/^([^\d-]*)(-?[\d,]+(?:\.\d+)?)(.*)$/);
+    if (!m || /\d/.test(m[1]) || /\d/.test(m[3])) { setShown(value); return; }
+    const to = parseFloat(m[2].replace(/,/g, '')), dec = (m[2].split('.')[1] || '').length, grouped = m[2].includes(',');
+    const from = prev.current != null ? prev.current : 0; prev.current = to;
+    if (!isFinite(to) || from === to) { setShown(value); return; }
+    let raf, t0;
+    const step = ts => {
+      if (!t0) t0 = ts;
+      const p = Math.min(1, (ts - t0) / 850), cur = from + (to - from) * (1 - Math.pow(1 - p, 3));
+      const txt = grouped ? cur.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec }) : cur.toFixed(dec);
+      setShown(p < 1 ? m[1] + txt + m[3] : value);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [String(value)]);
+  return shown;
+}
+
 function NavItem({ icon, label, isActive, onClick }) {
   return e('button', { onClick, className: 'aic-nav' + (isActive ? ' on' : '') },
     e('span', { className: 'mr-3' }, icon), e('span', null, label));
 }
 
 function StatCard({ title, value, icon, color, sub }) {
-  return e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center' },
+  return e('div', { className: 'anim-card bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center' },
     e('div', { className: `p-3 rounded-full ${color} mr-4` }, icon),
     e('div', null,
       e('h4', { className: 'text-gray-500 text-sm font-medium' }, title),
-      e('p', { className: 'text-2xl font-bold text-gray-800 mt-1' }, value),
+      e('p', { className: 'text-2xl font-bold text-gray-800 mt-1' }, e(CountUp, { value })),
       sub && e('p', { className: 'text-xs text-gray-400 mt-0.5' }, sub)
     )
   );
@@ -697,7 +753,7 @@ function ChartBox({ type, data, options, height = 240 }) {
   React.useEffect(() => {
     if (!window.Chart || !ref.current) return;
     if (inst.current) inst.current.destroy();
-    inst.current = new Chart(ref.current, { type, data, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, ...options } });
+    inst.current = new Chart(ref.current, { type, data, options: { responsive: true, maintainAspectRatio: false, animation: { duration: 1000, easing: 'easeOutQuart' }, ...options } });
     return () => { inst.current && inst.current.destroy(); inst.current = null; };
   }, [key]);
   return e('div', { style: { height, position: 'relative' } }, e('canvas', { ref }));
@@ -710,7 +766,7 @@ const axis = { grid: { color: '#eef1f5' }, ticks: { callback: v => inrK(v), font
 const xaxis = { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 60 } };
 const Kpi = ({ icon, title, value, delta, color }) => e('div', { className: 'aic-kpi' },
   e('div', { className: 'flex items-center gap-2 text-xs text-gray-500 font-medium' }, e(Icon, { name: icon, size: 14 }), title),
-  e('div', { className: 'text-xl font-semibold mt-2', style: { color: color || '#0f2240' } }, value),
+  e('div', { className: 'text-xl font-semibold mt-2', style: { color: color || '#0f2240' } }, e(CountUp, { value })),
   delta != null && isFinite(delta) && e('div', { className: 'text-xs mt-1 font-medium', style: { color: delta >= 0 ? '#10b45f' : '#dc2626' } }, (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% vs previous'));
 
 function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses }) {
@@ -1675,11 +1731,12 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       customerIdSeq: nextSeq + 1
     };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
+    const stockRes = applyServiceStock(payload, services, validRows, cf.name, currentUser.name, todayStr);
     addAuditLog('Customer Added', custCode + ' — ' + cf.name, 'Phone: ' + cf.phone, payload);
     setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(false);
-    showMessage(custCode + ' created!' + (validRows.length ? ' Total Due: ₹' + crmDue : ' No service added yet.') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
+    showMessage(custCode + ' created!' + (validRows.length ? ' Total Due: ₹' + crmDue : ' No service added yet.') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
   };
 
   const handleEditCustomer = (cust) => {
@@ -1724,12 +1781,13 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
     const payload = { ...appData, customers: updatedCustomers, tasks: updatedTasks };
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
+    const stockRes = applyServiceStock(payload, services, validRows, cf.name, currentUser.name, todayStr);
     addAuditLog('Customer Updated', cust.name + ' → ' + cf.name, 'Phone: ' + cf.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
     setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
-    showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
+    showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
   };
 
   return e('div', { className: 'space-y-4' },
@@ -2301,6 +2359,344 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
 }
 
 // ── EXPENSES ──
+// Deducts stock for services linked to a stock item (e.g. "PVC Card Print" uses PVC Card).
+// Mutates `payload` (stockItems + stockLog) so it is saved in the same write as the customer/task.
+// Never blocks a sale: if stock is short it goes to 0 and the shortage is reported.
+function applyServiceStock(payload, services, rows, customerName, staffName, dateStr) {
+  const toArr = v => !v ? [] : (Array.isArray(v) ? v : Object.values(v));
+  let items = toArr(payload.stockItems), log = toArr(payload.stockLog);
+  const used = [], short = [];
+  (rows || []).forEach(row => {
+    const svc = services.find(x => x.id === parseInt(row.serviceId));
+    if (!svc || !svc.stockItemId) return;
+    const idx = items.findIndex(i => i.id === svc.stockItemId);
+    if (idx < 0) return;
+    const it = items[idx];
+    const need = (Number(svc.stockQty) || 1) * Math.max(1, parseInt(row.qty) || 1);
+    const take = Math.min(need, Math.max(0, Number(it.qty) || 0));
+    if (need > take) short.push(it.name + ' (needed ' + need + ', had ' + take + ')');
+    if (take <= 0) return;
+    const bal = (Number(it.qty) || 0) - take;
+    items = items.map((x, k) => k === idx ? { ...x, qty: bal } : x);
+    log = [...log, { id: Date.now() + log.length + Math.floor(Math.random() * 1000), itemId: it.id, itemName: it.name, type: 'out', qty: take, unitCost: Number(it.cost) || 0, date: dateStr, reason: 'Used for customer', note: customerName + ' — ' + svc.name, by: staffName, balance: bal }];
+    used.push(it.name + ' −' + take);
+  });
+  if (used.length || short.length) { payload.stockItems = items; payload.stockLog = log; }
+  return { used, short };
+}
+const stockNote = r => (r.used.length ? ' — Stock: ' + r.used.join(', ') : '') + (r.short.length ? ' ⚠ Low stock: ' + r.short.join(', ') : '');
+
+// ── STOCK MANAGEMENT ──
+const STOCK_UNITS = ['Pcs', 'Box', 'Packet', 'Roll', 'Sheet', 'Set', 'Bottle', 'Ltr', 'Kg'];
+const STOCK_QUICK = [['PVC Card', 'Pcs', 20], ['A4 Paper', 'Packet', 2], ['Lamination Pouch', 'Pcs', 20], ['Photo Paper', 'Packet', 2], ['Printer Ink', 'Bottle', 2]];
+
+function StockManager({ stockItems, stockLog, expenses, appData, currentUser, showMessage, addAuditLog }) {
+  const admin = currentUser.role === 'admin';
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [modal, setModal] = useState(null); // { type: 'item'|'in'|'out'|'history', item? , prefill? }
+  const [f, setF] = useState({});
+  const num = v => Number(v) || 0;
+  const stat = it => num(it.qty) <= 0 ? 'out' : (num(it.minQty) > 0 && num(it.qty) <= num(it.minQty) ? 'low' : 'ok');
+  const statUi = { out: ['Out of Stock', 'bg-red-50 text-red-600 border-red-200'], low: ['Low Stock', 'bg-amber-50 text-amber-700 border-amber-200'], ok: ['In Stock', 'bg-green-50 text-green-700 border-green-200'] };
+
+  const items = stockItems.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const lowN = items.filter(i => stat(i) === 'low').length, outN = items.filter(i => stat(i) === 'out').length;
+  const value = items.reduce((s, i) => s + num(i.qty) * num(i.cost), 0);
+  const shown = items.filter(i => (filter === 'all' || stat(i) === filter || (filter === 'alert' && stat(i) !== 'ok')) && (!q.trim() || String(i.name).toLowerCase().includes(q.trim().toLowerCase())));
+  const recent = stockLog.slice().sort((a, b) => b.id - a.id).slice(0, 8);
+
+  const open = (type, item, prefill) => { setModal({ type, item, prefill }); setF(type === 'item' ? { name: (item && item.name) || (prefill && prefill[0]) || '', unit: (item && item.unit) || (prefill && prefill[1]) || 'Pcs', qty: '', cost: item ? item.cost : '', minQty: item ? item.minQty : (prefill ? prefill[2] : ''), } : type === 'in' ? { qty: '', cost: item.cost || '', date: todayStr, note: '', addExp: true } : { qty: '', reason: 'Used for customer', date: todayStr, note: '' }); };
+  const save = (items2, log2, exp2, action, details, related) => {
+    const payload = { ...appData, stockItems: items2, stockLog: log2, ...(exp2 ? { expenses: exp2 } : {}) };
+    addAuditLog(action, details, related, payload);
+    setModal(null);
+  };
+  const mkLog = (it, type, qty, unitCost, date, reason, note, balance) => ({ id: Date.now() + Math.floor(Math.random() * 100), itemId: it.id, itemName: it.name, type, qty, unitCost: unitCost || 0, date, reason: reason || '', note: note || '', by: currentUser.name, balance });
+
+  const submit = () => {
+    const m = modal;
+    if (m.type === 'item') {
+      if (!f.name.trim()) return showMessage('Item name is required.', 'error');
+      if (m.item) {
+        const items2 = stockItems.map(i => i.id === m.item.id ? { ...i, name: f.name.trim(), unit: f.unit, cost: num(f.cost), minQty: num(f.minQty) } : i);
+        return save(items2, stockLog, null, 'Stock Item Edited', f.name.trim(), '');
+      }
+      if (stockItems.some(i => String(i.name).toLowerCase() === f.name.trim().toLowerCase())) return showMessage('This item already exists.', 'error');
+      const it = { id: Date.now(), name: f.name.trim(), unit: f.unit, qty: num(f.qty), cost: num(f.cost), minQty: num(f.minQty), createdAt: todayStr };
+      const log2 = num(f.qty) > 0 ? [...stockLog, mkLog(it, 'in', num(f.qty), num(f.cost), todayStr, 'Opening stock', '', num(f.qty))] : stockLog;
+      return save([...stockItems, it], log2, null, 'Stock Item Added', it.name, 'Opening ' + it.qty + ' ' + it.unit);
+    }
+    const it = m.item, qty = num(f.qty);
+    if (qty <= 0) return showMessage('Enter a valid quantity.', 'error');
+    if (m.type === 'in') {
+      const cost = f.cost === '' ? num(it.cost) : num(f.cost);
+      const newQty = num(it.qty) + qty;
+      // weighted-average cost keeps stock value correct across purchases at different prices
+      const avg = newQty > 0 ? ((num(it.qty) * num(it.cost)) + qty * cost) / newQty : cost;
+      const items2 = stockItems.map(i => i.id === it.id ? { ...i, qty: newQty, cost: Math.round(avg * 100) / 100 } : i);
+      const exp2 = f.addExp && cost > 0 ? [...expenses, { id: Date.now() + 1, name: 'Stock: ' + it.name + ' × ' + qty, remarks: (f.note || 'Stock purchase'), cost: Math.round(qty * cost * 100) / 100, date: f.date || todayStr, addedBy: currentUser.name }] : null;
+      return save(items2, [...stockLog, mkLog(it, 'in', qty, cost, f.date || todayStr, 'Purchase', f.note, newQty)], exp2, 'Stock In', it.name + ' +' + qty + ' ' + it.unit, cost ? '₹' + cost + '/unit' : '');
+    }
+    if (qty > num(it.qty)) return showMessage('Only ' + num(it.qty) + ' ' + it.unit + ' in stock.', 'error');
+    const newQty = num(it.qty) - qty;
+    save(stockItems.map(i => i.id === it.id ? { ...i, qty: newQty } : i), [...stockLog, mkLog(it, 'out', qty, num(it.cost), f.date || todayStr, f.reason, f.note, newQty)], null, 'Stock Out', it.name + ' -' + qty + ' ' + it.unit, f.reason);
+  };
+  const del = it => {
+    if (!window.confirm('Delete "' + it.name + '" and its history?')) return;
+    save(stockItems.filter(i => i.id !== it.id), stockLog.filter(l => l.itemId !== it.id), null, 'Stock Item Deleted', it.name, '');
+  };
+
+  const kpi = (title, val, color, icon) => e('div', { className: 'aic-kpi' }, e('div', { className: 'flex items-center gap-2 text-xs text-gray-500 font-medium' }, e(Icon, { name: icon, size: 14 }), title), e('div', { className: 'text-xl font-semibold mt-2', style: { color } }, val));
+  const inp = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400';
+  const lbl = t => e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, t);
+  const set = (k, v) => setF({ ...f, [k]: v });
+  const m = modal, it = m && m.item;
+  const titles = { item: it ? 'Edit Item' : 'Add Stock Item', in: 'Stock In — ' + (it && it.name), out: 'Stock Out — ' + (it && it.name), history: 'History — ' + (it && it.name) };
+  const hist = it ? stockLog.filter(l => l.itemId === it.id).sort((a, b) => b.id - a.id) : [];
+  const pill = (id, l) => e('button', { key: id, onClick: () => setFilter(id), className: 'aic-pill' + (filter === id ? ' on' : '') }, l);
+
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Stock Management'), e('p', { className: 'text-sm text-gray-500' }, 'PVC card, paper, ink and every item your center uses')),
+      admin && e('button', { onClick: () => open('item'), className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, e(Icon, { name: 'Plus', size: 16 }), 'Add Item')),
+    e('div', { className: 'grid grid-cols-2 xl:grid-cols-4 gap-3' },
+      kpi('Total Items', items.length, '#0f2240', 'ShoppingBag'),
+      admin && kpi('Stock Value', inr(value), '#1565c0', 'DollarSign'),
+      kpi('Low Stock', lowN, lowN ? '#b45309' : '#0f9d8a', 'AlertCircle'),
+      kpi('Out of Stock', outN, outN ? '#dc2626' : '#0f9d8a', 'AlertCircle')),
+    (lowN + outN) > 0 && e('div', { className: 'rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800' },
+      e('b', null, 'Reorder needed: '), items.filter(i => stat(i) !== 'ok').map(i => i.name + ' (' + num(i.qty) + ' ' + i.unit + ' left)').join(', ')),
+    items.length === 0 ? e('div', { className: 'aic-card text-center py-10' },
+      e('p', { className: 'text-gray-600 font-medium' }, 'No stock items yet.'),
+      e('p', { className: 'text-sm text-gray-400 mt-1 mb-4' }, admin ? 'Start with a common item or add your own:' : 'Ask admin to add stock items.'),
+      admin && e('div', { className: 'flex flex-wrap justify-center gap-2' }, STOCK_QUICK.map(x => e('button', { key: x[0], onClick: () => open('item', null, x), className: 'aic-pill' }, '+ ' + x[0])))) : [
+    e('div', { key: 'chart', className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
+      e(Card, { title: 'Stock Level vs Alert Level', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', height: 240, data: { labels: items.slice(0, 14).map(i => i.name), datasets: [{ label: 'In stock', data: items.slice(0, 14).map(i => num(i.qty)), backgroundColor: items.slice(0, 14).map(i => ({ ok: '#1565c0', low: '#f59e0b', out: '#dc2626' })[stat(i)]), borderRadius: 6 }, { label: 'Alert level', data: items.slice(0, 14).map(i => num(i.minQty)), backgroundColor: '#cbd5e1', borderRadius: 6 }] }, options: { scales: { y: { grid: { color: '#eef1f5' }, ticks: { font: { size: 10 } }, border: { display: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
+      e(Card, { title: 'Recent Movements' }, recent.length ? e('div', { className: 'space-y-2' }, recent.map(l => e('div', { key: l.id, className: 'flex items-center justify-between text-xs' },
+        e('div', null, e('p', { className: 'font-medium text-gray-700' }, l.itemName), e('p', { className: 'text-gray-400' }, l.date + ' · ' + (l.reason || '') + ' · ' + l.by)),
+        e('span', { className: 'font-semibold ' + (l.type === 'in' ? 'text-green-600' : 'text-red-500') }, (l.type === 'in' ? '+' : '-') + l.qty)))) : e('p', { className: 'text-sm text-gray-400' }, 'No movements yet.'))),
+    e('div', { key: 'tbl', className: 'aic-card' },
+      e('div', { className: 'flex flex-wrap items-center justify-between gap-3 mb-3' },
+        e('div', { className: 'flex gap-2' }, pill('all', 'All'), pill('alert', 'Needs Reorder'), pill('out', 'Out of Stock')),
+        e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search item...', className: 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none w-56' })),
+      e('div', { className: 'overflow-x-auto' }, e('table', { className: 'w-full text-sm' },
+        e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['Item', 'In Stock', 'Alert At', admin && 'Unit Cost', admin && 'Value', 'Status', 'Actions'].filter(Boolean).map(h => e('th', { key: h, className: 'py-2 pr-3 font-semibold' }, h)))),
+        e('tbody', null, shown.length === 0 ? e('tr', null, e('td', { colSpan: 7, className: 'py-6 text-center text-gray-400' }, 'No items found.')) : shown.map(i => e('tr', { key: i.id, className: 'border-b border-gray-50 hover:bg-gray-50' },
+          e('td', { className: 'py-2.5 pr-3 font-medium text-gray-800' }, i.name),
+          e('td', { className: 'py-2.5 pr-3 font-semibold', style: { color: stat(i) === 'out' ? '#dc2626' : stat(i) === 'low' ? '#b45309' : '#0f2240' } }, num(i.qty) + ' ', e('span', { className: 'text-xs text-gray-400 font-normal' }, i.unit)),
+          e('td', { className: 'py-2.5 pr-3 text-gray-500' }, num(i.minQty) || '-'),
+          admin && e('td', { className: 'py-2.5 pr-3 text-gray-600' }, inr(num(i.cost))),
+          admin && e('td', { className: 'py-2.5 pr-3 text-gray-600' }, inr(num(i.qty) * num(i.cost))),
+          e('td', { className: 'py-2.5 pr-3' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + statUi[stat(i)][1] }, statUi[stat(i)][0])),
+          e('td', { className: 'py-2.5' }, e('div', { className: 'flex flex-wrap gap-1' },
+            admin && e('button', { onClick: () => open('in', i), className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2 py-1 rounded text-xs font-medium' }, '+ In'),
+            e('button', { onClick: () => open('out', i), className: 'text-red-600 border border-red-200 hover:bg-red-50 px-2 py-1 rounded text-xs font-medium' }, '− Out'),
+            e('button', { onClick: () => open('history', i), className: 'text-gray-600 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded text-xs' }, 'History'),
+            admin && e('button', { onClick: () => open('item', i), className: 'text-blue-600 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded text-xs' }, 'Edit'),
+            admin && e('button', { onClick: () => del(i), className: 'text-gray-400 hover:text-red-600 px-1', title: 'Delete' }, e(Icon, { name: 'Trash2', size: 15 }))))))))))],
+    m && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-4', style: { background: 'rgba(7,26,58,.45)' }, onClick: () => setModal(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ' + (m.type === 'history' ? 'max-w-2xl' : 'max-w-md'), onClick: ev => ev.stopPropagation() },
+        e('div', { className: 'flex items-center justify-between px-5 py-4 border-b' }, e('h3', { className: 'font-semibold', style: { color: '#0f2240' } }, titles[m.type]), e('button', { onClick: () => setModal(null), className: 'text-gray-400 hover:text-gray-700' }, e(Icon, { name: 'X', size: 18 }))),
+        m.type === 'history' ? e('div', { className: 'p-5' }, hist.length === 0 ? e('p', { className: 'text-center text-gray-400 py-4' }, 'No history yet.') : e('table', { className: 'w-full text-xs' },
+          e('thead', null, e('tr', { className: 'text-left text-gray-500 border-b' }, ['Date', 'Type', 'Qty', 'Reason / Note', 'By', 'Balance'].map(h => e('th', { key: h, className: 'py-2 pr-2' }, h)))),
+          e('tbody', null, hist.map(l => e('tr', { key: l.id, className: 'border-b border-gray-50' }, e('td', { className: 'py-2 pr-2' }, l.date), e('td', { className: 'py-2 pr-2 font-semibold ' + (l.type === 'in' ? 'text-green-600' : 'text-red-500') }, l.type === 'in' ? 'IN' : 'OUT'), e('td', { className: 'py-2 pr-2 font-semibold' }, l.qty), e('td', { className: 'py-2 pr-2 text-gray-500' }, [l.reason, l.note].filter(Boolean).join(' — ')), e('td', { className: 'py-2 pr-2 text-gray-500' }, l.by), e('td', { className: 'py-2 pr-2' }, l.balance)))))) :
+        e('div', { className: 'p-5 space-y-3' },
+          m.type === 'item' && e('div', null, lbl('Item Name *'), e('input', { value: f.name, onChange: ev => set('name', ev.target.value), placeholder: 'e.g. PVC Card', className: inp })),
+          m.type === 'item' && e('div', { className: 'grid grid-cols-2 gap-3' }, e('div', null, lbl('Unit'), e('select', { value: f.unit, onChange: ev => set('unit', ev.target.value), className: inp }, STOCK_UNITS.map(u => e('option', { key: u }, u)))), e('div', null, lbl('Alert when stock ≤'), e('input', { type: 'number', value: f.minQty, onChange: ev => set('minQty', ev.target.value), placeholder: 'e.g. 10', className: inp }))),
+          m.type === 'item' && e('div', { className: 'grid grid-cols-2 gap-3' }, !it && e('div', null, lbl('Opening Stock'), e('input', { type: 'number', value: f.qty, onChange: ev => set('qty', ev.target.value), placeholder: '0', className: inp })), e('div', null, lbl('Cost per unit (₹)'), e('input', { type: 'number', value: f.cost, onChange: ev => set('cost', ev.target.value), placeholder: '0', className: inp }))),
+          m.type !== 'item' && e('div', { className: 'text-xs text-gray-500 bg-gray-50 rounded-lg p-2' }, 'Current stock: ', e('b', null, num(it.qty) + ' ' + it.unit)),
+          m.type !== 'item' && e('div', { className: 'grid grid-cols-2 gap-3' }, e('div', null, lbl('Quantity *'), e('input', { type: 'number', value: f.qty, onChange: ev => set('qty', ev.target.value), className: inp })), e('div', null, lbl('Date'), e('input', { type: 'date', value: f.date, onChange: ev => set('date', ev.target.value), className: inp }))),
+          m.type === 'in' && e('div', null, lbl('Cost per unit (₹)'), e('input', { type: 'number', value: f.cost, onChange: ev => set('cost', ev.target.value), className: inp })),
+          m.type === 'out' && e('div', null, lbl('Reason'), e('select', { value: f.reason, onChange: ev => set('reason', ev.target.value), className: inp }, ['Used for customer', 'Sold', 'Damaged / Wasted', 'Lost', 'Other'].map(r => e('option', { key: r }, r)))),
+          m.type !== 'item' && e('div', null, lbl('Note (optional)'), e('input', { value: f.note, onChange: ev => set('note', ev.target.value), placeholder: m.type === 'in' ? 'Supplier / bill no.' : 'Customer name etc.', className: inp })),
+          m.type === 'in' && e('label', { className: 'flex items-center gap-2 text-sm text-gray-600' }, e('input', { type: 'checkbox', checked: !!f.addExp, onChange: ev => set('addExp', ev.target.checked) }), 'Also add this purchase to Expenses'),
+          e('button', { onClick: submit, className: 'w-full text-white font-semibold py-2.5 rounded-lg', style: { background: m.type === 'out' ? '#dc2626' : '#0f9d8a' } }, m.type === 'item' ? (it ? 'Save Changes' : 'Add Item') : m.type === 'in' ? 'Add Stock' : 'Remove Stock')))));
+}
+
+// ── BACKUP SYSTEM ──────────────────────────────────────────────────────────────
+// Backups live OUTSIDE 'csc-app-data' (so a restore/reset can never delete them):
+//   csc-backups/index/<id>  → small metadata record     csc-backups/data/<id> → packed data
+//   csc-backup-config       → settings (destination, schedule, Drive client id, lastAutoAt)
+// Destination is a setting: 'firebase' | 'drive' | 'both'. Google Drive is a pluggable provider.
+const BK_KEYS = ['customers', 'tasks', 'services', 'users', 'expenses', 'bankTransactions', 'stockItems'];
+const bkArr = v => !v ? [] : (Array.isArray(v) ? v : Object.values(v));
+const bkCounts = d => { const o = {}; BK_KEYS.forEach(k => { o[k] = bkArr(d && d[k]).length; }); return o; };
+const bkSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+async function bkHash(str) {
+  try { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
+  catch { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return 'x' + (h >>> 0).toString(16); }
+}
+async function bkPack(str) {   // gzip + base64 (5-10x smaller); falls back to plain JSON on old browsers
+  if (!window.CompressionStream) return { enc: 'json', data: str };
+  const buf = new Uint8Array(await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+  let bin = ''; for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
+  return { enc: 'gz64', data: btoa(bin) };
+}
+async function bkUnpack(p) {
+  if (p.enc !== 'gz64') return p.data;
+  const bin = atob(p.data), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+const bkCfgRef = () => db.ref('csc-backup-config');
+const BK_DEFAULT = { destination: 'firebase', auto: true, intervalHours: 24, keepAuto: 30, driveClientId: '', lastAutoAt: 0 };
+async function bkGetCfg() { try { const v = (await bkCfgRef().once('value')).val(); return { ...BK_DEFAULT, ...(v || {}) }; } catch { return { ...BK_DEFAULT }; } }
+
+// ---- providers (same 4 methods each: list / save / load / remove) ----
+const bkFirebase = {
+  id: 'firebase',
+  async list() { const v = (await db.ref('csc-backups/index').once('value')).val() || {}; return Object.values(v).map(m => ({ ...m, where: 'firebase' })); },
+  async save(meta, packed) { await db.ref('csc-backups/data/' + meta.id).set(packed); await db.ref('csc-backups/index/' + meta.id).set(meta); },
+  async load(meta) { const v = (await db.ref('csc-backups/data/' + meta.id).once('value')).val(); if (!v) throw new Error('Backup data missing'); return v; },
+  async remove(meta) { await db.ref('csc-backups/data/' + meta.id).remove(); await db.ref('csc-backups/index/' + meta.id).remove(); }
+};
+const bkDrive = {   // Google Drive via OAuth (drive.file scope: the app only sees files it creates)
+  id: 'drive', token: null, folderId: null, exp: 0,
+  async connect(clientId) {
+    if (!clientId) throw new Error('Enter your Google OAuth Client ID first.');
+    if (!window.google || !google.accounts) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.onload = ok; s.onerror = () => no(new Error('Could not load Google sign-in.')); document.head.appendChild(s); });
+    return new Promise((ok, no) => google.accounts.oauth2.initTokenClient({ client_id: clientId, scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: r => { if (r.error) return no(new Error(r.error)); this.token = r.access_token; this.exp = Date.now() + (r.expires_in - 60) * 1000; ok(true); } }).requestAccessToken({ prompt: '' }));
+  },
+  ready() { return !!this.token && Date.now() < this.exp; },
+  async api(path, opt = {}) {
+    if (!this.ready()) throw new Error('Google Drive is not connected. Open Backup → Connect Google Drive.');
+    const r = await fetch('https://www.googleapis.com/' + path, { ...opt, headers: { Authorization: 'Bearer ' + this.token, ...(opt.headers || {}) } });
+    if (!r.ok) throw new Error('Drive error ' + r.status); return r;
+  },
+  async folder() {
+    if (this.folderId) return this.folderId;
+    const q = encodeURIComponent("name='SevaCore Backups' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+    const f = (await (await this.api('drive/v3/files?q=' + q + '&fields=files(id)')).json()).files;
+    if (f && f[0]) return (this.folderId = f[0].id);
+    const c = await (await this.api('drive/v3/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'SevaCore Backups', mimeType: 'application/vnd.google-apps.folder' }) })).json();
+    return (this.folderId = c.id);
+  },
+  async list() {
+    const fid = await this.folder(), q = encodeURIComponent("'" + fid + "' in parents and trashed=false");
+    const f = (await (await this.api('drive/v3/files?q=' + q + '&pageSize=200&fields=files(id,appProperties)')).json()).files || [];
+    return f.filter(x => x.appProperties && x.appProperties.meta).map(x => ({ ...JSON.parse(x.appProperties.meta), driveId: x.id, where: 'drive' }));
+  },
+  async save(meta, packed) {
+    const fid = await this.folder(), b = '----sc' + Date.now();
+    const small = JSON.stringify({ ...meta, counts: meta.counts });
+    const md = JSON.stringify({ name: 'sevacore-backup-' + new Date(meta.id).toISOString().replace(/[:.]/g, '-') + '.json', parents: [fid], appProperties: { meta: small } });
+    const body = '--' + b + '\r\nContent-Type: application/json\r\n\r\n' + md + '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(packed) + '\r\n--' + b + '--';
+    await this.api('upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body });
+  },
+  async load(meta) { return await (await this.api('drive/v3/files/' + meta.driveId + '?alt=media')).json(); },
+  async remove(meta) { await this.api('drive/v3/files/' + meta.driveId, { method: 'DELETE' }); }
+};
+const bkTargets = cfg => cfg.destination === 'drive' ? [bkDrive] : cfg.destination === 'both' ? [bkFirebase, bkDrive] : [bkFirebase];
+const bkPrimary = cfg => cfg.destination === 'drive' ? bkDrive : bkFirebase;
+
+async function bkRun(type, by, cfgIn) {
+  const cfg = cfgIn || await bkGetCfg();
+  const data = (await db.ref('csc-app-data').once('value')).val();
+  if (!data) throw new Error('No data to back up.');
+  const json = JSON.stringify(data), packed = await bkPack(json);
+  const meta = { id: Date.now(), at: new Date().toISOString(), type, by: by || 'system', size: json.length, packedSize: packed.data.length, hash: await bkHash(json), counts: bkCounts(data), enc: packed.enc };
+  if (packed.data.length > 9 * 1048576) throw new Error('Backup is too large for Firebase (' + bkSize(packed.data.length) + '). Switch destination to Google Drive.');
+  const done = [], failed = [];
+  for (const p of bkTargets(cfg)) { try { await p.save(meta, packed); done.push(p.id); } catch (err) { failed.push(p.id + ': ' + err.message); } }
+  if (!done.length) { // Drive down/not connected → never lose the backup: fall back to Firebase
+    await bkFirebase.save(meta, packed); done.push('firebase'); failed.push('(saved to Firebase instead)');
+  }
+  try { // retention: keep newest N auto backups, cap the rest at 50
+    for (const p of bkTargets(cfg).filter(x => done.includes(x.id))) {
+      const all = (await p.list()).sort((a, b) => b.id - a.id);
+      const drop = [...all.filter(m => m.type === 'auto').slice(cfg.keepAuto), ...all.filter(m => m.type !== 'auto').slice(50)];
+      for (const m of drop) { try { await p.remove(m); } catch {} }
+    }
+  } catch {}
+  return { meta, done, failed };
+}
+let bkBusy = false;
+async function bkAutoCheck(by) {   // called every 15 min by the admin session; lastAutoAt in Firebase stops two devices both running it
+  if (bkBusy) return; bkBusy = true;
+  try {
+    const cfg = await bkGetCfg();
+    if (!cfg.auto || Date.now() - (Number(cfg.lastAutoAt) || 0) < cfg.intervalHours * 3600000) return;
+    await bkCfgRef().update({ lastAutoAt: Date.now() });
+    await bkRun('auto', by, cfg);
+  } catch (err) { console.error('Auto backup failed', err); } finally { bkBusy = false; }
+}
+
+function BackupCenter({ appData, persist, currentUser, showMessage }) {
+  const [cfg, setCfg] = useState(null), [items, setItems] = useState([]), [busy, setBusy] = useState(''), [rs, setRs] = useState(null), [typed, setTyped] = useState(''), [driveOk, setDriveOk] = useState(bkDrive.ready());
+  const load = async (c) => { const conf = c || cfg || await bkGetCfg(); setCfg(conf); try { const all = await bkPrimary(conf).list(); setItems(all.sort((a, b) => b.id - a.id)); } catch (err) { setItems([]); showMessage(err.message, 'error'); } };
+  useEffect(() => { load(); }, []);
+  if (!cfg) return e('div', { className: 'aic-card text-center text-gray-400' }, 'Loading backup system...');
+  const upd = async patch => { const n = { ...cfg, ...patch }; setCfg(n); await bkCfgRef().update(patch); if (patch.destination) load(n); };
+  const wrap = async (label, fn) => { setBusy(label); try { await fn(); } catch (err) { showMessage(label + ' failed: ' + err.message, 'error'); } setBusy(''); };
+  const now = () => wrap('Backup', async () => { const r = await bkRun('manual', currentUser.name, cfg); await load(); showMessage('Backup saved (' + r.done.join(' + ') + ') — ' + bkSize(r.meta.size) + (r.failed.length ? ' ⚠ ' + r.failed.join('; ') : ''), r.failed.length ? 'error' : 'success'); });
+  const fetchJson = async m => { const p = await (m.where === 'drive' ? bkDrive : bkFirebase).load(m); const json = await bkUnpack(p); if (m.hash && (await bkHash(json)) !== m.hash) throw new Error('Checksum mismatch — this backup is corrupted.'); return json; };
+  const verify = m => wrap('Verify', async () => { await fetchJson(m); showMessage('✓ Backup is intact (checksum matches).'); });
+  const download = m => wrap('Download', async () => { const json = await fetchJson(m); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = 'sevacore-backup-' + new Date(m.id).toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); });
+  const del = m => { if (window.confirm('Delete this backup permanently?')) wrap('Delete', async () => { await (m.where === 'drive' ? bkDrive : bkFirebase).remove(m); await load(); showMessage('Backup deleted.'); }); };
+  const prepare = (label, json, meta) => { let d; try { d = JSON.parse(json); } catch { return showMessage('Not a valid backup file.', 'error'); } if (!d || !d.users || !d.services) return showMessage('This file does not look like a SevaCore backup.', 'error'); setTyped(''); setRs({ label, data: d, json, meta, counts: bkCounts(d) }); };
+  const askRestore = m => wrap('Restore', async () => prepare('Backup of ' + new Date(m.id).toLocaleString('en-IN'), await fetchJson(m), m));
+  const fromFile = ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; const r = new FileReader(); r.onload = () => prepare('File: ' + f.name, String(r.result), null); r.readAsText(f); };
+  const doRestore = () => wrap('Restore', async () => {
+    await bkRun('pre-restore', currentUser.name, cfg);          // safety copy of the CURRENT data first
+    await persist(JSON.parse(rs.json)); setRs(null); await load();
+    showMessage('Data restored. A safety backup of the previous data was saved.');
+  });
+  const connect = () => wrap('Connect', async () => { await bkDrive.connect(cfg.driveClientId.trim()); setDriveOk(true); await load(); showMessage('Google Drive connected.'); });
+  const cur = bkCounts(appData), last = items.find(m => m.type === 'auto') || items[0];
+  const ageH = last ? (Date.now() - last.id) / 3600000 : null, healthy = ageH != null && ageH < cfg.intervalHours * 2 + 1;
+  const pill = (id, label) => e('button', { key: id, onClick: () => upd({ destination: id }), className: 'aic-pill' + (cfg.destination === id ? ' on' : '') }, label);
+  const kpi = (t, v, c) => e('div', { className: 'aic-kpi' }, e('p', { className: 'text-xs text-gray-500 font-medium' }, t), e('p', { className: 'text-lg font-semibold mt-1', style: { color: c || '#0f2240' } }, v));
+  const typeUi = { auto: 'bg-blue-50 text-blue-700 border-blue-200', manual: 'bg-green-50 text-green-700 border-green-200', 'pre-restore': 'bg-amber-50 text-amber-700 border-amber-200' };
+  const sel = 'border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none';
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Backup & Restore'), e('p', { className: 'text-sm text-gray-500' }, 'Automatic snapshots, checksum verified, one-click restore')),
+      e('div', { className: 'flex gap-2' },
+        e('label', { className: 'aic-pill cursor-pointer' }, 'Restore from file', e('input', { type: 'file', accept: '.json,application/json', onChange: fromFile, className: 'hidden' })),
+        e('button', { onClick: now, disabled: !!busy, className: 'text-white px-5 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a', opacity: busy ? .6 : 1 } }, busy === 'Backup' ? 'Backing up...' : 'Backup Now'))),
+    e('div', { className: 'grid grid-cols-2 xl:grid-cols-4 gap-3' },
+      kpi('Status', healthy ? '● Protected' : (last ? '● Backup overdue' : '● No backup yet'), healthy ? '#0f9d8a' : '#dc2626'),
+      kpi('Last backup', last ? new Date(last.id).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'),
+      kpi('Backups stored', items.length + ' (' + bkSize(items.reduce((s, m) => s + (m.packedSize || 0), 0)) + ')'),
+      kpi('Saved to', cfg.destination === 'both' ? 'Firebase + Drive' : cfg.destination === 'drive' ? 'Google Drive' : 'Firebase')),
+    e(Card, { title: 'Backup Settings' },
+      e('div', { className: 'space-y-4' },
+        e('div', null, e('p', { className: 'text-xs font-semibold text-gray-500 mb-2' }, 'BACKUP DESTINATION'), e('div', { className: 'flex flex-wrap gap-2' }, pill('firebase', 'Firebase'), pill('drive', 'Google Drive'), pill('both', 'Both (Firebase + Drive)'))),
+        e('div', { className: 'flex flex-wrap items-center gap-4 text-sm text-gray-600' },
+          e('label', { className: 'flex items-center gap-2' }, e('input', { type: 'checkbox', checked: !!cfg.auto, onChange: ev => upd({ auto: ev.target.checked }) }), 'Automatic backup'),
+          e('label', { className: 'flex items-center gap-2' }, 'Every', e('select', { value: cfg.intervalHours, onChange: ev => upd({ intervalHours: Number(ev.target.value) }), className: sel }, [6, 12, 24, 48].map(h => e('option', { key: h, value: h }, h + ' hours')))),
+          e('label', { className: 'flex items-center gap-2' }, 'Keep last', e('select', { value: cfg.keepAuto, onChange: ev => upd({ keepAuto: Number(ev.target.value) }), className: sel }, [7, 14, 30, 60].map(n => e('option', { key: n, value: n }, n + ' auto backups'))))),
+        cfg.destination !== 'firebase' && e('div', { className: 'p-3 rounded-xl border border-blue-100 bg-blue-50/50 space-y-2' },
+          e('p', { className: 'text-sm font-semibold text-blue-800' }, 'Google Drive ' + (driveOk ? '— connected ✓' : '— not connected')),
+          e('div', { className: 'flex flex-wrap gap-2' },
+            e('input', { value: cfg.driveClientId, onChange: ev => setCfg({ ...cfg, driveClientId: ev.target.value }), onBlur: () => bkCfgRef().update({ driveClientId: cfg.driveClientId.trim() }), placeholder: 'Google OAuth Client ID (xxxx.apps.googleusercontent.com)', className: 'flex-1 min-w-[260px] border border-blue-200 rounded-lg px-3 py-2 text-sm outline-none bg-white' }),
+            e('button', { onClick: connect, className: 'text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#1565c0' } }, driveOk ? 'Reconnect' : 'Connect Google Drive')),
+          e('p', { className: 'text-xs text-blue-700' }, 'Drive access lasts about 1 hour per sign-in. If Drive is not connected when an automatic backup runs, it is saved to Firebase instead — a backup is never skipped.')))),
+    e('div', { className: 'aic-card overflow-x-auto' },
+      e('h4', { className: 'aic-card-title' }, 'Saved Backups'),
+      items.length === 0 ? e('p', { className: 'text-sm text-gray-400 py-4 text-center' }, 'No backups yet. Press "Backup Now" to create the first one.') : e('table', { className: 'w-full text-sm' },
+        e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['Date & Time', 'Type', 'Size', 'Customers', 'Tasks', 'By', 'Actions'].map(h => e('th', { key: h, className: 'py-2 pr-3 font-semibold' }, h)))),
+        e('tbody', null, items.map(m => e('tr', { key: m.id + m.where, className: 'border-b border-gray-50 hover:bg-gray-50' },
+          e('td', { className: 'py-2 pr-3 font-medium text-gray-800' }, new Date(m.id).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })),
+          e('td', { className: 'py-2 pr-3' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + (typeUi[m.type] || typeUi.manual) }, m.type)),
+          e('td', { className: 'py-2 pr-3 text-gray-500' }, bkSize(m.size || 0)), e('td', { className: 'py-2 pr-3' }, (m.counts && m.counts.customers) || 0), e('td', { className: 'py-2 pr-3' }, (m.counts && m.counts.tasks) || 0), e('td', { className: 'py-2 pr-3 text-gray-500' }, m.by),
+          e('td', { className: 'py-2' }, e('div', { className: 'flex flex-wrap gap-1' },
+            e('button', { onClick: () => verify(m), className: 'text-gray-600 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded text-xs' }, 'Verify'),
+            e('button', { onClick: () => download(m), className: 'text-blue-600 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded text-xs' }, 'Download'),
+            e('button', { onClick: () => askRestore(m), className: 'text-amber-700 border border-amber-300 hover:bg-amber-50 px-2 py-1 rounded text-xs font-medium' }, 'Restore'),
+            e('button', { onClick: () => del(m), className: 'text-gray-400 hover:text-red-600 px-1 text-xs' }, 'Delete'))))))) ),
+    rs && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-4', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setRs(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4', onClick: ev => ev.stopPropagation() },
+        e('h3', { className: 'font-bold text-lg text-red-600' }, 'Restore data?'), e('p', { className: 'text-sm text-gray-600' }, rs.label),
+        e('div', { className: 'text-sm border rounded-xl overflow-hidden' }, e('div', { className: 'grid grid-cols-3 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-500' }, e('span', null, 'Records'), e('span', null, 'Now'), e('span', null, 'After restore')),
+          BK_KEYS.map(k => e('div', { key: k, className: 'grid grid-cols-3 px-3 py-1 border-t' }, e('span', { className: 'capitalize text-gray-600' }, k), e('span', null, cur[k]), e('span', { className: rs.counts[k] !== cur[k] ? 'font-semibold text-amber-700' : '' }, rs.counts[k])))),
+        e('p', { className: 'text-xs text-gray-500' }, 'Everything entered after this backup will be replaced. A safety backup of the current data is created automatically first.'),
+        e('input', { value: typed, onChange: ev => setTyped(ev.target.value), placeholder: 'Type RESTORE to confirm', className: 'w-full border border-red-200 rounded-lg px-3 py-2 text-sm outline-none' }),
+        e('div', { className: 'flex gap-2 justify-end' }, e('button', { onClick: () => setRs(null), className: 'px-4 py-2 rounded-lg border text-sm' }, 'Cancel'),
+          e('button', { onClick: doRestore, disabled: typed !== 'RESTORE' || !!busy, className: 'px-4 py-2 rounded-lg text-white text-sm font-semibold', style: { background: '#dc2626', opacity: typed === 'RESTORE' ? 1 : .4 } }, busy ? 'Restoring...' : 'Restore Now')))));
+}
+
 function Expenses({ expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }) {
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', remarks: '', cost: '', date: todayStr });
@@ -4690,7 +5086,7 @@ function StaffPerformance({ tasks, users, expenses }) {
 }
 
 // ── SETTINGS ──
-function SystemSettings({ currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage }) {
+function SystemSettings({ currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage, stockItems = [] }) {
   const [tab, setTab] = useState(currentUser.role === 'admin' ? 'profile' : 'security');
   const adminTabs = [{ id: 'profile', label: 'Business Profile', icon: 'Building2' }, { id: 'services', label: 'Services & Pricing', icon: 'Tag' }, { id: 'staff', label: 'Staff Management', icon: 'Users' }, { id: 'security', label: 'Security', icon: 'Lock' }];
   const tabs = currentUser.role === 'admin' ? adminTabs : [{ id: 'security', label: 'Security', icon: 'Lock' }];
@@ -4735,6 +5131,9 @@ function SystemSettings({ currentUser, users, setUsers, services, setServices, b
             e('div', { key: s.id, className: 'flex items-center justify-between bg-white border rounded-xl px-4 py-3' },
               e('span', { className: 'font-medium text-gray-800' }, s.name),
               e('div', { className: 'flex items-center gap-3' },
+                e('div', { className: 'flex items-center gap-1 text-xs text-gray-500', title: 'When this service is added for a customer, this stock item is reduced automatically' },
+                  e('select', { value: s.stockItemId || '', onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, stockItemId: ev.target.value ? Number(ev.target.value) : '', stockQty: x.stockQty || 1 } : x)), className: 'border rounded px-1.5 py-1 text-xs outline-none max-w-[140px]' }, e('option', { value: '' }, 'No stock link'), stockItems.map(i => e('option', { key: i.id, value: i.id }, 'Uses: ' + i.name))),
+                  s.stockItemId && e('input', { type: 'number', min: 1, value: s.stockQty || 1, onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, stockQty: Math.max(1, Number(ev.target.value) || 1) } : x)), className: 'w-14 border rounded px-1.5 py-1 text-xs outline-none', title: 'Quantity used per service' }), s.stockItemId && '/ service'),
                 e('div', { className: 'flex items-center gap-1 text-sm' }, '₹', e('input', { type: 'number', value: s.price, onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, price: Number(ev.target.value) } : x)), className: 'w-24 border rounded px-2 py-1 outline-none' })),
                 e('button', { onClick: () => { setServices(services.filter(x => x.id !== s.id)); showMessage('Removed', 'error'); }, className: 'text-red-500 hover:bg-red-50 p-1.5 rounded-lg' }, e(Icon, { name: 'Trash2', size: 17 }))
               )
@@ -4934,6 +5333,13 @@ function App() {
     catch { setSyncOk(false); showMessage('Save failed. Check internet connection.', 'error'); }
   }, []);
 
+  // Automatic backup: checked every 15 min while an admin is logged in (the schedule itself lives in Firebase)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'admin' || !appData) return;
+    const t0 = setTimeout(() => bkAutoCheck(currentUser.name), 8000), iv = setInterval(() => bkAutoCheck(currentUser.name), 15 * 60 * 1000);
+    return () => { clearTimeout(t0); clearInterval(iv); };
+  }, [currentUser && currentUser.id, !!appData]);
+
   const gl = (key) => { if (!appData || !appData[key]) return []; return Array.isArray(appData[key]) ? appData[key] : Object.values(appData[key]); };
   const setUsers = v => persist({ ...appData, users: typeof v === 'function' ? v(gl('users')) : v });
   const setServices = v => persist({ ...appData, services: typeof v === 'function' ? v(gl('services')) : v });
@@ -5065,7 +5471,7 @@ function App() {
     else showMessage('Invalid credentials! Try: admin / 123', 'error');
   };
 
-  if (loading) return e('div', { className: 'min-h-screen flex flex-col items-center justify-center gap-5', style: { background: 'linear-gradient(180deg,#f5f8fd,#ffffff)' } }, e('img', { src: SC_LOGO_LIGHT, alt: 'SevaCore', style: { width: 'min(320px, 70vw)', height: 'auto', objectFit: 'contain' } }), e('div', { style: { animation: 'spin 1s linear infinite', display: 'inline-block', color: '#10b45f' } }, e(Icon, { name: 'RefreshCw', size: 26 })), e('p', { style: { color: '#5b6b88' }, className: 'text-sm' }, 'Connecting...'));
+  if (loading) return e('div', { className: 'min-h-screen flex flex-col items-center justify-center gap-5', style: { background: 'linear-gradient(180deg,#f5f8fd,#ffffff)' } }, e('img', { src: SC_LOGO_LIGHT, alt: 'SevaCore', style: { width: 'min(320px, 70vw)', height: 'auto', objectFit: 'contain', animation: 'scPulse 1.8s ease-in-out infinite' } }), e('div', { style: { animation: 'spin 1s linear infinite', display: 'inline-block', color: '#10b45f' } }, e(Icon, { name: 'RefreshCw', size: 26 })), e('p', { style: { color: '#5b6b88' }, className: 'text-sm' }, 'Connecting...'));
   if (loadError || !appData) return e('div', { className: 'min-h-screen bg-gray-100 flex flex-col items-center justify-center gap-3' }, e(Icon, { name: 'WifiOff', size: 32 }), e('p', null, "Couldn't connect. Refresh to retry."));
   if (!currentUser) return e(LoginScreen, { onLogin: handleLogin, message });
 
@@ -5082,17 +5488,19 @@ function App() {
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
+    { id: 'stock', label: 'Stock', icon: 'Package' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
     { id: 'sss', label: 'SSS Reports', icon: 'Shield' },
     ...(currentUser.role === 'admin' ? [
       { id: 'performance', label: 'Staff Performance', icon: 'BarChart2' },
-      { id: 'auditlog', label: 'Audit Log', icon: 'LogIn' }
+      { id: 'auditlog', label: 'Audit Log', icon: 'LogIn' },
+      { id: 'backup', label: 'Backup & Restore', icon: 'Shield' }
     ] : []),
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -5116,7 +5524,7 @@ function App() {
     ),
     e('main', { className: 'flex-1 flex flex-col overflow-hidden relative aic-main' },
       e('header', { className: `border-b px-6 py-3 flex justify-between items-center z-10 shadow-sm transition-colors duration-300 ${isBanking ? 'bg-green-700 text-white' : isDashboard ? 'bg-purple-700 text-white' : isCashClose ? 'bg-orange-600 text-white' : 'bg-white'}` },
-        e('h2', { className: `text-xl font-bold ${(isBanking || isDashboard || isCashClose) ? 'text-white' : 'text-gray-800'}` }, headerTitle[activeTab] || activeTab),
+        e('h2', { key: activeTab, className: `hd-in text-xl font-bold ${(isBanking || isDashboard || isCashClose) ? 'text-white' : 'text-gray-800'}` }, headerTitle[activeTab] || activeTab),
         e('div', { className: 'flex items-center gap-3' },
           e('button', {
             onClick: handleRefresh,
@@ -5136,8 +5544,8 @@ function App() {
           e('div', { className: `h-10 w-10 rounded-full flex items-center justify-center font-bold border ${isBanking?'bg-green-600 text-white border-green-500':isDashboard?'bg-purple-600 text-white border-purple-500':isCashClose?'bg-orange-500 text-white border-orange-400':'bg-indigo-100 text-indigo-600 border-indigo-200'}` }, currentUser.name.charAt(0))
         )
       ),
-      message && e('div', { className: `fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg font-medium text-white ${message.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`, style: { whiteSpace: 'normal', zIndex: 99999, maxWidth: '92vw', textAlign: 'center' } }, message.text),
-      e('div', { className: 'flex-1 overflow-y-auto p-6 relative' },
+      message && e('div', { key: message.text, className: `toast-in fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg font-medium text-white ${message.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`, style: { whiteSpace: 'normal', zIndex: 99999, maxWidth: '92vw', textAlign: 'center' } }, message.text),
+      e('div', { key: activeTab, className: 'pg-enter flex-1 overflow-y-auto p-6 relative' },
         activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null) }),
@@ -5145,13 +5553,15 @@ function App() {
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
+        activeTab === 'backup' && currentUser.role === 'admin' && e(BackupCenter, { appData, persist, currentUser, showMessage }),
+        activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
         activeTab === 'sss' && e(SSSReports, { appData, persist, currentUser, showMessage }),
         activeTab === 'performance' && currentUser.role === 'admin' && e(StaffPerformance, { tasks, users, expenses }),
         activeTab === 'auditlog' && currentUser.role === 'admin' && e(AuditLog, { auditLogs: gl('auditLogs') || [] }),
         activeTab === 'salary'      && activeTab === 'salary' && e(StaffSalary, { users, appData, persist, showMessage, currentUser, businessProfile }),
-        activeTab === 'settings' && e(SystemSettings, { currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage })
+        activeTab === 'settings' && e(SystemSettings, { stockItems: gl('stockItems'), currentUser, users, setUsers, services, setServices, businessProfile, setBusinessProfile, showMessage })
       )
     ),
     printingReceipt && e(ReceiptModal, { receipt: printingReceipt, businessProfile, onClose: () => setPrintingReceipt(null) })
