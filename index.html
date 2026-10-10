@@ -1621,7 +1621,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       '"' + cf.name + '" Do you want to add as a separate new Customer ID? (If returning customer, press Cancel and ' + (dupPhone.custCode || 'search for their') + '-search for them and add the service using Edit (pencil icon))'
     )) return;
     const validRows = selectedServices.filter(r => r.serviceId);
-    if (validRows.length === 0) return showMessage('Please select at least one service.', 'error');
+    // A service is optional now — a customer can be registered first and given services later.
     for (const row of validRows) {
       if (row.serviceId === 'others' && (!row.customServiceName || !row.customServicePrice)) return showMessage('Please fill custom service name and price.', 'error');
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-UTR Number is required for this payment. "' + getRowName(row) + '" row-Please enter UTR Number.', 'error');
@@ -1657,7 +1657,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(false);
-    showMessage(custCode + ' created! Total Due: ₹' + crmDue + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
+    showMessage(custCode + ' created!' + (validRows.length ? ' Total Due: ₹' + crmDue : ' No service added yet.') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : ''));
   };
 
   const handleEditCustomer = (cust) => {
@@ -1817,7 +1817,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       })(),
       e('div', { className: 'space-y-3' },
         e('div', { className: 'flex justify-between items-center' },
-          e('label', { id: 'crm-add-service', className: 'block text-sm font-semibold text-gray-700' }, editingCustomerId ? 'Add New Service (optional)' : 'Services *'),
+          e('label', { id: 'crm-add-service', className: 'block text-sm font-semibold text-gray-700' }, editingCustomerId ? 'Add New Service (optional)' : 'Services (optional — can be added later)'),
           e('button', { onClick: addServiceRow, className: 'flex items-center gap-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-sm font-medium border border-indigo-200' }, e(Icon, { name: 'Plus', size: 15 }), ' Add Another Service')
         ),
         ...selectedServices.map((row, idx) => e('div', { key: row.id, className: 'p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2' },
