@@ -686,9 +686,9 @@ function CountUp({ value }) {
   return shown;
 }
 
-function NavItem({ icon, label, isActive, onClick }) {
+function NavItem({ icon, label, isActive, onClick, badge }) {
   return e('button', { onClick, className: 'aic-nav' + (isActive ? ' on' : '') },
-    e('span', { className: 'mr-3' }, icon), e('span', null, label));
+    e('span', { className: 'mr-3' }, icon), e('span', { className: 'flex-1' }, label), badge > 0 && e('span', { className: 'ml-2 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center' }, badge));
 }
 
 function StatCard({ title, value, icon, color, sub }) {
@@ -1182,7 +1182,7 @@ const blankMember = () => ({ id: Date.now() + Math.floor(Math.random() * 100000)
 const cleanMember = m => ({ id: m.id, name: (m.name || '').trim(), relation: m.relation || 'Other', phone: _normPhone(m.phone), gender: m.gender || '', dob: m.dob || '', docType: m.docType || '', docNumber: (m.docNumber || '').trim(), work: (m.work || '').trim(), notes: (m.notes || '').trim() });
 const familyOf = c => Array.isArray(c && c.family) ? c.family : (c && c.family ? Object.values(c.family) : []);
 
-function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, appData, persist, showMessage }) {
+function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, appData, persist, showMessage, currentUser }) {
   const mine = tasksOfCustomer(customer, tasks);
   // ── Clear pending dues right from the profile ──
   const [payMode, setPayMode] = useState('Cash');
@@ -1211,6 +1211,10 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
         ...(payMode === 'Online' ? { utrNumber: payUtr.trim(), screenshotFileName: payShot.trim() } : {}) };
     });
     if (total <= 0) return showMessage('Enter a valid amount.', 'error');
+    if (payMode === 'Online' && apNeeds(appData, currentUser, 'online_payment')) {
+      persist(apPaymentRequest(appData, currentUser, tasks, newTasks, todayS)); setPartial({}); setPayUtr(''); setPayShot('');
+      return showMessage('Online payment ₹' + total + ' sent to Admin for verification ⏳ — it counts after approval.');
+    }
     const payload = { ...appData, tasks: newTasks };
     if (payMode === 'Online') payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + total;
     persist(payload);
@@ -1221,6 +1225,11 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
   const giveDisc = t => {
     const r = applyDiscountTo(tasks, t.id, Number(discIn[t.id]) || 0);
     if (r.applied <= 0) return showMessage('Enter a valid discount (cannot be more than the due amount).', 'error');
+    if (apNeeds(appData, currentUser, 'discount', r.applied)) {
+      const due = Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0));
+      persist(apAdd(appData, currentUser, 'discount', 'Discount ₹' + r.applied + ' — ' + t.customerName + ' · ' + svcLabel(t), [['Due amount', '₹' + due, '₹' + (due - r.applied)], ['Discount', '', '₹' + r.applied]], { taskId: t.id, amount: r.applied }));
+      setDiscIn({}); return showMessage('Discount request sent to Admin for verification ⏳');
+    }
     persist({ ...appData, tasks: r.tasks }); setDiscIn({}); showMessage('Discount ₹' + r.applied + ' applied — ' + t.service);
   };
   const payFull = t => applyPays([{ id: t.id, amt: dueOfTask(t) }], t.service);
@@ -1752,6 +1761,9 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.utrNumber || '').trim()) return showMessage('Online payment-UTR Number is required for this payment. "' + getRowName(row) + '" row-Please enter UTR Number.', 'error');
       if ((row.paymentMode || 'Cash') === 'Online' && !(row.screenshotFileName || '').trim()) return showMessage('Online payment-Screenshot File Name is required for this payment. "' + getRowName(row) + '" row-Please enter Screenshot File Name.', 'error');
     }
+    // Operators: changed customer details are held for Admin verification (new services still go through)
+    const apDiff = apNeeds(appData, currentUser, 'customer_edit') ? apDiffCustomer(cust, cf) : null;
+    const held = !!apDiff, useCf = held ? {} : cf, nameNow = held ? cust.name : cf.name;
     const gid = Date.now();
     const newSvcNames = validRows.map(r => getRowName(r) + (Math.max(1, parseInt(r.qty) || 1) > 1 ? ' × ' + Math.max(1, parseInt(r.qty) || 1) : '') + (memberFields(r).forMemberName ? ' (' + memberFields(r).forMemberName + ')' : '')).join(', ');
     const newTasks = validRows.map((row, i) => {
@@ -1762,24 +1774,25 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: nameNow, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     const updatedCustomers = customers.map(c => {
       if (c.id !== editingCustomerId) return c;
       const mergedService = newSvcNames ? (c.service ? c.service + ', ' + newSvcNames : newSvcNames) : c.service;
-      return { ...c, ...cf, service: mergedService || '', lastVisit: newTasks.length > 0 ? todayStr : (c.lastVisit || todayStr) };
+      return { ...c, ...useCf, service: mergedService || '', lastVisit: newTasks.length > 0 ? todayStr : (c.lastVisit || todayStr) };
     });
     // Rename only THIS customer's own tasks — matched by customerId, not by the old name,
     // so a different customer who happens to share that name never gets renamed along with it.
     const updatedTasks = [
       ...tasks.map(t => {
         const isThisCustomer = (t.customerId !== undefined && t.customerId !== null) ? t.customerId === editingCustomerId : t.customerName === cust.name;
-        return isThisCustomer ? { ...t, customerName: cf.name } : t;
+        return isThisCustomer ? { ...t, customerName: nameNow } : t;
       }),
       ...newTasks
     ];
     const onlinePaid = validRows.reduce((sum, row) => sum + ((row.paymentMode === 'Online') ? (Number(row.paid) || 0) : 0), 0);
-    const payload = { ...appData, customers: updatedCustomers, tasks: updatedTasks };
+    let payload = { ...appData, customers: updatedCustomers, tasks: updatedTasks };
+    if (held) payload = apAdd(payload, currentUser, 'customer_edit', 'Update details — ' + cust.name + (cust.custCode ? ' (' + cust.custCode + ')' : ''), apDiff.rows, { customerId: editingCustomerId, after: apDiff.after, before: apDiff.before });
     if (onlinePaid > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlinePaid;
     const stockRes = applyServiceStock(payload, services, validRows, cf.name, currentUser.name, todayStr);
     addAuditLog('Customer Updated', cust.name + ' → ' + cf.name, 'Phone: ' + cf.phone + (newTasks.length > 0 ? ' | New service(s) added: ' + newSvcNames : ''), payload);
@@ -1787,7 +1800,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
-    showMessage('Customer details updated!' + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
+    showMessage((held ? 'Details sent to Admin for verification ⏳ (current details stay until approved).' : 'Customer details updated!') + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
   };
 
   return e('div', { className: 'space-y-4' },
@@ -2017,7 +2030,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('td', { className: 'p-4' },
                 e('button', { onClick: () => setProfileCustomer(c), title: 'View full profile & visit history', className: 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-xs font-mono font-semibold border border-indigo-200' }, c.custCode || '—')
               ),
-              e('td', { className: 'p-4 font-medium text-gray-800' }, c.name, familyOf(c).length > 0 && e('button', { onClick: () => setProfileCustomer(c), title: 'View family members', className: 'ml-2 text-xs px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 font-medium' }, '👪 ' + familyOf(c).length)),
+              e('td', { className: 'p-4 font-medium text-gray-800' }, c.name, apList(appData).some(r => r.status === 'pending' && r.type === 'customer_edit' && r.payload && r.payload.customerId === c.id) && e('span', { className: 'ml-2 text-xs px-2 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-amber-700 font-medium', title: 'Changes waiting for Admin verification' }, '⏳ verify'), familyOf(c).length > 0 && e('button', { onClick: () => setProfileCustomer(c), title: 'View family members', className: 'ml-2 text-xs px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 font-medium' }, '👪 ' + familyOf(c).length)),
               e('td', { className: 'p-4 text-gray-600' }, c.phone),
               e('td', { className: 'p-4 text-gray-500 text-sm' }, c.address || '—'),
               e('td', { className: 'p-4 text-gray-500 text-sm' }, c.dob || '—'),
@@ -2090,12 +2103,12 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } }),
     showWaTpl && e(WhatsAppTemplatesModal, { appData, persist, addAuditLog, showMessage, onClose: () => setShowWaTpl(false) }),
     showMerge && e(CustomerMergeModal, { customers, tasks, appData, persist, showMessage, addAuditLog, onClose: () => setShowMerge(false) }),
-    profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt, appData, persist, showMessage, onAddService: () => { const c = customers.find(x => x.id === profileCustomer.id) || profileCustomer; setProfileCustomer(null); openEditFor(c, true); } })
+    profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt, appData, persist, showMessage, currentUser, onAddService: () => { const c = customers.find(x => x.id === profileCustomer.id) || profileCustomer; setProfileCustomer(null); openEditFor(c, true); } })
   );
 }
 
 // ── PENDING DUES ──
-function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService }) {
+function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, currentUser }) {
   const [waCustomer, setWaCustomer] = useState(null);
   const [fromDate, setFromDate] = useState('2020-01-01');
   const [toDate, setToDate] = useState(todayStr);
@@ -2116,6 +2129,11 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   const giveDiscount = (id, d) => {
     const r = applyDiscountTo(tasks, id, d);
     if (r.applied <= 0) return showMessage('Enter a valid discount (cannot be more than the due amount).', 'error');
+    if (apNeeds(appData, currentUser, 'discount', r.applied)) {
+      const t = tasks.find(x => x.id === id), due = Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0));
+      persist(apAdd(appData, currentUser, 'discount', 'Discount ₹' + r.applied + ' — ' + t.customerName + ' · ' + svcLabel(t), [['Due amount', '₹' + due, '₹' + (due - r.applied)], ['Discount', '', '₹' + r.applied]], { taskId: id, amount: r.applied }));
+      return showMessage('Discount request sent to Admin for verification ⏳');
+    }
     persist({ ...appData, tasks: r.tasks });
     showMessage('Discount ₹' + r.applied + ' applied.');
   };
@@ -2137,6 +2155,10 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
   // Online) the Savings Account Balance go out in ONE persist() call — two back-to-back
   // calls would each spread the same stale appData and the second would wipe the first.
   const commitPayment = (newTasks, onlineAdd, msg) => {
+    if (onlineAdd > 0 && apNeeds(appData, currentUser, 'online_payment')) {   // Online money is verified by Admin first
+      persist(apPaymentRequest(appData, currentUser, tasks, newTasks, todayStr));
+      return showMessage('Online payment ₹' + onlineAdd + ' sent to Admin for verification ⏳ — it counts after approval.');
+    }
     const payload = { ...appData, tasks: newTasks };
     if (onlineAdd > 0) payload.savingsAccountBalance = (appData.savingsAccountBalance || 0) + onlineAdd;
     try { persist(payload); } catch (err) { showMessage('Payment could not be saved: ' + (err && err.message ? err.message : err), 'error'); return; }
@@ -2353,7 +2375,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
             );
           })
         ),
-    profileC && e(CustomerProfileModal, { customer: profileC, tasks, onClose: () => setProfileC(null), setPrintingReceipt, appData, persist, showMessage, onAddService: () => { const c = profileC; setProfileC(null); goAddService && goAddService(c); } }),
+    profileC && e(CustomerProfileModal, { customer: profileC, tasks, onClose: () => setProfileC(null), setPrintingReceipt, appData, persist, showMessage, currentUser, onAddService: () => { const c = profileC; setProfileC(null); goAddService && goAddService(c); } }),
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, preferId: 'due', onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog && addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } })
   );
 }
@@ -2695,6 +2717,109 @@ function BackupCenter({ appData, persist, currentUser, showMessage }) {
         e('input', { value: typed, onChange: ev => setTyped(ev.target.value), placeholder: 'Type RESTORE to confirm', className: 'w-full border border-red-200 rounded-lg px-3 py-2 text-sm outline-none' }),
         e('div', { className: 'flex gap-2 justify-end' }, e('button', { onClick: () => setRs(null), className: 'px-4 py-2 rounded-lg border text-sm' }, 'Cancel'),
           e('button', { onClick: doRestore, disabled: typed !== 'RESTORE' || !!busy, className: 'px-4 py-2 rounded-lg text-white text-sm font-semibold', style: { background: '#dc2626', opacity: typed === 'RESTORE' ? 1 : .4 } }, busy ? 'Restoring...' : 'Restore Now')))));
+}
+
+// ── APPROVALS (maker–checker): staff submit → Admin verifies → change is applied ──
+const AP_DEFAULTS = { customer_edit: true, discount: true, online_payment: true, discountLimit: 20 };
+const AP_TYPES = { customer_edit: ['Customer details', 'bg-blue-50 text-blue-700 border-blue-200'], discount: ['Discount', 'bg-amber-50 text-amber-700 border-amber-200'], online_payment: ['Online payment', 'bg-green-50 text-green-700 border-green-200'] };
+const AP_FIELDS = { name: 'Name', phone: 'Mobile', altPhone: 'Alt. Mobile', gender: 'Gender', dob: 'Date of Birth', village: 'Village', post: 'Post', city: 'City', pin: 'PIN', address: 'Address', doc1Type: 'Document 1', doc1Number: 'Document 1 No.', doc1Other: 'Document 1 (other)', doc2Type: 'Document 2', doc2Number: 'Document 2 No.', doc2Other: 'Document 2 (other)', notes: 'Notes' };
+const apRules = d => ({ ...AP_DEFAULTS, ...((d && d.approvalRules) || {}) });
+const apList = d => bkArr(d && d.approvals);
+const apNeeds = (d, user, type, amount) => {
+  if (!user || user.role === 'admin') return false;                       // Admin changes apply directly
+  const r = apRules(d);
+  return type === 'discount' ? !!r.discount && Number(amount) > Number(r.discountLimit || 0) : !!r[type];
+};
+const apAdd = (d, user, type, title, rows, payload) => ({ ...d, approvals: [...apList(d), JSON.parse(JSON.stringify({
+  id: Date.now() + Math.floor(Math.random() * 1000), type, status: 'pending', createdAt: new Date().toISOString(), by: user.id, byName: user.name, title,
+  rows: rows.map(r => r.map(x => String(x == null ? '' : x))), payload })) ] });
+const apFamilyText = list => list.length ? list.map(m => m.name + ' (' + m.relation + (m.work ? ', ' + m.work : '') + ')').join('; ') : 'none';
+function apDiffCustomer(cust, cf) {   // what the staff member actually changed (null = nothing)
+  const after = {}, before = {}, rows = [];
+  Object.keys(AP_FIELDS).forEach(k => { if (String(cust[k] || '') !== String(cf[k] || '')) { after[k] = cf[k] || ''; before[k] = cust[k] || ''; rows.push([AP_FIELDS[k], cust[k] || '—', cf[k] || '—']); } });
+  const fo = familyOf(cust).map(cleanMember), fn = (cf.family || []).map(cleanMember);
+  if (JSON.stringify(fo) !== JSON.stringify(fn)) { after.family = fn; rows.push(['Family members', apFamilyText(fo), apFamilyText(fn)]); }
+  return rows.length ? { after, before, rows } : null;
+}
+function apPaymentRequest(d, user, oldTasks, newTasks, date) {   // Online payment held for verification
+  const changes = [], rows = []; let total = 0, cust = '';
+  newTasks.forEach(nt => {
+    const ot = oldTasks.find(x => x.id === nt.id); if (!ot) return;
+    const delta = (Number(nt.paidAmount) || 0) - (Number(ot.paidAmount) || 0); if (delta <= 0) return;
+    const hist = nt.paymentHistory || [], last = hist[hist.length - 1] || {};
+    changes.push({ id: nt.id, delta, mode: last.mode || 'Online', date, utr: nt.utrNumber || '', shot: nt.screenshotFileName || '' });
+    rows.push([svcLabel(nt), 'Paid ₹' + (Number(ot.paidAmount) || 0), 'Paid ₹' + (Number(nt.paidAmount) || 0)]); total += delta; cust = nt.customerName;
+  });
+  const first = changes[0] || {}; rows.push(['UTR Number', '', first.utr || '—'], ['Screenshot file', '', first.shot || '—']);
+  return apAdd(d, user, 'online_payment', 'Online payment ₹' + total + ' — ' + cust, rows, { changes });
+}
+function apApply(d, req) {            // returns { data } or { error }
+  const p = req.payload || {};
+  if (req.type === 'customer_edit') {
+    const cs = bkArr(d.customers), c = cs.find(x => x.id === p.customerId); if (!c) return { error: 'This customer no longer exists.' };
+    let tasks = bkArr(d.tasks);
+    if (p.after.name && p.after.name !== c.name) tasks = tasks.map(t => ((t.customerId !== undefined && t.customerId !== null) ? t.customerId === p.customerId : t.customerName === c.name) ? { ...t, customerName: p.after.name } : t);
+    return { data: { ...d, customers: cs.map(x => x.id === p.customerId ? { ...x, ...p.after } : x), tasks } };
+  }
+  if (req.type === 'discount') {
+    const r = applyDiscountTo(bkArr(d.tasks), p.taskId, p.amount);
+    return r.applied > 0 ? { data: { ...d, tasks: r.tasks } } : { error: 'Discount cannot be applied — it is already paid or the entry changed.' };
+  }
+  if (req.type === 'online_payment') {
+    let applied = 0, online = 0;
+    const tasks = bkArr(d.tasks).map(t => {
+      const c = (p.changes || []).find(x => x.id === t.id); if (!c) return t;
+      const price = Number(t.price) || 0, paid = Number(t.paidAmount) || 0, np = Math.min(price, paid + c.delta), ap = np - paid; if (ap <= 0) return t;
+      applied += ap; if (c.mode === 'Online') online += ap;
+      return { ...t, paidAmount: np, status: np >= price ? 'Successful' : t.status, paymentDate: c.date, paymentHistory: [...(t.paymentHistory || []), { date: c.date, amount: ap, mode: c.mode }], utrNumber: c.utr, screenshotFileName: c.shot };
+    });
+    return applied > 0 ? { data: { ...d, tasks, savingsAccountBalance: (d.savingsAccountBalance || 0) + online } } : { error: 'Nothing left to pay — it was already paid.' };
+  }
+  return { error: 'Unknown request type.' };
+}
+const apAgo = iso => { const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.floor(m / 60) + ' h ago' : Math.floor(m / 1440) + ' d ago'; };
+const apExpired = r => r.status === 'pending' && Date.now() - new Date(r.createdAt).getTime() > 7 * 864e5;
+
+function ApprovalsPage({ appData, persist, currentUser, showMessage, addAuditLog }) {
+  const admin = currentUser.role === 'admin', rules = apRules(appData);
+  const all = apList(appData).slice().sort((a, b) => b.id - a.id), mine = admin ? all : all.filter(r => r.by === currentUser.id);
+  const pending = mine.filter(r => r.status === 'pending' && !apExpired(r)), done = mine.filter(r => r.status !== 'pending' || apExpired(r)).slice(0, 60);
+  const [tab, setTab] = useState('pending'), [notes, setNotes] = useState({});
+  const decide = (req, ok) => {
+    let data = appData;
+    if (ok) { const r = apApply(appData, req); if (r.error) return showMessage(r.error, 'error'); data = r.data; }
+    const approvals = apList(data).map(x => x.id === req.id ? { ...x, status: ok ? 'approved' : 'rejected', decidedAt: new Date().toISOString(), decidedBy: currentUser.name, note: notes[req.id] || '' } : x);
+    addAuditLog(ok ? 'Approved' : 'Rejected', req.title, 'Requested by ' + req.byName, { ...data, approvals });
+    showMessage(ok ? '✓ Approved and applied.' : 'Request rejected.', ok ? 'success' : 'error');
+  };
+  const cancel = req => persist({ ...appData, approvals: apList(appData).map(x => x.id === req.id ? { ...x, status: 'cancelled', decidedAt: new Date().toISOString(), decidedBy: currentUser.name } : x) });
+  const setRule = patch => persist({ ...appData, approvalRules: { ...rules, ...patch } });
+  const stale = req => { if (req.type !== 'customer_edit') return false; const c = bkArr(appData.customers).find(x => x.id === req.payload.customerId); return !!c && Object.keys(req.payload.before || {}).some(k => String(c[k] || '') !== String(req.payload.before[k] || '')); };
+  const stUi = { approved: 'bg-green-50 text-green-700 border-green-200', rejected: 'bg-red-50 text-red-600 border-red-200', cancelled: 'bg-gray-50 text-gray-500 border-gray-200', pending: 'bg-amber-50 text-amber-700 border-amber-200' };
+  const pill = (id, l) => e('button', { key: id, onClick: () => setTab(id), className: 'aic-pill' + (tab === id ? ' on' : '') }, l);
+  const card = (req, actions) => e('div', { key: req.id, className: 'aic-card space-y-3' },
+    e('div', { className: 'flex flex-wrap items-start justify-between gap-2' },
+      e('div', null, e('div', { className: 'flex items-center gap-2 flex-wrap' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + (AP_TYPES[req.type] || AP_TYPES.discount)[1] }, (AP_TYPES[req.type] || ['Request'])[0]), e('p', { className: 'font-semibold text-gray-800' }, req.title)),
+        e('p', { className: 'text-xs text-gray-400 mt-1' }, 'by ' + req.byName + ' · ' + apAgo(req.createdAt) + (req.decidedBy ? ' · ' + req.status + ' by ' + req.decidedBy : ''))),
+      req.status !== 'pending' && e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + stUi[req.status] }, apExpired(req) ? 'expired' : req.status)),
+    stale(req) && e('p', { className: 'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1' }, '⚠ This customer was changed by someone else after the request was made. Check "Current" before approving.'),
+    e('div', { className: 'overflow-x-auto' }, e('table', { className: 'w-full text-sm' }, e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['Field', 'Current', 'Requested'].map(h => e('th', { key: h, className: 'py-1.5 pr-3 font-semibold' }, h)))),
+      e('tbody', null, req.rows.map((r, i) => e('tr', { key: i, className: 'border-b border-gray-50' }, e('td', { className: 'py-1.5 pr-3 text-gray-500' }, r[0]), e('td', { className: 'py-1.5 pr-3 text-red-500' }, r[1]), e('td', { className: 'py-1.5 pr-3 font-medium text-green-700' }, r[2])))))),
+    req.note && e('p', { className: 'text-xs text-gray-500' }, 'Note: ' + req.note), actions);
+  const list = tab === 'pending' ? pending : done;
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, admin ? 'Approvals' : 'My Requests'), e('p', { className: 'text-sm text-gray-500' }, admin ? 'Verify staff changes before they take effect' : 'Changes waiting for Admin verification')),
+      e('div', { className: 'flex gap-2' }, pill('pending', 'Pending (' + pending.length + ')'), pill('history', 'History'), admin && pill('rules', 'Rules'))),
+    tab === 'rules' && admin ? e(Card, { title: 'What needs Admin verification?', sub: 'Applies to Operator accounts. Admin changes are always applied directly.' }, e('div', { className: 'space-y-3 text-sm text-gray-700' },
+      [['customer_edit', 'Customer details change (name, mobile, address, documents, family)'], ['online_payment', 'Online payment received (UTR / screenshot check)'], ['discount', 'Discount on a service']].map(([k, t]) => e('label', { key: k, className: 'flex items-center gap-2' }, e('input', { type: 'checkbox', checked: !!rules[k], onChange: ev => setRule({ [k]: ev.target.checked }) }), t)),
+      e('label', { className: 'flex items-center gap-2 pl-6' }, 'Discount up to ₹', e('input', { type: 'number', min: 0, value: rules.discountLimit, onChange: ev => setRule({ discountLimit: Math.max(0, Number(ev.target.value) || 0) }), className: 'w-20 border rounded px-2 py-1 text-sm outline-none' }), 'is applied directly (0 = every discount needs approval)'))) :
+    list.length === 0 ? e('div', { className: 'aic-card text-center text-gray-400 py-8' }, tab === 'pending' ? (admin ? '✓ Nothing waiting for verification.' : 'You have no pending requests.') : 'No history yet.') :
+    e('div', { className: 'space-y-4' }, list.map(req => card(req, req.status === 'pending' && !apExpired(req) ? (admin ?
+      e('div', { className: 'flex flex-wrap items-center gap-2' }, e('input', { value: notes[req.id] || '', onChange: ev => setNotes({ ...notes, [req.id]: ev.target.value }), placeholder: 'Note (optional, shown to staff)', className: 'flex-1 min-w-[180px] border rounded-lg px-3 py-1.5 text-sm outline-none' }),
+        e('button', { onClick: () => decide(req, false), className: 'px-4 py-1.5 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50' }, 'Reject'),
+        e('button', { onClick: () => decide(req, true), className: 'px-5 py-1.5 rounded-lg text-sm font-semibold text-white', style: { background: '#0f9d8a' } }, '✓ Approve')) :
+      e('button', { onClick: () => cancel(req), className: 'text-xs text-gray-500 border rounded-lg px-3 py-1 hover:bg-gray-50' }, 'Withdraw request')) : null))));
 }
 
 function Expenses({ expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }) {
@@ -5485,6 +5610,7 @@ function App() {
     { id: 'tracking', label: 'Service Tracking', icon: 'Briefcase' },
     { id: 'crm', label: 'Customer CRM', icon: 'Users' },
     { id: 'reports', label: 'Reports & Invoice', icon: 'FileText' },
+    { id: 'approvals', label: currentUser.role === 'admin' ? 'Approvals' : 'My Requests', icon: 'CheckCircle' },
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
@@ -5500,7 +5626,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -5514,7 +5640,7 @@ function App() {
         )
       ),
       e('nav', { className: 'flex-1 p-3 space-y-1 overflow-y-auto' },
-        ...navItems.map(n => e(NavItem, { key: n.id, icon: e(Icon, { name: n.icon, size: 18 }), label: n.label, isActive: activeTab === n.id, onClick: () => setActiveTab(n.id), sideColor })),
+        ...navItems.map(n => e(NavItem, { key: n.id, icon: e(Icon, { name: n.icon, size: 18 }), label: n.label, isActive: activeTab === n.id, onClick: () => setActiveTab(n.id), sideColor, badge: n.id === 'approvals' ? apList(appData).filter(r => r.status === 'pending' && !apExpired(r) && (currentUser.role === 'admin' || r.by === currentUser.id)).length : 0 })),
         e('div', { className: `pt-3 mt-3 border-t border-${sideColor}-800` },
           e(NavItem, { icon: e(Icon, { name: 'Settings', size: 18 }), label: currentUser.role === 'admin' ? 'System Settings' : 'My Settings', isActive: activeTab === 'settings', onClick: () => setActiveTab('settings'), sideColor }),
           e('button', { onClick: () => { if (window.confirm('Are you sure you want to log out?')) setCurrentUser(null); }, className: 'flex items-center w-full p-3 rounded-lg text-indigo-300 hover:bg-red-600 hover:text-white transition-colors mt-1 text-left gap-3' }, e(Icon, { name: 'LogOut', size: 18 }), e('span', { className: 'font-medium text-sm' }, 'Logout'))
@@ -5550,10 +5676,11 @@ function App() {
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null) }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
-        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService }),
+        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, currentUser }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'backup' && currentUser.role === 'admin' && e(BackupCenter, { appData, persist, currentUser, showMessage }),
+        activeTab === 'approvals' && e(ApprovalsPage, { appData, persist, currentUser, showMessage, addAuditLog }),
         activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
