@@ -135,6 +135,15 @@ function exportToExcel(data, filename) {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  if (window.__drvPath) {   // "Save to Drive" button on the export bar
+    const path = window.__drvPath; window.__drvPath = null;
+    const b64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' }), name = new Date().toISOString().slice(0, 10) + ' ' + filename + '.xlsx';
+    drvCall('upload', { path, name, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: b64 })
+      .then(j => drvSaveRecord(window.__drvUser, { driveId: j.id, name: j.name, size: j.size, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', scope: path.startsWith('Banking') ? 'banking' : 'reports', category: 'Reports', path, date: todayStr }))
+      .then(() => window.__drvToast && window.__drvToast('Saved to Google Drive: ' + path))
+      .catch(err => window.__drvToast && window.__drvToast(err.message, 'error'));
+    return;
+  }
   XLSX.writeFile(wb, filename + '.xlsx');
 }
 
@@ -702,12 +711,13 @@ function StatCard({ title, value, icon, color, sub }) {
   );
 }
 
-function ExportBar({ fromDate, setFromDate, toDate, setToDate, onExport, label }) {
+function ExportBar({ fromDate, setFromDate, toDate, setToDate, onExport, label, drivePath }) {
   return e('div', { className: 'flex flex-wrap gap-3 items-end bg-white p-4 rounded-xl shadow-sm border border-gray-100' },
     e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'From'), e('input', { type: 'date', value: fromDate, onChange: ev => setFromDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
     e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'To'), e('input', { type: 'date', value: toDate, onChange: ev => setToDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
     e('button', { onClick: onExport, className: 'flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' },
-      e(Icon, { name: 'Download', size: 16 }), label || 'Export Excel')
+      e(Icon, { name: 'Download', size: 16 }), label || 'Export Excel'),
+    drvReady() && e('button', { onClick: () => { window.__drvPath = drivePath || ('Reports/' + todayStr.slice(0, 7)); onExport(); }, title: 'Save the Excel file straight to your Google Drive', className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm', style: { background: '#1565c0' } }, '☁ Save to Drive')
   );
 }
 
@@ -1283,6 +1293,7 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
             (() => { const ms = mine.filter(t => t.forMemberId && String(t.forMemberId) === String(m.id)); return ms.length > 0 && e('div', { className: 'mt-2 pt-2 border-t border-blue-100 space-y-1' },
               e('p', { className: 'text-xs font-semibold text-blue-700' }, 'Services (' + ms.length + ')'),
               ms.map(t => { const du = Math.max(0, (Number(t.price) || 0) - (Number(t.paidAmount) || 0)); return e('div', { key: t.id, className: 'flex justify-between text-xs text-gray-600' }, e('span', null, (t.service || '') + (Number(t.qty) > 1 ? ' × ' + t.qty : '') + ' · ' + (t.date || '')), e('span', { className: du > 0 ? 'text-red-500 font-medium' : 'text-green-600' }, du > 0 ? 'Due ₹' + du : 'Paid')); })); })())))),
+          e('div', null, e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Documents'), e(DocsPanel, { appData, currentUser, showMessage, scope: 'customer', customer })),
           ),
           e('div', { className: 'pm-col lg:col-span-3 space-y-4' },
         e('div', { className: 'grid grid-cols-3 gap-3 text-center' },
@@ -2820,6 +2831,146 @@ function ApprovalsPage({ appData, persist, currentUser, showMessage, addAuditLog
         e('button', { onClick: () => decide(req, false), className: 'px-4 py-1.5 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50' }, 'Reject'),
         e('button', { onClick: () => decide(req, true), className: 'px-5 py-1.5 rounded-lg text-sm font-semibold text-white', style: { background: '#0f9d8a' } }, '✓ Approve')) :
       e('button', { onClick: () => cancel(req), className: 'text-xs text-gray-500 border rounded-lg px-3 py-1 hover:bg-gray-50' }, 'Withdraw request')) : null))));
+}
+
+// ── GOOGLE DRIVE STORAGE — files go to the owner's Drive through an Apps Script web app ──
+// Config (URL + key) lives in Firebase 'csc-drive-config' so every device/staff login shares it.
+// Document records live in 'csc-app-data/documents/<id>' (written one-by-one, so a slow upload can never overwrite other data).
+const DRV_MAX = 5 * 1024 * 1024;
+const DRV_CUSTOMER_CATS = ['Aadhaar Card', 'PAN Card', 'Voter ID', 'Ration Card', 'Photo', 'Signature', 'Bank Passbook', 'Application Form', 'Other'];
+const DRV_BANK_CATS = ['Forms', 'Statements', 'Reports', 'Receipts & Challans', 'Agreements & Letters', 'Others'];
+let _drvCfg = null;
+async function drvLoadCfg(force) { if (_drvCfg && !force) return _drvCfg; try { _drvCfg = (await db.ref('csc-drive-config').once('value')).val() || {}; } catch (err) { _drvCfg = {}; } return _drvCfg; }
+const drvReady = () => !!(_drvCfg && _drvCfg.url && _drvCfg.key);
+async function drvCall(action, payload) {
+  const c = await drvLoadCfg();
+  if (!c.url || !c.key) throw new Error('Google Drive is not connected. Admin: open Documents → Drive Settings.');
+  const r = await fetch(c.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...payload, action, key: c.key }) });
+  let j; try { j = await r.json(); } catch (err) { throw new Error('Drive did not answer correctly. Check the Script URL and that the deployment is set to "Anyone".'); }
+  if (!j.ok) throw new Error(j.error === 'Unauthorized' ? 'Wrong secret key.' : (j.error || 'Drive error'));
+  return j;
+}
+function drvCompress(file) {   // photos are shrunk before upload (usually 5-10x smaller); PDFs are sent as they are
+  return new Promise(res => {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return res(file);
+    const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1800 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      cv.toBlob(b => { URL.revokeObjectURL(u); res(b && b.size < file.size ? new File([b], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file); }, 'image/jpeg', 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); res(file); }; img.src = u;
+  });
+}
+const drvB64 = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => no(new Error('Could not read the file.')); r.readAsDataURL(blob); });
+async function drvUpload(file, path, note) {
+  const f = await drvCompress(file);
+  if (f.size > DRV_MAX) throw new Error('"' + file.name + '" is ' + (f.size / 1048576).toFixed(1) + ' MB. The limit is 5 MB — please reduce the file and try again.');
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  const j = await drvCall('upload', { path, name: stamp + ' ' + f.name, mime: f.type || 'application/octet-stream', note: note || '', data: await drvB64(f) });
+  return { driveId: j.id, name: j.name, size: j.size, mime: f.type || 'application/octet-stream' };
+}
+async function drvBlobUrl(id) {
+  const j = await drvCall('get', { id }), bin = atob(j.data), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return { url: URL.createObjectURL(new Blob([buf], { type: j.mime })), mime: j.mime, name: j.name };
+}
+function drvAudit(user, action, details) {
+  const id = Date.now() + Math.floor(Math.random() * 1000);
+  db.ref('csc-app-data/auditLogs/' + id).set({ id, date: todayStr, time: new Date().toLocaleTimeString('en-IN'), timestamp: Date.now(), action, details, staffId: user.id, staffName: user.name, staffRole: user.role }).catch(() => {});
+}
+async function drvSaveRecord(user, o) {   // o: { driveId,name,size,mime,scope,category,path,date,note, customer?, member? }
+  const rec = { id: Date.now() + Math.floor(Math.random() * 1000), driveId: o.driveId, name: o.name, mime: o.mime, size: o.size || 0, scope: o.scope, category: o.category,
+    customerId: o.customer ? o.customer.id : '', customerName: o.customer ? o.customer.name : '', custCode: o.customer ? (o.customer.custCode || '') : '',
+    memberId: o.member ? o.member.id : '', memberName: o.member ? o.member.name : '', path: o.path, date: o.date || todayStr, note: o.note || '', by: user.name, byId: user.id, at: new Date().toISOString() };
+  await db.ref('csc-app-data/documents/' + rec.id).set(rec);
+  drvAudit(user, 'Document Uploaded', rec.category + ' — ' + (rec.customerName || 'Banking') + ' — ' + rec.name);
+  return rec;
+}
+const drvPath = (scope, o) => scope === 'customer'
+  ? ['Customers', ((o.customer.custCode || '') + ' ' + o.customer.name).trim(), ...(o.member ? ['Family - ' + o.member.name] : []), o.category].join('/')
+  : ['Banking', o.category, ...(['Statements', 'Reports', 'Receipts & Challans'].includes(o.category) ? [(o.date || todayStr).slice(0, 7)] : [])].join('/');
+const drvSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+// Reusable document list + uploader. scope 'customer' (pass customer) or 'banking'.
+function DocsPanel({ appData, currentUser, showMessage, scope, customer, categories }) {
+  const admin = currentUser.role === 'admin', cats = categories || (scope === 'customer' ? DRV_CUSTOMER_CATS : DRV_BANK_CATS);
+  const [cat, setCat] = useState(cats[0]), [memberId, setMemberId] = useState('self'), [note, setNote] = useState(''), [date, setDate] = useState(todayStr);
+  const [busy, setBusy] = useState(''), [view, setView] = useState(null), [q, setQ] = useState(''), [fcat, setFcat] = useState('');
+  const family = scope === 'customer' && customer ? familyOf(customer).filter(m => m.name) : [];
+  const all = bkArr(appData && appData.documents).filter(d => d.scope === scope && (scope !== 'customer' || !customer || d.customerId === customer.id)).sort((a, b) => b.id - a.id);
+  const docs = all.filter(d => (!fcat || d.category === fcat) && (!q.trim() || [d.name, d.category, d.memberName, d.customerName, d.note].some(v => String(v || '').toLowerCase().includes(q.trim().toLowerCase()))));
+  const ready = drvReady();
+  const pick = async ev => {
+    const files = Array.from(ev.target.files || []); ev.target.value = ''; if (!files.length) return;
+    const member = memberId !== 'self' ? family.find(m => String(m.id) === String(memberId)) : null;
+    for (const f of files) {
+      setBusy('Uploading ' + f.name + '...');
+      try { const up = await drvUpload(f, drvPath(scope, { customer, member, category: cat, date }), note); await drvSaveRecord(currentUser, { ...up, scope, category: cat, path: drvPath(scope, { customer, member, category: cat, date }), date, note, customer, member }); showMessage('Uploaded: ' + f.name); }
+      catch (err) { showMessage(err.message, 'error'); }
+    }
+    setBusy(''); setNote('');
+  };
+  const open = async d => { setBusy('Opening...'); try { const b = await drvBlobUrl(d.driveId); setView({ ...b, doc: d }); } catch (err) { showMessage(err.message, 'error'); } setBusy(''); };
+  const closeView = () => { if (view) URL.revokeObjectURL(view.url); setView(null); };
+  const del = async d => {
+    if (!window.confirm('Delete "' + d.name + '"? It moves to the Google Drive Trash.')) return;
+    setBusy('Deleting...');
+    try { await drvCall('delete', { id: d.driveId }); await db.ref('csc-app-data/documents/' + d.id).remove(); drvAudit(currentUser, 'Document Deleted', d.category + ' — ' + (d.customerName || 'Banking') + ' — ' + d.name); showMessage('Document deleted.'); }
+    catch (err) { showMessage(err.message, 'error'); } setBusy('');
+  };
+  const inp = 'border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none bg-white';
+  const icon = m => /pdf/.test(m) ? '📄' : /image/.test(m) ? '🖼️' : /sheet|excel/.test(m) ? '📊' : '📎';
+  return e('div', { className: 'space-y-3' },
+    !ready && e('div', { className: 'rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs p-2' }, 'Google Drive is not connected yet. ' + (admin ? 'Open Documents → Drive Settings to connect it.' : 'Ask the Admin to connect it.')),
+    e('div', { className: 'flex flex-wrap items-end gap-2 p-3 rounded-xl border border-blue-100 bg-blue-50/40' },
+      e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'Type'), e('select', { value: cat, onChange: ev => setCat(ev.target.value), className: inp }, cats.map(c => e('option', { key: c }, c)))),
+      scope === 'customer' && family.length > 0 && e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'For'), e('select', { value: memberId, onChange: ev => setMemberId(ev.target.value), className: inp }, e('option', { value: 'self' }, 'Self'), family.map(m => e('option', { key: m.id, value: m.id }, m.name + ' (' + m.relation + ')')))),
+      scope === 'banking' && e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'Date'), e('input', { type: 'date', value: date, onChange: ev => setDate(ev.target.value), className: inp })),
+      e('div', { className: 'flex-1 min-w-[140px]' }, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'Note (optional)'), e('input', { value: note, onChange: ev => setNote(ev.target.value), className: inp + ' w-full' })),
+      e('label', { className: 'text-white px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ' + (ready && !busy ? '' : 'opacity-50 pointer-events-none'), style: { background: '#0f9d8a' } }, '⬆ Upload', e('input', { type: 'file', multiple: true, accept: 'image/*,application/pdf,.xlsx,.xls,.doc,.docx', onChange: pick, className: 'hidden' })),
+      e('label', { className: 'px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-200 text-blue-700 cursor-pointer bg-white ' + (ready && !busy ? '' : 'opacity-50 pointer-events-none') }, '📷 Camera', e('input', { type: 'file', accept: 'image/*', capture: 'environment', onChange: pick, className: 'hidden' })),
+      e('p', { className: 'w-full text-xs text-gray-400' }, 'Max 5 MB per file. Photos are shrunk automatically.')),
+    busy && e('p', { className: 'text-sm text-blue-700 font-medium' }, '⏳ ' + busy),
+    all.length > 3 && e('div', { className: 'flex gap-2' }, e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search documents...', className: inp + ' flex-1' }), e('select', { value: fcat, onChange: ev => setFcat(ev.target.value), className: inp }, e('option', { value: '' }, 'All types'), cats.map(c => e('option', { key: c }, c)))),
+    docs.length === 0 ? e('p', { className: 'text-sm text-gray-400 text-center py-3' }, 'No documents yet.') :
+      e('div', { className: 'space-y-1.5' }, docs.map(d => e('div', { key: d.id, className: 'flex flex-wrap items-center gap-2 p-2 rounded-lg border border-gray-100 bg-white hover:bg-gray-50 text-sm' },
+        e('span', { className: 'text-lg' }, icon(d.mime)),
+        e('div', { className: 'flex-1 min-w-[160px]' }, e('p', { className: 'font-medium text-gray-800 break-all' }, d.name), e('p', { className: 'text-xs text-gray-400' }, [d.category, d.memberName && ('for ' + d.memberName), scope === 'banking' ? d.date : d.customerName, drvSize(d.size), d.by].filter(Boolean).join(' · '), d.note ? ' — ' + d.note : '')),
+        e('button', { onClick: () => open(d), disabled: !!busy, className: 'text-blue-600 border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded text-xs font-medium' }, 'View'),
+        admin && e('button', { onClick: () => del(d), disabled: !!busy, className: 'text-gray-400 hover:text-red-600 text-xs px-1' }, 'Delete')))),
+    view && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.7)' }, onClick: closeView },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl flex flex-col', style: { width: 'min(96vw, 1000px)', height: 'min(92vh, 900px)' }, onClick: ev => ev.stopPropagation() },
+        e('div', { className: 'flex items-center justify-between px-4 py-3 border-b' }, e('p', { className: 'font-semibold text-gray-800 truncate' }, view.doc.name),
+          e('div', { className: 'flex gap-2' }, e('a', { href: view.url, download: view.name, className: 'text-xs px-3 py-1.5 rounded-lg border text-blue-700 border-blue-200' }, 'Download'), e('button', { onClick: closeView, className: 'text-xs px-3 py-1.5 rounded-lg border' }, 'Close'))),
+        e('div', { className: 'flex-1 min-h-0 bg-gray-100 flex items-center justify-center overflow-auto' }, /^image\//.test(view.mime) ? e('img', { src: view.url, alt: view.name, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } }) : /pdf/.test(view.mime) ? e('iframe', { src: view.url, title: view.name, style: { width: '100%', height: '100%', border: 0 } }) : e('p', { className: 'text-gray-500 text-sm p-6' }, 'No preview for this file type — use Download.')))));
+}
+
+function DocumentsPage({ appData, currentUser, showMessage, customers }) {
+  const admin = currentUser.role === 'admin', [tab, setTab] = useState('banking'), [cq, setCq] = useState(''), [sel, setSel] = useState(null);
+  const [cfg, setCfg] = useState({ url: '', key: '' }), [showKey, setShowKey] = useState(false), [st, setSt] = useState(''), [, force] = useState(0);
+  useEffect(() => { drvLoadCfg(true).then(c => { setCfg({ url: c.url || '', key: c.key || '' }); force(x => x + 1); }); }, []);
+  const save = async () => { await db.ref('csc-drive-config').set({ url: cfg.url.trim(), key: cfg.key.trim() }); await drvLoadCfg(true); showMessage('Drive settings saved.'); force(x => x + 1); };
+  const test = async () => { setSt('Testing...'); try { await save(); const r = await drvCall('ping', {}); setSt('✓ Connected — folder "' + r.root + '" found in your Drive.'); } catch (err) { setSt('✗ ' + err.message); } };
+  const pill = (id, l) => e('button', { key: id, onClick: () => setTab(id), className: 'aic-pill' + (tab === id ? ' on' : '') }, l);
+  const matches = cq.trim() ? customers.filter(c => [c.name, c.custCode, c.phone].some(v => String(v || '').toLowerCase().includes(cq.trim().toLowerCase()))).slice(0, 8) : [];
+  const recent = bkArr(appData.documents).filter(d => d.scope === 'customer').sort((a, b) => b.id - a.id).slice(0, 8);
+  const inp = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400';
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Documents'), e('p', { className: 'text-sm text-gray-500' }, 'Customer documents and Banking forms, stored in your Google Drive')),
+      e('div', { className: 'flex gap-2' }, pill('banking', 'Banking Documents'), pill('customers', 'Customer Documents'), admin && pill('settings', 'Drive Settings'))),
+    tab === 'banking' && e(Card, { title: 'Banking — Forms, Statements, Reports, Challans' }, e(DocsPanel, { appData, currentUser, showMessage, scope: 'banking' })),
+    tab === 'customers' && e(Card, { title: 'Customer Documents', sub: 'Search a customer to see or upload their documents. You can also upload from the customer profile.' },
+      e('input', { value: cq, onChange: ev => { setCq(ev.target.value); setSel(null); }, placeholder: 'Search by name, Customer ID or mobile...', className: inp }),
+      matches.length > 0 && !sel && e('div', { className: 'mt-2 space-y-1' }, matches.map(c => e('button', { key: c.id, onClick: () => setSel(c), className: 'w-full text-left px-3 py-2 rounded-lg border border-gray-100 hover:bg-gray-50 text-sm' }, e('b', null, c.custCode || '—'), ' · ' + c.name + ' · ' + c.phone))),
+      sel ? e('div', { className: 'mt-3' }, e('p', { className: 'text-sm font-semibold mb-2' }, sel.custCode + ' — ' + sel.name), e(DocsPanel, { appData, currentUser, showMessage, scope: 'customer', customer: sel })) :
+        recent.length > 0 && !cq && e('div', { className: 'mt-4' }, e('p', { className: 'text-xs font-semibold text-gray-500 mb-2' }, 'RECENT UPLOADS'), recent.map(d => e('p', { key: d.id, className: 'text-sm text-gray-600 py-0.5' }, '📎 ' + d.customerName + ' — ' + d.category + (d.memberName ? ' (' + d.memberName + ')' : '') + ' · ' + d.date)))),
+    tab === 'settings' && admin && e(Card, { title: 'Google Drive Connection' }, e('div', { className: 'space-y-3 max-w-xl' },
+      e('div', null, e('label', { className: 'text-xs font-semibold text-gray-600 block mb-1' }, 'Script URL (ends with /exec)'), e('input', { value: cfg.url, onChange: ev => setCfg({ ...cfg, url: ev.target.value }), placeholder: 'https://script.google.com/macros/s/.../exec', className: inp })),
+      e('div', null, e('label', { className: 'text-xs font-semibold text-gray-600 block mb-1' }, 'Secret Key'), e('div', { className: 'flex gap-2' }, e('input', { type: showKey ? 'text' : 'password', value: cfg.key, onChange: ev => setCfg({ ...cfg, key: ev.target.value }), className: inp }), e('button', { onClick: () => setShowKey(!showKey), className: 'px-3 text-xs border rounded-lg' }, showKey ? 'Hide' : 'Show'))),
+      e('div', { className: 'flex items-center gap-3 flex-wrap' }, e('button', { onClick: test, className: 'text-white px-5 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Save & Test connection'), st && e('span', { className: 'text-sm ' + (st.startsWith('✓') ? 'text-green-700' : st.startsWith('✗') ? 'text-red-600' : 'text-gray-500') }, st)),
+      e('p', { className: 'text-xs text-gray-400' }, 'The key is stored in your Firebase, so staff devices can upload. Keep your Firebase and Drive folder private. If the key ever leaks, change it in the script, deploy a new version, and update it here.'))));
 }
 
 function Expenses({ expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }) {
@@ -5458,6 +5609,7 @@ function App() {
     catch { setSyncOk(false); showMessage('Save failed. Check internet connection.', 'error'); }
   }, []);
 
+  useEffect(() => { window.__drvToast = showMessage; window.__drvUser = currentUser; drvLoadCfg(); });
   // Automatic backup: checked every 15 min while an admin is logged in (the schedule itself lives in Firebase)
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'admin' || !appData) return;
@@ -5614,6 +5766,7 @@ function App() {
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
+    { id: 'documents', label: 'Documents', icon: 'Briefcase' },
     { id: 'stock', label: 'Stock', icon: 'Package' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
@@ -5626,7 +5779,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', documents: 'Documents', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -5680,6 +5833,7 @@ function App() {
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'backup' && currentUser.role === 'admin' && e(BackupCenter, { appData, persist, currentUser, showMessage }),
+        activeTab === 'documents' && e(DocumentsPage, { appData, currentUser, showMessage, customers }),
         activeTab === 'approvals' && e(ApprovalsPage, { appData, persist, currentUser, showMessage, addAuditLog }),
         activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
