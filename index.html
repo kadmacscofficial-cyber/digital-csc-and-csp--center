@@ -1609,6 +1609,25 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   // auto-composed "Village, Post, City - PIN" string built from them on save.
   const blankNewC = { name: '', phone: '', altPhone: '', village: '', post: '', city: '', pin: '', address: '', doc1Type: '', doc1Number: '', doc1Other: '', doc2Type: '', doc2Number: '', doc2Other: '', gender: '', dob: '', notes: '', family: [] };
   const [newC, setNewC] = useState(blankNewC);
+  // Documents chosen while filling the form — uploaded to Drive automatically right after Save
+  const [pendingDocs, setPendingDocs] = useState([]), [pdCat, setPdCat] = useState('Aadhaar Card'), [pdMember, setPdMember] = useState('self');
+  useEffect(() => { if (!showAdd) setPendingDocs([]); }, [showAdd]);
+  const addPendingDocs = ev => {
+    const files = Array.from(ev.target.files || []); ev.target.value = ''; const ok = [];
+    files.forEach(f => { if (/pdf/.test(f.type) && f.size > DRV_MAX) showMessage('"' + f.name + '" is ' + (f.size / 1048576).toFixed(1) + ' MB — PDF limit is 5 MB. Reduce it and add again.', 'error'); else if (f.size > 25 * 1048576) showMessage('"' + f.name + '" is too large.', 'error'); else ok.push({ id: Date.now() + Math.random(), file: f, category: pdCat, memberId: pdMember }); });
+    if (ok.length) setPendingDocs(p => [...p, ...ok]);
+  };
+  const flushPendingDocs = async (docs, customer, family) => {
+    if (!docs.length) return; let okN = 0; const bad = [];
+    for (const d of docs) {
+      try {
+        const member = d.memberId !== 'self' ? (family || []).find(m => String(m.id) === String(d.memberId)) : null;
+        const path = drvPath('customer', { customer, member, category: d.category }), up = await drvUpload(d.file, path, '');
+        await drvSaveRecord(currentUser, { ...up, scope: 'customer', category: d.category, path, date: todayStr, note: '', customer, member }); okN++;
+      } catch (err) { bad.push(d.file.name + ': ' + err.message); }
+    }
+    showMessage(bad.length ? 'Customer saved. ' + okN + ' document(s) uploaded, ' + bad.length + ' failed (' + bad.join('; ') + ') — add them again from the customer profile.' : '✓ ' + okN + ' document(s) uploaded to Google Drive.', bad.length ? 'error' : 'success');
+  };
   const [selectedServices, setSelectedServices] = useState([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState(todayStr);
@@ -1756,7 +1775,9 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     setNewC(blankNewC);
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setShowAdd(false);
+    const docsToSend = pendingDocs;
     showMessage(custCode + ' created!' + (validRows.length ? ' Total Due: ₹' + crmDue : ' No service added yet.') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
+    flushPendingDocs(docsToSend, { id: cid, custCode, name: cf.name }, cf.family);
   };
 
   const handleEditCustomer = (cust) => {
@@ -1811,7 +1832,9 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
     setEditingCustomerId(null);
     setShowAdd(false);
-    showMessage((held ? 'Details sent to Admin for verification ⏳ (current details stay until approved).' : 'Customer details updated!') + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
+        const docsToSendE = pendingDocs;
+showMessage((held ? 'Details sent to Admin for verification ⏳ (current details stay until approved).' : 'Customer details updated!') + (newTasks.length > 0 ? ' New service added.' : '') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
+    flushPendingDocs(docsToSendE, { id: editingCustomerId, custCode: cust.custCode || '', name: nameNow }, cf.family);
   };
 
   return e('div', { className: 'space-y-4' },
@@ -1906,6 +1929,17 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
               e('input', { value: m.notes, onChange: ev => upd('notes', ev.target.value), placeholder: 'Note (optional)', className: ip })));
         }),
         (newC.family || []).length === 0 && e('p', { className: 'text-xs text-gray-400 text-center py-1' }, 'No family members added.')),
+          e('div', { className: 'border border-green-100 bg-green-50/40 rounded-xl p-3 space-y-2' },
+            e('div', { className: 'flex items-center justify-between' }, e('div', null, e('p', { className: 'text-sm font-semibold text-gray-800' }, 'Documents (' + pendingDocs.length + ')'), e('p', { className: 'text-xs text-gray-500' }, 'Uploaded to Google Drive automatically when you press Save')), !drvReady() && e('span', { className: 'text-xs text-amber-700' }, 'Drive not connected')),
+            e('div', { className: 'flex flex-wrap items-end gap-2' },
+              e('select', { value: pdCat, onChange: ev => setPdCat(ev.target.value), className: 'border rounded-lg px-2 py-2 text-sm bg-white outline-none' }, DRV_CUSTOMER_CATS.map(c => e('option', { key: c }, c))),
+              e('select', { value: pdMember, onChange: ev => setPdMember(ev.target.value), className: 'border rounded-lg px-2 py-2 text-sm bg-white outline-none' }, e('option', { value: 'self' }, 'Self'), (newC.family || []).filter(m => (m.name || '').trim()).map(m => e('option', { key: m.id, value: m.id }, m.name.trim() + ' (' + m.relation + ')'))),
+              e('label', { className: 'text-white px-3 py-2 rounded-lg text-sm font-semibold cursor-pointer ' + (drvReady() ? '' : 'opacity-50 pointer-events-none'), style: { background: '#0f9d8a' } }, '⬆ Add files', e('input', { type: 'file', multiple: true, accept: 'image/*,application/pdf', onChange: addPendingDocs, className: 'hidden' })),
+              e('label', { className: 'px-3 py-2 rounded-lg text-sm font-medium border border-green-300 text-green-800 bg-white cursor-pointer ' + (drvReady() ? '' : 'opacity-50 pointer-events-none') }, '📷 Camera', e('input', { type: 'file', accept: 'image/*', capture: 'environment', onChange: addPendingDocs, className: 'hidden' }))),
+            pendingDocs.map(d => e('div', { key: d.id, className: 'flex items-center justify-between gap-2 text-xs bg-white border border-gray-100 rounded-lg px-2 py-1.5' },
+              e('span', { className: 'truncate' }, (/pdf/.test(d.file.type) ? '📄 ' : '🖼️ ') + d.file.name + ' · ' + drvSize(d.file.size)),
+              e('span', { className: 'text-gray-500 whitespace-nowrap' }, d.category + (d.memberId !== 'self' ? ' · ' + (((newC.family || []).find(m => String(m.id) === String(d.memberId)) || {}).name || '') : '')),
+              e('button', { type: 'button', onClick: () => setPendingDocs(p => p.filter(x => x.id !== d.id)), className: 'text-red-500' }, '✕')))),
           ),
           e('div', { className: 'pm-col lg:col-span-7 space-y-5' },
       // Edit mode only: show what this customer already has, so it is clear the rows below
@@ -2572,7 +2606,7 @@ async function bkUnpack(p) {
   return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
 }
 const bkCfgRef = () => db.ref('csc-backup-config');
-const BK_DEFAULT = { destination: 'firebase', auto: true, intervalHours: 24, keepAuto: 30, driveClientId: '', lastAutoAt: 0 };
+const BK_DEFAULT = { destination: 'firebase', auto: true, intervalHours: 24, keepAuto: 60, lastAutoAt: 0 };
 async function bkGetCfg() { try { const v = (await bkCfgRef().once('value')).val(); return { ...BK_DEFAULT, ...(v || {}) }; } catch { return { ...BK_DEFAULT }; } }
 
 // ---- providers (same 4 methods each: list / save / load / remove) ----
@@ -2583,42 +2617,30 @@ const bkFirebase = {
   async load(meta) { const v = (await db.ref('csc-backups/data/' + meta.id).once('value')).val(); if (!v) throw new Error('Backup data missing'); return v; },
   async remove(meta) { await db.ref('csc-backups/data/' + meta.id).remove(); await db.ref('csc-backups/index/' + meta.id).remove(); }
 };
-const bkDrive = {   // Google Drive via OAuth (drive.file scope: the app only sees files it creates)
-  id: 'drive', token: null, folderId: null, exp: 0,
-  async connect(clientId) {
-    if (!clientId) throw new Error('Enter your Google OAuth Client ID first.');
-    if (!window.google || !google.accounts) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.onload = ok; s.onerror = () => no(new Error('Could not load Google sign-in.')); document.head.appendChild(s); });
-    return new Promise((ok, no) => google.accounts.oauth2.initTokenClient({ client_id: clientId, scope: 'https://www.googleapis.com/auth/drive.file',
-      callback: r => { if (r.error) return no(new Error(r.error)); this.token = r.access_token; this.exp = Date.now() + (r.expires_in - 60) * 1000; ok(true); } }).requestAccessToken({ prompt: '' }));
-  },
-  ready() { return !!this.token && Date.now() < this.exp; },
-  async api(path, opt = {}) {
-    if (!this.ready()) throw new Error('Google Drive is not connected. Open Backup → Connect Google Drive.');
-    const r = await fetch('https://www.googleapis.com/' + path, { ...opt, headers: { Authorization: 'Bearer ' + this.token, ...(opt.headers || {}) } });
-    if (!r.ok) throw new Error('Drive error ' + r.status); return r;
-  },
-  async folder() {
-    if (this.folderId) return this.folderId;
-    const q = encodeURIComponent("name='SevaCore Backups' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-    const f = (await (await this.api('drive/v3/files?q=' + q + '&fields=files(id)')).json()).files;
-    if (f && f[0]) return (this.folderId = f[0].id);
-    const c = await (await this.api('drive/v3/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'SevaCore Backups', mimeType: 'application/vnd.google-apps.folder' }) })).json();
-    return (this.folderId = c.id);
-  },
+const bkUtf8b64 = str => { const by = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < by.length; i += 8192) bin += String.fromCharCode.apply(null, by.subarray(i, i + 8192)); return btoa(bin); };
+const bkB64utf8 = b64 => { const bin = atob(b64), by = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) by[i] = bin.charCodeAt(i); return new TextDecoder().decode(by); };
+const BK_DRIVE_PATH = 'Backups';   // Drive: SevaCore Storage / Backups
+const bkDrive = {   // Google Drive through the owner's Apps Script (same connection as Documents → Drive Settings)
+  id: 'drive',
+  ready() { return drvReady(); },
   async list() {
-    const fid = await this.folder(), q = encodeURIComponent("'" + fid + "' in parents and trashed=false");
-    const f = (await (await this.api('drive/v3/files?q=' + q + '&pageSize=200&fields=files(id,appProperties)')).json()).files || [];
-    return f.filter(x => x.appProperties && x.appProperties.meta).map(x => ({ ...JSON.parse(x.appProperties.meta), driveId: x.id, where: 'drive' }));
+    const r = await drvCall('list', { path: BK_DRIVE_PATH });
+    return (r.files || []).filter(x => /^sevacore-backup_/.test(x.name)).map(x => {   // details are encoded in the file name
+      const m = x.name.match(/^sevacore-backup_(\d+)_(\w[\w-]*)_c(\d+)_t(\d+)_s(\d+)_p(\d+)/); if (!m) return null;
+      return { id: Number(m[1]), at: new Date(Number(m[1])).toISOString(), type: m[2], by: 'Drive', size: Number(m[5]), packedSize: Number(m[6]), counts: { customers: Number(m[3]), tasks: Number(m[4]) }, driveId: x.id, where: 'drive' };
+    }).filter(Boolean);
   },
   async save(meta, packed) {
-    const fid = await this.folder(), b = '----sc' + Date.now();
-    const small = JSON.stringify({ ...meta, counts: meta.counts });
-    const md = JSON.stringify({ name: 'sevacore-backup-' + new Date(meta.id).toISOString().replace(/[:.]/g, '-') + '.json', parents: [fid], appProperties: { meta: small } });
-    const body = '--' + b + '\r\nContent-Type: application/json\r\n\r\n' + md + '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(packed) + '\r\n--' + b + '--';
-    await this.api('upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body });
+    const body = JSON.stringify({ meta, packed });
+    if (body.length > 4.8 * 1048576) throw new Error('Backup is ' + bkSize(body.length) + ' — above the 5 MB Drive limit');
+    const name = 'sevacore-backup_' + meta.id + '_' + meta.type + '_c' + ((meta.counts && meta.counts.customers) || 0) + '_t' + ((meta.counts && meta.counts.tasks) || 0) + '_s' + meta.size + '_p' + (meta.packedSize || 0) + '_by-' + String(meta.by || 'system').replace(/[^\w]/g, '') + '.json';
+    await drvCall('upload', { path: BK_DRIVE_PATH, name, mime: 'application/json', data: bkUtf8b64(body) });
   },
-  async load(meta) { return await (await this.api('drive/v3/files/' + meta.driveId + '?alt=media')).json(); },
-  async remove(meta) { await this.api('drive/v3/files/' + meta.driveId, { method: 'DELETE' }); }
+  async load(meta) {
+    const r = await drvCall('get', { id: meta.driveId }), o = JSON.parse(bkB64utf8(r.data));
+    return { ...o.packed, hash: o.meta && o.meta.hash };   // checksum travels inside the file
+  },
+  async remove(meta) { await drvCall('delete', { id: meta.driveId }); }
 };
 const bkTargets = cfg => cfg.destination === 'drive' ? [bkDrive] : cfg.destination === 'both' ? [bkFirebase, bkDrive] : [bkFirebase];
 const bkPrimary = cfg => cfg.destination === 'drive' ? bkDrive : bkFirebase;
@@ -2656,14 +2678,14 @@ async function bkAutoCheck(by) {   // called every 15 min by the admin session; 
 }
 
 function BackupCenter({ appData, persist, currentUser, showMessage }) {
-  const [cfg, setCfg] = useState(null), [items, setItems] = useState([]), [busy, setBusy] = useState(''), [rs, setRs] = useState(null), [typed, setTyped] = useState(''), [driveOk, setDriveOk] = useState(bkDrive.ready());
+  const [cfg, setCfg] = useState(null), [items, setItems] = useState([]), [busy, setBusy] = useState(''), [rs, setRs] = useState(null), [typed, setTyped] = useState('');
   const load = async (c) => { const conf = c || cfg || await bkGetCfg(); setCfg(conf); try { const all = await bkPrimary(conf).list(); setItems(all.sort((a, b) => b.id - a.id)); } catch (err) { setItems([]); showMessage(err.message, 'error'); } };
   useEffect(() => { load(); }, []);
   if (!cfg) return e('div', { className: 'aic-card text-center text-gray-400' }, 'Loading backup system...');
   const upd = async patch => { const n = { ...cfg, ...patch }; setCfg(n); await bkCfgRef().update(patch); if (patch.destination) load(n); };
   const wrap = async (label, fn) => { setBusy(label); try { await fn(); } catch (err) { showMessage(label + ' failed: ' + err.message, 'error'); } setBusy(''); };
   const now = () => wrap('Backup', async () => { const r = await bkRun('manual', currentUser.name, cfg); await load(); showMessage('Backup saved (' + r.done.join(' + ') + ') — ' + bkSize(r.meta.size) + (r.failed.length ? ' ⚠ ' + r.failed.join('; ') : ''), r.failed.length ? 'error' : 'success'); });
-  const fetchJson = async m => { const p = await (m.where === 'drive' ? bkDrive : bkFirebase).load(m); const json = await bkUnpack(p); if (m.hash && (await bkHash(json)) !== m.hash) throw new Error('Checksum mismatch — this backup is corrupted.'); return json; };
+  const fetchJson = async m => { const p = await (m.where === 'drive' ? bkDrive : bkFirebase).load(m); const json = await bkUnpack(p); const want = p.hash || m.hash; if (want && (await bkHash(json)) !== want) throw new Error('Checksum mismatch — this backup is corrupted.'); return json; };
   const verify = m => wrap('Verify', async () => { await fetchJson(m); showMessage('✓ Backup is intact (checksum matches).'); });
   const download = m => wrap('Download', async () => { const json = await fetchJson(m); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = 'sevacore-backup-' + new Date(m.id).toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); });
   const del = m => { if (window.confirm('Delete this backup permanently?')) wrap('Delete', async () => { await (m.where === 'drive' ? bkDrive : bkFirebase).remove(m); await load(); showMessage('Backup deleted.'); }); };
@@ -2675,7 +2697,6 @@ function BackupCenter({ appData, persist, currentUser, showMessage }) {
     await persist(JSON.parse(rs.json)); setRs(null); await load();
     showMessage('Data restored. A safety backup of the previous data was saved.');
   });
-  const connect = () => wrap('Connect', async () => { await bkDrive.connect(cfg.driveClientId.trim()); setDriveOk(true); await load(); showMessage('Google Drive connected.'); });
   const cur = bkCounts(appData), last = items.find(m => m.type === 'auto') || items[0];
   const ageH = last ? (Date.now() - last.id) / 3600000 : null, healthy = ageH != null && ageH < cfg.intervalHours * 2 + 1;
   const pill = (id, label) => e('button', { key: id, onClick: () => upd({ destination: id }), className: 'aic-pill' + (cfg.destination === id ? ' on' : '') }, label);
@@ -2699,13 +2720,10 @@ function BackupCenter({ appData, persist, currentUser, showMessage }) {
         e('div', { className: 'flex flex-wrap items-center gap-4 text-sm text-gray-600' },
           e('label', { className: 'flex items-center gap-2' }, e('input', { type: 'checkbox', checked: !!cfg.auto, onChange: ev => upd({ auto: ev.target.checked }) }), 'Automatic backup'),
           e('label', { className: 'flex items-center gap-2' }, 'Every', e('select', { value: cfg.intervalHours, onChange: ev => upd({ intervalHours: Number(ev.target.value) }), className: sel }, [6, 12, 24, 48].map(h => e('option', { key: h, value: h }, h + ' hours')))),
-          e('label', { className: 'flex items-center gap-2' }, 'Keep last', e('select', { value: cfg.keepAuto, onChange: ev => upd({ keepAuto: Number(ev.target.value) }), className: sel }, [7, 14, 30, 60].map(n => e('option', { key: n, value: n }, n + ' auto backups'))))),
-        cfg.destination !== 'firebase' && e('div', { className: 'p-3 rounded-xl border border-blue-100 bg-blue-50/50 space-y-2' },
-          e('p', { className: 'text-sm font-semibold text-blue-800' }, 'Google Drive ' + (driveOk ? '— connected ✓' : '— not connected')),
-          e('div', { className: 'flex flex-wrap gap-2' },
-            e('input', { value: cfg.driveClientId, onChange: ev => setCfg({ ...cfg, driveClientId: ev.target.value }), onBlur: () => bkCfgRef().update({ driveClientId: cfg.driveClientId.trim() }), placeholder: 'Google OAuth Client ID (xxxx.apps.googleusercontent.com)', className: 'flex-1 min-w-[260px] border border-blue-200 rounded-lg px-3 py-2 text-sm outline-none bg-white' }),
-            e('button', { onClick: connect, className: 'text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#1565c0' } }, driveOk ? 'Reconnect' : 'Connect Google Drive')),
-          e('p', { className: 'text-xs text-blue-700' }, 'Drive access lasts about 1 hour per sign-in. If Drive is not connected when an automatic backup runs, it is saved to Firebase instead — a backup is never skipped.')))),
+          e('label', { className: 'flex items-center gap-2' }, 'Keep last', e('select', { value: cfg.keepAuto, onChange: ev => upd({ keepAuto: Number(ev.target.value) }), className: sel }, [14, 30, 60, 90, 120].map(n => e('option', { key: n, value: n }, n + ' auto backups'))))),
+        cfg.destination !== 'firebase' && e('div', { className: 'p-3 rounded-xl border ' + (drvReady() ? 'border-green-200 bg-green-50/50' : 'border-amber-200 bg-amber-50') + ' space-y-1' },
+          e('p', { className: 'text-sm font-semibold ' + (drvReady() ? 'text-green-800' : 'text-amber-800') }, 'Google Drive ' + (drvReady() ? '— connected ✓' : '— not connected')),
+          e('p', { className: 'text-xs text-gray-600' }, drvReady() ? 'Backups are saved in your Drive: SevaCore Storage → Backups. This uses the same connection as Documents.' : 'Open Documents → Drive Settings, enter the Script URL and Secret Key, and press Save & Test. Until then backups are saved to Firebase so none is ever skipped.')))),
     e('div', { className: 'aic-card overflow-x-auto' },
       e('h4', { className: 'aic-card-title' }, 'Saved Backups'),
       items.length === 0 ? e('p', { className: 'text-sm text-gray-400 py-4 text-center' }, 'No backups yet. Press "Backup Now" to create the first one.') : e('table', { className: 'w-full text-sm' },
@@ -2889,12 +2907,15 @@ async function drvSaveRecord(user, o) {   // o: { driveId,name,size,mime,scope,c
 }
 const drvPath = (scope, o) => scope === 'customer'
   ? ['Customers', ((o.customer.custCode || '') + ' ' + o.customer.name).trim(), ...(o.member ? ['Family - ' + o.member.name] : []), o.category].join('/')
-  : ['Banking', o.category, ...(['Statements', 'Reports', 'Receipts & Challans'].includes(o.category) ? [(o.date || todayStr).slice(0, 7)] : [])].join('/');
+  : ['Banking', o.category, ...((['Statements', 'Reports', 'Receipts & Challans'].includes(o.category) || o.byMonth) ? [(o.date || todayStr).slice(0, 7)] : [])].join('/');
 const drvSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
 
 // Reusable document list + uploader. scope 'customer' (pass customer) or 'banking'.
 function DocsPanel({ appData, currentUser, showMessage, scope, customer, categories }) {
-  const admin = currentUser.role === 'admin', cats = categories || (scope === 'customer' ? DRV_CUSTOMER_CATS : DRV_BANK_CATS);
+  const admin = currentUser.role === 'admin', folders = scope === 'banking' ? bkArr(appData && appData.docFolders) : [];
+  const cats = categories || (scope === 'customer' ? DRV_CUSTOMER_CATS : [...DRV_BANK_CATS, ...folders.map(f => f.name)]);
+  const [nf, setNf] = useState(false), [nfName, setNfName] = useState(''), [nfMonth, setNfMonth] = useState(false);
+  const byMonthOf = c => !!(folders.find(x => x.name === c) || {}).byMonth;
   const [cat, setCat] = useState(cats[0]), [memberId, setMemberId] = useState('self'), [note, setNote] = useState(''), [date, setDate] = useState(todayStr);
   const [busy, setBusy] = useState(''), [view, setView] = useState(null), [q, setQ] = useState(''), [fcat, setFcat] = useState('');
   const family = scope === 'customer' && customer ? familyOf(customer).filter(m => m.name) : [];
@@ -2906,11 +2927,23 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
     const member = memberId !== 'self' ? family.find(m => String(m.id) === String(memberId)) : null;
     for (const f of files) {
       setBusy('Uploading ' + f.name + '...');
-      try { const up = await drvUpload(f, drvPath(scope, { customer, member, category: cat, date }), note); await drvSaveRecord(currentUser, { ...up, scope, category: cat, path: drvPath(scope, { customer, member, category: cat, date }), date, note, customer, member }); showMessage('Uploaded: ' + f.name); }
+      try { const pth = drvPath(scope, { customer, member, category: cat, date, byMonth: byMonthOf(cat) }); const up = await drvUpload(f, pth, note); await drvSaveRecord(currentUser, { ...up, scope, category: cat, path: pth, date, note, customer, member }); showMessage('Uploaded: ' + f.name); }
       catch (err) { showMessage(err.message, 'error'); }
     }
     setBusy(''); setNote('');
   };
+  const createFolder = async () => {
+    const name = nfName.replace(/[\\:*?"<>|]/g, '').split('/').map(x => x.trim()).filter(Boolean).join('/');
+    if (!name) return showMessage('Enter a folder name.', 'error');
+    if (cats.some(c => c.toLowerCase() === name.toLowerCase())) return showMessage('A folder with this name already exists.', 'error');
+    setBusy('Creating folder...');
+    try {
+      await drvCall('upload', { path: 'Banking/' + name, name: 'folder-created.txt', mime: 'text/plain', data: bkUtf8b64('Folder created from SevaCore by ' + currentUser.name) });   // creates the folder in Drive right now
+      const id = Date.now(); await db.ref('csc-app-data/docFolders/' + id).set({ id, name, byMonth: !!nfMonth, by: currentUser.name, at: new Date().toISOString() });
+      drvAudit(currentUser, 'Banking Folder Created', name); setCat(name); setNf(false); setNfName(''); setNfMonth(false); showMessage('Folder "' + name + '" created in your Google Drive.');
+    } catch (err) { showMessage(err.message, 'error'); } setBusy('');
+  };
+  const removeFolder = async f => { if (!window.confirm('Remove "' + f.name + '" from this list? The files stay safe in Google Drive.')) return; await db.ref('csc-app-data/docFolders/' + f.id).remove(); drvAudit(currentUser, 'Banking Folder Removed', f.name); if (fcat === f.name) setFcat(''); };
   const open = async d => { setBusy('Opening...'); try { const b = await drvBlobUrl(d.driveId); setView({ ...b, doc: d }); } catch (err) { showMessage(err.message, 'error'); } setBusy(''); };
   const closeView = () => { if (view) URL.revokeObjectURL(view.url); setView(null); };
   const del = async d => {
@@ -2931,8 +2964,19 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
       e('label', { className: 'text-white px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ' + (ready && !busy ? '' : 'opacity-50 pointer-events-none'), style: { background: '#0f9d8a' } }, '⬆ Upload', e('input', { type: 'file', multiple: true, accept: 'image/*,application/pdf,.xlsx,.xls,.doc,.docx', onChange: pick, className: 'hidden' })),
       e('label', { className: 'px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-200 text-blue-700 cursor-pointer bg-white ' + (ready && !busy ? '' : 'opacity-50 pointer-events-none') }, '📷 Camera', e('input', { type: 'file', accept: 'image/*', capture: 'environment', onChange: pick, className: 'hidden' })),
       e('p', { className: 'w-full text-xs text-gray-400' }, 'Max 5 MB per file. Photos are shrunk automatically.')),
+    scope === 'banking' && e('div', { className: 'space-y-2' },
+      e('div', { className: 'flex flex-wrap items-center gap-1.5' },
+        [['', 'All (' + all.length + ')'], ...cats.map(c => [c, c + ' (' + all.filter(d => d.category === c).length + ')'])].map(([v, l]) => e('button', { key: v || 'all', onClick: () => setFcat(v), className: 'text-xs px-3 py-1 rounded-full border ' + (fcat === v ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'), style: fcat === v ? { background: '#0f9d8a' } : {} }, l)),
+        e('button', { onClick: () => setNf(!nf), disabled: !ready, className: 'text-xs px-3 py-1 rounded-full border border-dashed border-blue-300 text-blue-700 hover:bg-blue-50 ' + (ready ? '' : 'opacity-50') }, '+ New Folder')),
+      nf && e('div', { className: 'flex flex-wrap items-center gap-2 p-3 rounded-xl border border-blue-200 bg-blue-50/50' },
+        e('input', { value: nfName, onChange: ev => setNfName(ev.target.value), placeholder: 'Folder name (e.g. SBI Forms)', className: inp + ' flex-1 min-w-[180px]' }),
+        e('label', { className: 'flex items-center gap-1.5 text-xs text-gray-600' }, e('input', { type: 'checkbox', checked: nfMonth, onChange: ev => setNfMonth(ev.target.checked) }), 'Separate sub-folder for each month'),
+        e('button', { onClick: createFolder, disabled: !!busy, className: 'text-white px-4 py-1.5 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Create'),
+        e('button', { onClick: () => setNf(false), className: 'text-xs text-gray-500 px-2' }, 'Cancel'),
+        e('p', { className: 'w-full text-xs text-gray-400' }, 'Creates the folder in Google Drive under SevaCore Storage → Banking. Use "/" for a sub-folder, e.g. SBI/Statements.')),
+      admin && folders.length > 0 && e('p', { className: 'text-xs text-gray-400' }, 'Your folders: ', folders.map(f => e('span', { key: f.id, className: 'inline-flex items-center gap-1 mr-2 px-2 py-0.5 rounded bg-gray-100' }, f.name, e('button', { onClick: () => removeFolder(f), title: 'Remove from the list (files stay in Drive)', className: 'text-gray-400 hover:text-red-600' }, '✕'))))),
     busy && e('p', { className: 'text-sm text-blue-700 font-medium' }, '⏳ ' + busy),
-    all.length > 3 && e('div', { className: 'flex gap-2' }, e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search documents...', className: inp + ' flex-1' }), e('select', { value: fcat, onChange: ev => setFcat(ev.target.value), className: inp }, e('option', { value: '' }, 'All types'), cats.map(c => e('option', { key: c }, c)))),
+    all.length > 3 && e('div', { className: 'flex gap-2' }, e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search documents...', className: inp + ' flex-1' }), scope !== 'banking' && e('select', { value: fcat, onChange: ev => setFcat(ev.target.value), className: inp }, e('option', { value: '' }, 'All types'), cats.map(c => e('option', { key: c }, c)))),
     docs.length === 0 ? e('p', { className: 'text-sm text-gray-400 text-center py-3' }, 'No documents yet.') :
       e('div', { className: 'space-y-1.5' }, docs.map(d => e('div', { key: d.id, className: 'flex flex-wrap items-center gap-2 p-2 rounded-lg border border-gray-100 bg-white hover:bg-gray-50 text-sm' },
         e('span', { className: 'text-lg' }, icon(d.mime)),
