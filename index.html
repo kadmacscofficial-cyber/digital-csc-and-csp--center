@@ -1595,7 +1595,7 @@ function CustomerMergeModal({ customers, tasks, appData, persist, showMessage, a
   );
 }
 
-function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest }) {
+function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest, newCustomerRequest, clearNewRequest }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [waCustomer, setWaCustomer] = useState(null);
@@ -1611,7 +1611,14 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   const [newC, setNewC] = useState(blankNewC);
   // Documents chosen while filling the form — uploaded to Drive automatically right after Save
   const [pendingDocs, setPendingDocs] = useState([]), [pdCat, setPdCat] = useState('Aadhaar Card'), [pdMember, setPdMember] = useState('self');
-  useEffect(() => { if (!showAdd) setPendingDocs([]); }, [showAdd]);
+  const [fromInquiry, setFromInquiry] = useState(null);
+  useEffect(() => { if (!showAdd) { setPendingDocs([]); setFromInquiry(null); } }, [showAdd]);
+  useEffect(() => {   // "Convert to Customer" from an inquiry: open the new-customer form already filled
+    if (!newCustomerRequest) return; const r = newCustomerRequest;
+    setEditingCustomerId(null); setNewC({ ...blankNewC, name: r.name || '', phone: r.phone || '', address: r.address || '' });
+    setSelectedServices([{ id: 1, serviceId: r.serviceId ? String(r.serviceId) : '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
+    setShowAdd(true); setTimeout(() => setFromInquiry(r.inquiryId || null), 0); clearNewRequest && clearNewRequest();
+  }, [newCustomerRequest]);
   const addPendingDocs = ev => {
     const files = Array.from(ev.target.files || []); ev.target.value = ''; const ok = [];
     files.forEach(f => { if (/pdf/.test(f.type) && f.size > DRV_MAX) showMessage('"' + f.name + '" is ' + (f.size / 1048576).toFixed(1) + ' MB — PDF limit is 5 MB. Reduce it and add again.', 'error'); else if (f.size > 25 * 1048576) showMessage('"' + f.name + '" is too large.', 'error'); else ok.push({ id: Date.now() + Math.random(), file: f, category: pdCat, memberId: pdMember }); });
@@ -1778,6 +1785,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
     const docsToSend = pendingDocs;
     showMessage(custCode + ' created!' + (validRows.length ? ' Total Due: ₹' + crmDue : ' No service added yet.') + (onlinePaid > 0 ? ' — ₹' + onlinePaid + ' added to Savings Account Balance' : '') + stockNote(stockRes), stockRes.short.length ? 'error' : 'success');
     flushPendingDocs(docsToSend, { id: cid, custCode, name: cf.name }, cf.family);
+    if (fromInquiry) { db.ref('csc-app-data/inquiries/' + fromInquiry).update({ status: 'Converted', convertedCustomerId: cid, convertedCode: custCode, convertedAt: new Date().toISOString() }).catch(() => {}); drvAudit(currentUser, 'Inquiry Converted', cf.name + ' → ' + custCode); }
   };
 
   const handleEditCustomer = (cust) => {
@@ -3015,6 +3023,262 @@ function DocumentsPage({ appData, currentUser, showMessage, customers }) {
       e('div', null, e('label', { className: 'text-xs font-semibold text-gray-600 block mb-1' }, 'Secret Key'), e('div', { className: 'flex gap-2' }, e('input', { type: showKey ? 'text' : 'password', value: cfg.key, onChange: ev => setCfg({ ...cfg, key: ev.target.value }), className: inp }), e('button', { onClick: () => setShowKey(!showKey), className: 'px-3 text-xs border rounded-lg' }, showKey ? 'Hide' : 'Show'))),
       e('div', { className: 'flex items-center gap-3 flex-wrap' }, e('button', { onClick: test, className: 'text-white px-5 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Save & Test connection'), st && e('span', { className: 'text-sm ' + (st.startsWith('✓') ? 'text-green-700' : st.startsWith('✗') ? 'text-red-600' : 'text-gray-500') }, st)),
       e('p', { className: 'text-xs text-gray-400' }, 'The key is stored in your Firebase, so staff devices can upload. Keep your Firebase and Drive folder private. If the key ever leaks, change it in the script, deploy a new version, and update it here.'))));
+}
+
+// ── INQUIRY SYSTEM — walk-in / phone enquiries, follow-ups, and one-click conversion into a customer ──
+// Each inquiry is its own Firebase record (csc-app-data/inquiries/<id>) so two staff never overwrite each other.
+const INQ_SOURCES = ['Walk-in', 'Phone', 'WhatsApp', 'Referral', 'Poster / Ad', 'Other'];
+const INQ_LOST = ['Price too high', 'Documents not available', 'Went elsewhere', 'Not interested', 'Cannot reach', 'Other'];
+const INQ_UI = { New: 'bg-blue-50 text-blue-700 border-blue-200', 'Follow-up': 'bg-amber-50 text-amber-700 border-amber-200', Converted: 'bg-green-50 text-green-700 border-green-200', Lost: 'bg-gray-100 text-gray-500 border-gray-200' };
+const inqList = d => bkArr(d && d.inquiries);
+const inqOpen = i => i.status === 'New' || i.status === 'Follow-up';
+const inqDueCount = (d, user) => inqList(d).filter(i => inqOpen(i) && i.followUpDate && i.followUpDate <= todayStr && (user.role === 'admin' || i.assignedId === user.id || i.byId === user.id)).length;
+const inqSave = rec => db.ref('csc-app-data/inquiries/' + rec.id).set(JSON.parse(JSON.stringify(rec)));
+const inqTomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
+const inqPhone = v => { const p = String(v || '').replace(/\D/g, ''); return p.length >= 10 ? p.slice(-10) : ''; };
+
+function InquiryPage({ appData, currentUser, showMessage, services, customers, users, goNewCustomer }) {
+  const admin = currentUser.role === 'admin', all = inqList(appData).sort((a, b) => b.id - a.id);
+  const [tab, setTab] = useState('due'), [q, setQ] = useState(''), [mine, setMine] = useState(false), [form, setForm] = useState(null), [view, setView] = useState(null), [note, setNote] = useState(''), [lostWhy, setLostWhy] = useState(INQ_LOST[0]);
+  const live = view ? (all.find(x => x.id === view.id) || view) : null;
+  const svcOf = i => services.find(s => s.id === Number(i.serviceId));
+  const isDue = i => inqOpen(i) && i.followUpDate && i.followUpDate <= todayStr, isLate = i => inqOpen(i) && i.followUpDate && i.followUpDate < todayStr;
+  const month = todayStr.slice(0, 7), openN = all.filter(inqOpen).length, convMonth = all.filter(i => i.status === 'Converted' && (i.convertedAt || '').slice(0, 7) === month).length;
+  const rate = all.length ? Math.round(all.filter(i => i.status === 'Converted').length / all.length * 100) : 0;
+  const shown = all.filter(i => (tab === 'due' ? isDue(i) : tab === 'open' ? inqOpen(i) : tab === 'converted' ? i.status === 'Converted' : tab === 'lost' ? i.status === 'Lost' : true)
+    && (!mine || i.assignedId === currentUser.id || i.byId === currentUser.id) && (!q.trim() || [i.name, i.phone, i.serviceName, i.address].some(v => String(v || '').toLowerCase().includes(q.trim().toLowerCase()))));
+  const blank = () => ({ name: '', phone: '', address: '', serviceId: '', customService: '', source: 'Walk-in', followUpDate: inqTomorrow(), assignedId: currentUser.id, quote: '' });
+  const quoteFor = sid => { const s = services.find(x => x.id === Number(sid)); return s ? ('Price ₹' + s.price + (s.docsRequired ? '. Documents needed: ' + s.docsRequired : '')) : ''; };
+  const pickService = sid => { const s = services.find(x => x.id === Number(sid)); setForm(f => ({ ...f, serviceId: sid, quote: (!f.quote || f.quote === quoteFor(f.serviceId)) ? quoteFor(sid) : f.quote })); };
+  const phoneWarn = form && inqPhone(form.phone) ? (customers.find(c => inqPhone(c.phone) === inqPhone(form.phone)) ? 'Already a customer: ' + customers.find(c => inqPhone(c.phone) === inqPhone(form.phone)).name : (all.find(i => i.id !== form.id && inqOpen(i) && inqPhone(i.phone) === inqPhone(form.phone)) ? 'This number already has an open inquiry.' : '')) : '';
+  const submit = async () => {
+    if (!form.name.trim()) return showMessage('Enter the name.', 'error');
+    if (form.phone.trim() && !inqPhone(form.phone)) return showMessage('Mobile must be 10 digits (or leave it blank).', 'error');
+    const s = services.find(x => x.id === Number(form.serviceId)), now = new Date().toISOString(), staff = users.find(u => u.id === form.assignedId);
+    const rec = { ...form, id: form.id || Date.now(), name: form.name.trim(), phone: inqPhone(form.phone), serviceName: s ? s.name : form.customService.trim(), status: form.status || 'New',
+      assignedId: form.assignedId || '', assignedName: staff ? staff.name : '', by: form.by || currentUser.name, byId: form.byId || currentUser.id, createdAt: form.createdAt || now, log: form.log || [] };
+    await inqSave(rec); drvAudit(currentUser, form.id ? 'Inquiry Edited' : 'Inquiry Added', rec.name + ' — ' + rec.serviceName); setForm(null); showMessage(form.id ? 'Inquiry updated.' : 'Inquiry saved.');
+  };
+  const update = async (rec, patch, logText) => { await inqSave({ ...rec, ...patch, log: logText ? [...(rec.log || []), { at: new Date().toISOString(), by: currentUser.name, text: logText }] : (rec.log || []) }); };
+  const addNote = async (extra) => { if (!note.trim() && !extra) return; await update(live, { status: live.status === 'New' ? 'Follow-up' : live.status, ...(extra || {}) }, note.trim() || ''); setNote(''); showMessage('Saved.'); };
+  const markLost = async () => { await update(live, { status: 'Lost', lostReason: lostWhy, closedAt: new Date().toISOString() }, 'Marked Lost — ' + lostWhy); drvAudit(currentUser, 'Inquiry Lost', live.name + ' — ' + lostWhy); showMessage('Marked as lost.'); };
+  const reopen = async () => { await update(live, { status: 'Follow-up', lostReason: '', followUpDate: inqTomorrow() }, 'Re-opened'); };
+  const del = async rec => { if (!window.confirm('Delete this inquiry permanently?')) return; await db.ref('csc-app-data/inquiries/' + rec.id).remove(); drvAudit(currentUser, 'Inquiry Deleted', rec.name); setView(null); };
+  const wa = rec => { const s = svcOf(rec), biz = (appData.businessProfile && appData.businessProfile.name) || ''; const t = 'Namaste ' + rec.name + ', ' + (rec.serviceName ? 'regarding ' + rec.serviceName + ': ' : '') + (rec.quote || (s ? 'Price ₹' + s.price : '')) + (biz ? '\n— ' + biz : ''); return 'https://wa.me/91' + rec.phone + '?text=' + encodeURIComponent(t); };
+  const convert = rec => goNewCustomer({ inquiryId: rec.id, name: rec.name, phone: rec.phone, address: rec.address, serviceId: rec.serviceId });
+  const cnt = (arr, kf) => { const m = {}; arr.forEach(x => { const k = kf(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const bySvc = cnt(all, i => i.serviceName).slice(0, 8), bySrc = cnt(all, i => i.source), byLost = cnt(all.filter(i => i.status === 'Lost'), i => i.lostReason);
+  const pill = (id, l) => e('button', { key: id, onClick: () => setTab(id), className: 'aic-pill' + (tab === id ? ' on' : '') }, l);
+  const inp = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400', lbl = t => e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, t);
+  const kpi = (t, v, c) => e('div', { className: 'aic-kpi' }, e('p', { className: 'text-xs text-gray-500 font-medium' }, t), e('p', { className: 'text-xl font-semibold mt-1', style: { color: c || '#0f2240' } }, e(CountUp, { value: v })));
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Inquiries'), e('p', { className: 'text-sm text-gray-500' }, 'Never lose a customer who asked — follow up, then convert')),
+      e('button', { onClick: () => setForm(blank()), className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, e(Icon, { name: 'Plus', size: 16 }), 'New Inquiry')),
+    e('div', { className: 'grid grid-cols-2 xl:grid-cols-5 gap-3' }, kpi('Open', openN), kpi('Follow-up due', all.filter(isDue).length, all.some(isDue) ? '#b45309' : '#0f9d8a'), kpi('Overdue', all.filter(isLate).length, all.some(isLate) ? '#dc2626' : '#0f9d8a'), kpi('Converted this month', convMonth, '#0f9d8a'), kpi('Conversion rate', rate + '%', '#1565c0')),
+    e('div', { className: 'aic-card' },
+      e('div', { className: 'flex flex-wrap items-center justify-between gap-3 mb-3' },
+        e('div', { className: 'flex flex-wrap gap-2' }, pill('due', 'Follow-up due (' + all.filter(isDue).length + ')'), pill('open', 'Open'), pill('converted', 'Converted'), pill('lost', 'Lost'), pill('all', 'All')),
+        e('div', { className: 'flex items-center gap-3' }, e('label', { className: 'flex items-center gap-1.5 text-xs text-gray-600' }, e('input', { type: 'checkbox', checked: mine, onChange: ev => setMine(ev.target.checked) }), 'Mine only'), e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search name, mobile, service...', className: 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none w-60' }))),
+      shown.length === 0 ? e('p', { className: 'text-center text-gray-400 py-8 text-sm' }, tab === 'due' ? '✓ No follow-ups due. Nice!' : 'No inquiries here.') : e('div', { className: 'overflow-x-auto' }, e('table', { className: 'w-full text-sm' },
+        e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['Date', 'Name', 'Service', 'Source', 'Status', 'Follow-up', 'Assigned', ''].map(h => e('th', { key: h, className: 'py-2 pr-3 font-semibold' }, h)))),
+        e('tbody', null, shown.map(i => e('tr', { key: i.id, className: 'border-b border-gray-50 hover:bg-gray-50 cursor-pointer', onClick: () => { setView(i); setNote(''); } },
+          e('td', { className: 'py-2.5 pr-3 text-gray-500 whitespace-nowrap' }, (i.createdAt || '').slice(0, 10)),
+          e('td', { className: 'py-2.5 pr-3' }, e('p', { className: 'font-medium text-gray-800' }, i.name), e('p', { className: 'text-xs text-gray-400' }, i.phone || 'no mobile')),
+          e('td', { className: 'py-2.5 pr-3 text-gray-600' }, i.serviceName || '—'), e('td', { className: 'py-2.5 pr-3 text-gray-500' }, i.source),
+          e('td', { className: 'py-2.5 pr-3' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + INQ_UI[i.status] }, i.status)),
+          e('td', { className: 'py-2.5 pr-3 whitespace-nowrap ' + (isLate(i) ? 'text-red-600 font-semibold' : isDue(i) ? 'text-amber-700 font-medium' : 'text-gray-500') }, inqOpen(i) ? (i.followUpDate || '—') + (isLate(i) ? ' ⚠' : '') : '—'),
+          e('td', { className: 'py-2.5 pr-3 text-gray-500' }, i.assignedName || '—'),
+          e('td', { className: 'py-2.5', onClick: ev => ev.stopPropagation() }, e('div', { className: 'flex gap-1' }, i.phone && e('a', { href: 'tel:' + i.phone, className: 'text-gray-600 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded text-xs' }, 'Call'), i.phone && e('a', { href: wa(i), target: '_blank', rel: 'noopener', className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2 py-1 rounded text-xs' }, 'WhatsApp'), inqOpen(i) && e('button', { onClick: () => convert(i), className: 'text-white px-2 py-1 rounded text-xs font-medium', style: { background: '#0f9d8a' } }, 'Convert'))))))))),
+    admin && all.length > 0 && e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
+      e(Card, { title: 'Most Asked Services' }, e(ChartBox, { type: 'bar', height: 220, data: { labels: bySvc.map(x => x[0]), datasets: [{ data: bySvc.map(x => x[1]), backgroundColor: '#1565c0', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#eef1f5' }, ticks: { precision: 0, font: { size: 10 } }, border: { display: false } }, x: xaxis } } })),
+      e(Card, { title: 'Where Inquiries Come From' }, e(ChartBox, { type: 'doughnut', height: 220, data: { labels: bySrc.map(x => x[0]), datasets: [{ data: bySrc.map(x => x[1]), backgroundColor: PAL, borderWidth: 2, borderColor: '#fff' }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } } } } })),
+      e(Card, { title: 'Why We Lost Them' }, byLost.length ? e('div', { className: 'space-y-2' }, byLost.map(([n, v]) => e('div', { key: n, className: 'flex items-center gap-2 text-xs' }, e('span', { className: 'w-40 truncate text-gray-600' }, n), e('div', { className: 'flex-1' }, e('div', { className: 'aic-bar', style: { width: Math.max(14, v / byLost[0][1] * 100) + '%', background: '#dc2626' } }, v))))) : e('p', { className: 'text-sm text-gray-400' }, 'No lost inquiries yet.'))),
+    form && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setForm(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto', onClick: ev => ev.stopPropagation() },
+        e('div', { className: 'flex items-center justify-between px-5 py-4 border-b' }, e('h3', { className: 'font-semibold', style: { color: '#0f2240' } }, form.id ? 'Edit Inquiry' : 'New Inquiry'), e('button', { onClick: () => setForm(null), className: 'text-gray-400 text-xl leading-none' }, '×')),
+        e('div', { className: 'p-5 grid grid-cols-1 md:grid-cols-2 gap-3' },
+          e('div', null, lbl('Name *'), e('input', { value: form.name, onChange: ev => set('name', ev.target.value), className: inp })),
+          e('div', null, lbl('Mobile'), e('input', { value: form.phone, maxLength: 12, onChange: ev => set('phone', ev.target.value), className: inp }), phoneWarn && e('p', { className: 'text-xs text-amber-700 mt-1' }, '⚠ ' + phoneWarn)),
+          e('div', { className: 'md:col-span-2' }, lbl('Address / Village'), e('input', { value: form.address, onChange: ev => set('address', ev.target.value), className: inp })),
+          e('div', null, lbl('Service asked about'), e('select', { value: form.serviceId, onChange: ev => pickService(ev.target.value), className: inp }, e('option', { value: '' }, '— Other / not listed —'), services.map(s => e('option', { key: s.id, value: s.id }, s.name + ' (₹' + s.price + ')')))),
+          e('div', null, lbl(form.serviceId ? 'Service note' : 'Service name'), e('input', { value: form.customService, onChange: ev => set('customService', ev.target.value), placeholder: form.serviceId ? 'optional' : 'What did they ask for?', className: inp })),
+          e('div', null, lbl('How did they come?'), e('select', { value: form.source, onChange: ev => set('source', ev.target.value), className: inp }, INQ_SOURCES.map(x => e('option', { key: x }, x)))),
+          e('div', null, lbl('Assigned to'), e('select', { value: form.assignedId, onChange: ev => set('assignedId', Number(ev.target.value) || ev.target.value), className: inp }, users.map(u => e('option', { key: u.id, value: u.id }, u.name)))),
+          e('div', { className: 'md:col-span-2' }, lbl('What was told (price, documents, time)'), e('textarea', { rows: 3, value: form.quote, onChange: ev => set('quote', ev.target.value), className: inp })),
+          e('div', null, lbl('Follow up on'), e('input', { type: 'date', value: form.followUpDate, onChange: ev => set('followUpDate', ev.target.value), className: inp }))),
+        e('div', { className: 'px-5 pb-5 flex justify-end gap-2' }, e('button', { onClick: () => setForm(null), className: 'px-4 py-2 rounded-lg border text-sm' }, 'Cancel'), e('button', { onClick: submit, className: 'px-5 py-2 rounded-lg text-white text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Save Inquiry')))),
+    live && !form && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setView(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto', onClick: ev => ev.stopPropagation() },
+        e('div', { className: 'flex items-start justify-between px-5 py-4 border-b' }, e('div', null, e('h3', { className: 'font-semibold text-lg', style: { color: '#0f2240' } }, live.name), e('p', { className: 'text-xs text-gray-400' }, [live.phone, live.address, 'via ' + live.source, 'by ' + live.by].filter(Boolean).join(' · '))), e('div', { className: 'flex items-center gap-2' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border font-medium ' + INQ_UI[live.status] }, live.status), e('button', { onClick: () => setView(null), className: 'text-gray-400 text-xl leading-none' }, '×'))),
+        e('div', { className: 'p-5 space-y-4' },
+          e('div', { className: 'grid grid-cols-2 gap-3 text-sm' }, e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Service'), e('p', { className: 'font-medium' }, live.serviceName || '—')), e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Follow-up / Assigned'), e('p', { className: 'font-medium' }, (inqOpen(live) ? live.followUpDate : '—') + ' · ' + (live.assignedName || '—')))),
+          live.quote && e('div', { className: 'text-sm bg-blue-50/60 border border-blue-100 rounded-lg p-3 whitespace-pre-wrap' }, e('p', { className: 'text-xs text-blue-700 font-semibold mb-1' }, 'What was told'), live.quote),
+          live.status === 'Lost' && e('p', { className: 'text-sm text-gray-500' }, 'Lost because: ', e('b', null, live.lostReason || '—')),
+          live.status === 'Converted' && e('p', { className: 'text-sm text-green-700' }, '✓ Became customer ' + (live.convertedCode || '') + ' on ' + (live.convertedAt || '').slice(0, 10)),
+          e('div', null, e('p', { className: 'text-xs font-semibold text-gray-500 mb-1' }, 'HISTORY'), (live.log || []).length === 0 ? e('p', { className: 'text-xs text-gray-400' }, 'No notes yet.') : e('div', { className: 'space-y-1' }, (live.log || []).slice().reverse().map((l, k) => e('p', { key: k, className: 'text-xs text-gray-600' }, e('span', { className: 'text-gray-400' }, l.at.slice(0, 16).replace('T', ' ') + ' · ' + l.by + ' — '), l.text)))),
+          inqOpen(live) && e('div', { className: 'space-y-2 p-3 rounded-xl border border-gray-100 bg-gray-50' },
+            e('input', { value: note, onChange: ev => setNote(ev.target.value), placeholder: 'Add a note (e.g. phone not picked, will come Monday)', className: inp }),
+            e('div', { className: 'flex flex-wrap items-center gap-2' }, e('span', { className: 'text-xs text-gray-500' }, 'Next follow-up:'), e('input', { type: 'date', value: live.followUpDate || '', onChange: ev => update(live, { followUpDate: ev.target.value }, ''), className: 'border rounded-lg px-2 py-1 text-sm outline-none' }), e('button', { onClick: () => addNote(), className: 'ml-auto px-4 py-1.5 rounded-lg text-white text-sm font-medium', style: { background: '#1565c0' } }, 'Save note')),
+            e('div', { className: 'flex flex-wrap items-center gap-2 pt-1 border-t border-gray-200' }, e('select', { value: lostWhy, onChange: ev => setLostWhy(ev.target.value), className: 'border rounded-lg px-2 py-1 text-xs outline-none' }, INQ_LOST.map(x => e('option', { key: x }, x))), e('button', { onClick: markLost, className: 'px-3 py-1 rounded-lg border border-red-200 text-red-600 text-xs font-medium hover:bg-red-50' }, 'Mark as Lost'))),
+          e('div', { className: 'flex flex-wrap gap-2 pt-1' },
+            live.phone && e('a', { href: 'tel:' + live.phone, className: 'px-3 py-1.5 rounded-lg border text-sm' }, 'Call'), live.phone && e('a', { href: wa(live), target: '_blank', rel: 'noopener', className: 'px-3 py-1.5 rounded-lg border border-green-300 text-green-700 text-sm' }, 'WhatsApp'),
+            inqOpen(live) && e('button', { onClick: () => convert(live), className: 'px-4 py-1.5 rounded-lg text-white text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Convert to Customer'),
+            live.status === 'Lost' && e('button', { onClick: reopen, className: 'px-3 py-1.5 rounded-lg border text-sm' }, 'Re-open'),
+            e('button', { onClick: () => { setForm({ ...live, customService: live.customService || '' }); }, className: 'px-3 py-1.5 rounded-lg border text-sm' }, 'Edit'),
+            admin && e('button', { onClick: () => del(live), className: 'ml-auto px-3 py-1.5 rounded-lg text-red-500 text-sm hover:bg-red-50' }, 'Delete'))))));
+}
+
+// ── TOKEN / WAITING-NUMBER SYSTEM (serial for the counter) ──────────────────────
+// Stored OUTSIDE csc-app-data so the main data never grows with daily tokens:
+//   csc-tokens/<date>/<id>   csc-token-counters/<date>/<category>   csc-token-settings
+const TK_DEFAULT = { categories: [{ code: 'A', name: 'Aadhaar / PAN / Govt. services' }, { code: 'B', name: 'Banking' }, { code: 'C', name: 'Other' }], avgMinutes: 8 };
+const TK_REASONS = ['Senior citizen', 'Disabled', 'Pregnant / with infant', 'Urgent', 'Other'];
+const TK_LIVE = ['Called', 'Serving'];
+const tkRef = d => db.ref('csc-tokens/' + d);
+const tkLabel = (c, n) => c + '-' + String(n).padStart(3, '0');
+const tkMin = iso => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+const tkQueue = list => list.filter(t => t.status === 'Waiting').sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0) || a.id - b.id);
+const tkAvgServe = (list, def) => { const d = list.filter(t => t.status === 'Done' && t.startedAt && t.doneAt).map(t => (new Date(t.doneAt) - new Date(t.startedAt)) / 60000); return d.length >= 3 ? Math.max(1, Math.round(d.reduce((s, x) => s + x, 0) / d.length)) : def; };
+const tkAvgWait = list => { const w = list.filter(t => t.calledAt).map(t => (new Date(t.calledAt) - new Date(t.createdAt)) / 60000); return w.length ? Math.round(w.reduce((s, x) => s + x, 0) / w.length) : 0; };
+async function tkCreate(user, day, f, cats) {   // the counter is a Firebase transaction: two staff can never get the same number
+  const cat = cats.find(c => c.code === f.category) || cats[0];
+  const r = await db.ref('csc-token-counters/' + day + '/' + cat.code).transaction(c => (c || 0) + 1);
+  if (!r.committed) throw new Error('Could not get a number — try again.');
+  const seq = r.snapshot.val(), id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const rec = JSON.parse(JSON.stringify({ id, date: day, category: cat.code, categoryName: cat.name, seq, label: tkLabel(cat.code, seq), name: (f.name || '').trim(), phone: f.phone || '', customerId: f.customerId || '', custCode: f.custCode || '',
+    priority: !!f.priority, reason: f.priority ? f.reason : '', purpose: (f.purpose || '').trim(), status: 'Waiting', createdAt: new Date().toISOString(), createdBy: user.name, createdById: user.id }));
+  await tkRef(day).child(id).set(rec); return rec;
+}
+async function tkCall(t, user) {   // true only for the one staff member who really got it
+  const r = await tkRef(t.date).child(t.id).transaction(cur => (cur && cur.status === 'Waiting') ? { ...cur, status: 'Called', calledAt: new Date().toISOString(), servedBy: user.name, servedById: user.id, counter: user.name } : undefined);
+  return r.committed;
+}
+function tkAnnounce(t) {
+  try { const ac = new (window.AudioContext || window.webkitAudioContext)(); [880, 1175].forEach((fq, i) => { const o = ac.createOscillator(), g = ac.createGain(), at = ac.currentTime + i * 0.28; o.connect(g); g.connect(ac.destination); o.frequency.value = fq; g.gain.setValueAtTime(0.25, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.24); o.start(at); o.stop(at + 0.25); }); } catch (err) {}
+  try { const u = new SpeechSynthesisUtterance('Token number ' + t.category + ' ' + t.seq + (t.name ? ', ' + t.name : '') + ', please come to the counter'); u.lang = 'en-IN'; u.rate = 0.9; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (err) {}
+}
+const tkEsc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function tkPrint(t, biz, ahead, wait) {
+  const w = window.open('', '_blank', 'width=340,height=560'); if (!w) { alert('Please allow pop-ups to print the token slip.'); return; }
+  w.document.write('<html><head><title>' + tkEsc(t.label) + '</title><style>body{font-family:Arial,sans-serif;text-align:center;width:72mm;margin:0 auto;padding:6px 4px}h3{margin:2px 0;font-size:15px}.n{font-size:58px;font-weight:800;margin:4px 0;letter-spacing:1px}.s{font-size:12px;color:#333;margin:2px 0}hr{border:0;border-top:1px dashed #999;margin:8px 0}.p{display:inline-block;border:1px solid #000;padding:1px 8px;font-size:11px;margin-top:3px}</style></head><body>' +
+    '<h3>' + tkEsc(biz) + '</h3><div class="s">TOKEN</div><div class="n">' + tkEsc(t.label) + '</div>' + (t.priority ? '<div class="p">PRIORITY — ' + tkEsc(t.reason) + '</div>' : '') +
+    '<div class="s">' + tkEsc(t.categoryName) + '</div>' + (t.name ? '<div class="s">' + tkEsc(t.name) + '</div>' : '') + '<hr><div class="s">' + new Date(t.createdAt).toLocaleString('en-IN') + '</div>' +
+    '<div class="s">People ahead: <b>' + ahead + '</b></div><div class="s">Approx. wait: <b>' + wait + ' min</b></div><hr><div class="s">Please wait for your number to be called.<br>Thank you!</div>' +
+    '<script>window.onload=function(){window.print();}<\/script></body></html>'); w.document.close();
+}
+function useTokens(day) {
+  const [list, setList] = useState([]);
+  useEffect(() => { const r = tkRef(day), cb = r.on('value', s => setList(bkArr(s.val()))); return () => r.off('value', cb); }, [day]);
+  return list;
+}
+
+function TokenQueue({ appData, customers, currentUser, showMessage, goNewCustomer, goAddService }) {
+  const admin = currentUser.role === 'admin', list = useTokens(todayStr), [, tick] = useState(0);
+  const [tab, setTab] = useState('queue'), [sound, setSound] = useState(true), [form, setForm] = useState(null), [cq, setCq] = useState(''), [slip, setSlip] = useState(null), [fin, setFin] = useState(null), [hday, setHday] = useState(todayStr), [busy, setBusy] = useState(false);
+  const [st, setSt] = useState(null); const hist = useTokens(hday);
+  useEffect(() => { const r = db.ref('csc-token-settings'), cb = r.on('value', s => setSt(s.val())); return () => r.off('value', cb); }, []);
+  useEffect(() => { const i = setInterval(() => tick(x => x + 1), 30000); return () => clearInterval(i); }, []);
+  const cfg = { ...TK_DEFAULT, ...(st || {}) }, cats = (cfg.categories && cfg.categories.length ? bkArr(cfg.categories) : TK_DEFAULT.categories);
+  const biz = (appData.businessProfile && appData.businessProfile.name) || 'Customer Service Center';
+  const queue = tkQueue(list), live = list.filter(t => TK_LIVE.includes(t.status)).sort((a, b) => a.id - b.id), mine = live.find(t => t.servedById === currentUser.id), held = list.filter(t => t.status === 'Hold');
+  const avg = tkAvgServe(list, Number(cfg.avgMinutes) || 8), done = list.filter(t => t.status === 'Done');
+  const longest = queue.length ? Math.max(...queue.map(t => tkMin(t.createdAt))) : 0;
+  const patch = (t, p) => tkRef(t.date).child(t.id).update(p);
+  const guard = async fn => { if (busy) return; setBusy(true); try { await fn(); } catch (err) { showMessage(err.message, 'error'); } setBusy(false); };
+  const callNext = () => guard(async () => {
+    if (mine) return showMessage('Finish ' + mine.label + ' first.', 'error');
+    for (const t of tkQueue(list)) { if (await tkCall(t, currentUser)) { tkAnnounce({ ...t, counter: currentUser.name }); return; } }
+    showMessage('No one is waiting.');
+  });
+  const callThis = t => guard(async () => { if (mine) return showMessage('Finish ' + mine.label + ' first.', 'error'); if (await tkCall(t, currentUser)) tkAnnounce(t); else showMessage('Someone else already took ' + t.label + '.', 'error'); });
+  const startServing = t => patch(t, { status: 'Serving', startedAt: new Date().toISOString() });
+  const recall = t => { patch(t, { recalls: (t.recalls || 0) + 1 }); if (sound) tkAnnounce(t); };
+  const skip = t => { patch(t, { status: 'Skipped', doneAt: new Date().toISOString() }); showMessage(t.label + ' skipped (did not come).'); };
+  const hold = t => patch(t, { status: 'Hold' }), resume = t => patch(t, { status: 'Waiting' });
+  const cancel = t => { if (window.confirm('Cancel token ' + t.label + '?')) patch(t, { status: 'Cancelled', doneAt: new Date().toISOString() }); };
+  const finish = async (t, outcome) => {
+    await patch(t, { status: 'Done', outcome, doneAt: new Date().toISOString(), startedAt: t.startedAt || new Date().toISOString() });
+    if (outcome === 'Inquiry only' && t.name) { const id = Date.now(); await inqSave({ id, name: t.name, phone: inqPhone(t.phone), address: '', serviceId: '', customService: '', serviceName: t.purpose || 'Asked at counter', source: 'Walk-in', status: 'New', followUpDate: inqTomorrow(), assignedId: currentUser.id, assignedName: currentUser.name, quote: '', by: currentUser.name, byId: currentUser.id, createdAt: new Date().toISOString(), log: [{ at: new Date().toISOString(), by: currentUser.name, text: 'Created from token ' + t.label }] }); showMessage('Saved. An inquiry was also created for follow-up.'); }
+    else showMessage(t.label + ' done.');
+    setFin(null);
+  };
+  const startService = t => { const c = t.customerId ? customers.find(x => x.id === t.customerId) : null; if (c) goAddService(c); else goNewCustomer({ name: t.name, phone: t.phone }); };
+  const openForm = () => { setForm({ name: '', phone: '', customerId: '', custCode: '', category: cats[0].code, priority: false, reason: TK_REASONS[0], purpose: '' }); setCq(''); };
+  const matches = cq.trim().length >= 2 ? customers.filter(c => [c.name, c.custCode, c.phone].some(v => String(v || '').toLowerCase().includes(cq.trim().toLowerCase()))).slice(0, 5) : [];
+  const issue = () => guard(async () => { const rec = await tkCreate(currentUser, todayStr, form, cats); setForm(null); setSlip(rec); });
+  const aheadOf = t => queue.filter(x => x.id !== t.id && ((x.priority && !t.priority) || (x.priority === t.priority && x.id < t.id))).length;
+  const kpi = (t, v, c) => e('div', { className: 'aic-kpi' }, e('p', { className: 'text-xs text-gray-500 font-medium' }, t), e('p', { className: 'text-xl font-semibold mt-1', style: { color: c || '#0f2240' } }, e(CountUp, { value: v })));
+  const pill = (id, l) => e('button', { key: id, onClick: () => setTab(id), className: 'aic-pill' + (tab === id ? ' on' : '') }, l);
+  const inp = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-400', lbl = t => e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, t);
+  const stUi = { Waiting: 'bg-blue-50 text-blue-700 border-blue-200', Called: 'bg-amber-50 text-amber-700 border-amber-200', Serving: 'bg-green-50 text-green-700 border-green-200', Done: 'bg-gray-100 text-gray-600 border-gray-200', Skipped: 'bg-red-50 text-red-600 border-red-200', Cancelled: 'bg-gray-100 text-gray-400 border-gray-200', Hold: 'bg-purple-50 text-purple-700 border-purple-200' };
+  const [cs, setCs] = useState(null);   // settings draft
+  return e('div', { className: 'space-y-5' },
+    e('div', { className: 'flex flex-wrap justify-between items-end gap-3' },
+      e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Serial / Token'), e('p', { className: 'text-sm text-gray-500' }, 'Give every customer a number, call them one by one')),
+      e('div', { className: 'flex flex-wrap items-center gap-2' }, pill('queue', 'Queue'), pill('history', 'History'), admin && pill('settings', 'Settings'),
+        e('label', { className: 'flex items-center gap-1.5 text-xs text-gray-600 ml-2' }, e('input', { type: 'checkbox', checked: sound, onChange: ev => setSound(ev.target.checked) }), '🔊 Sound'),
+        e('button', { onClick: openForm, className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, e(Icon, { name: 'Plus', size: 16 }), 'New Token'))),
+    tab === 'queue' && [
+      e('div', { key: 'k', className: 'grid grid-cols-2 xl:grid-cols-5 gap-3' }, kpi('Waiting', queue.length, queue.length > 8 ? '#dc2626' : '#1565c0'), kpi('Being served', live.length, '#0f9d8a'), kpi('Done today', done.length), kpi('Avg wait (min)', tkAvgWait(list)), kpi('Longest waiting (min)', longest, longest > 30 ? '#dc2626' : '#0f2240')),
+      live.length > 0 && e('div', { key: 'now', className: 'aic-card' }, e('p', { className: 'text-xs font-semibold text-gray-500 mb-2' }, 'NOW AT THE COUNTERS'), e('div', { className: 'flex flex-wrap gap-3' }, live.map(t => e('div', { key: t.id, className: 'rounded-xl border px-4 py-2 ' + (t.status === 'Serving' ? 'border-green-300 bg-green-50' : 'border-amber-300 bg-amber-50') }, e('p', { className: 'text-2xl font-extrabold', style: { color: '#0f2240' } }, t.label), e('p', { className: 'text-xs text-gray-600' }, t.status + ' · ' + t.servedBy))))),
+      e('div', { key: 'me', className: 'aic-card' }, mine ? e('div', { className: 'space-y-3' },
+          e('div', { className: 'flex flex-wrap items-center justify-between gap-3' }, e('div', null, e('p', { className: 'text-xs text-gray-500' }, 'YOUR CURRENT TOKEN'), e('p', { className: 'text-5xl font-extrabold', style: { color: '#0a2a6b' } }, mine.label), e('p', { className: 'text-sm text-gray-600' }, [mine.name, mine.phone, mine.custCode, mine.purpose].filter(Boolean).join(' · ') || 'Walk-in'), mine.priority && e('span', { className: 'text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200' }, 'Priority — ' + mine.reason)),
+            e('span', { className: 'text-xs px-3 py-1 rounded-full border font-medium ' + stUi[mine.status] }, mine.status)),
+          e('div', { className: 'flex flex-wrap gap-2' },
+            mine.status === 'Called' && e('button', { onClick: () => startServing(mine), className: 'px-5 py-2 rounded-lg text-white font-semibold text-sm', style: { background: '#0f9d8a' } }, '▶ Start Serving'),
+            mine.status === 'Called' && e('button', { onClick: () => recall(mine), className: 'px-4 py-2 rounded-lg border border-amber-300 text-amber-700 text-sm font-medium' }, '🔔 Call again' + (mine.recalls ? ' (' + mine.recalls + ')' : '')),
+            mine.status === 'Called' && e('button', { onClick: () => skip(mine), className: 'px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm' }, 'Did not come'),
+            mine.status === 'Serving' && e('button', { onClick: () => startService(mine), className: 'px-4 py-2 rounded-lg border border-blue-200 text-blue-700 text-sm font-medium' }, '➜ Open in CRM'),
+            mine.status === 'Serving' && e('button', { onClick: () => setFin(mine), className: 'px-5 py-2 rounded-lg text-white font-semibold text-sm', style: { background: '#1565c0' } }, '✓ Done')))
+        : e('div', { className: 'flex flex-wrap items-center justify-between gap-3' }, e('div', null, e('p', { className: 'font-semibold text-gray-800' }, queue.length ? queue.length + ' waiting — next is ' + queue[0].label : 'No one is waiting'), e('p', { className: 'text-xs text-gray-400' }, 'Average service time ' + avg + ' min')),
+          e('button', { onClick: callNext, disabled: busy || !queue.length, className: 'px-8 py-3 rounded-xl text-white font-bold text-lg shadow ' + (queue.length ? '' : 'opacity-40'), style: { background: 'linear-gradient(90deg,#1565c0,#0f9d8a)' } }, '📢 Call Next'))),
+      e('div', { key: 'q', className: 'aic-card overflow-x-auto' }, e('h4', { className: 'aic-card-title' }, 'Waiting (' + queue.length + ')'),
+        queue.length + held.length === 0 ? e('p', { className: 'text-sm text-gray-400 text-center py-6' }, 'The line is empty.') : e('table', { className: 'w-full text-sm' },
+          e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['#', 'Token', 'Customer', 'Purpose', 'Waiting', 'Est. turn', 'Actions'].map(h => e('th', { key: h, className: 'py-2 pr-3 font-semibold' }, h)))),
+          e('tbody', null, [...queue, ...held].map((t, i) => e('tr', { key: t.id, className: 'border-b border-gray-50 hover:bg-gray-50' },
+            e('td', { className: 'py-2 pr-3 text-gray-400' }, t.status === 'Hold' ? '—' : i + 1),
+            e('td', { className: 'py-2 pr-3' }, e('span', { className: 'text-lg font-extrabold', style: { color: '#0a2a6b' } }, t.label), t.priority && e('span', { className: 'ml-2 text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200', title: t.reason }, '★ Priority'), t.status === 'Hold' && e('span', { className: 'ml-2 text-xs px-1.5 py-0.5 rounded border ' + stUi.Hold }, 'On hold')),
+            e('td', { className: 'py-2 pr-3' }, e('p', { className: 'font-medium text-gray-800' }, t.name || 'Walk-in'), e('p', { className: 'text-xs text-gray-400' }, [t.phone, t.custCode].filter(Boolean).join(' · '))),
+            e('td', { className: 'py-2 pr-3 text-gray-500' }, t.purpose || t.categoryName), e('td', { className: 'py-2 pr-3 ' + (tkMin(t.createdAt) > 30 ? 'text-red-600 font-semibold' : 'text-gray-600') }, tkMin(t.createdAt) + ' min'),
+            e('td', { className: 'py-2 pr-3 text-gray-500' }, t.status === 'Hold' ? '—' : (i === 0 ? 'Next' : '~' + i * avg + ' min')),
+            e('td', { className: 'py-2' }, e('div', { className: 'flex flex-wrap gap-1' },
+              t.status === 'Waiting' && e('button', { onClick: () => callThis(t), className: 'text-white px-2 py-1 rounded text-xs font-medium', style: { background: '#0f9d8a' } }, 'Call'),
+              t.status === 'Waiting' ? e('button', { onClick: () => hold(t), className: 'text-gray-600 border border-gray-200 px-2 py-1 rounded text-xs' }, 'Hold') : e('button', { onClick: () => resume(t), className: 'text-purple-700 border border-purple-200 px-2 py-1 rounded text-xs' }, 'Resume'),
+              e('button', { onClick: () => setSlip(t), className: 'text-blue-600 border border-blue-200 px-2 py-1 rounded text-xs' }, 'Slip'),
+              (admin || t.createdById === currentUser.id) && e('button', { onClick: () => cancel(t), className: 'text-gray-400 hover:text-red-600 text-xs px-1' }, 'Cancel')))))))) ],
+    tab === 'history' && e('div', { className: 'aic-card overflow-x-auto' }, e('div', { className: 'flex items-center justify-between mb-3' }, e('h4', { className: 'aic-card-title', style: { marginBottom: 0 } }, 'Token History'), e('input', { type: 'date', value: hday, max: todayStr, onChange: ev => setHday(ev.target.value || todayStr), className: 'border rounded-lg px-2 py-1 text-sm outline-none' })),
+      hist.length === 0 ? e('p', { className: 'text-sm text-gray-400 text-center py-6' }, 'No tokens on this day.') : [
+        e('p', { key: 's', className: 'text-xs text-gray-500 mb-2' }, hist.length + ' tokens · ' + hist.filter(t => t.status === 'Done').length + ' done · ' + hist.filter(t => t.status === 'Skipped').length + ' did not come · avg wait ' + tkAvgWait(hist) + ' min · avg service ' + tkAvgServe(hist, '—') + ' min'),
+        e('table', { key: 't', className: 'w-full text-sm' }, e('thead', null, e('tr', { className: 'text-left text-xs text-gray-500 border-b' }, ['Token', 'Customer', 'Time', 'Status', 'Wait', 'Served by', 'Result'].map(h => e('th', { key: h, className: 'py-2 pr-3 font-semibold' }, h)))),
+          e('tbody', null, hist.slice().sort((a, b) => a.id - b.id).map(t => e('tr', { key: t.id, className: 'border-b border-gray-50' }, e('td', { className: 'py-2 pr-3 font-bold' }, t.label, t.priority ? ' ★' : ''), e('td', { className: 'py-2 pr-3' }, t.name || 'Walk-in'), e('td', { className: 'py-2 pr-3 text-gray-500' }, new Date(t.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })), e('td', { className: 'py-2 pr-3' }, e('span', { className: 'text-xs px-2 py-0.5 rounded-full border ' + stUi[t.status] }, t.status)), e('td', { className: 'py-2 pr-3 text-gray-500' }, t.calledAt ? Math.round((new Date(t.calledAt) - new Date(t.createdAt)) / 60000) + ' min' : '—'), e('td', { className: 'py-2 pr-3 text-gray-500' }, t.servedBy || '—'), e('td', { className: 'py-2 text-gray-500' }, t.outcome || '—')))))]),
+    tab === 'settings' && admin && e(Card, { title: 'Token Settings', sub: 'Categories give each line its own letter (A-001, B-001...)' }, (() => { const d = cs || { categories: cats.map(c => ({ ...c })), avgMinutes: cfg.avgMinutes }; return e('div', { className: 'space-y-3 max-w-xl' },
+      d.categories.map((c, i) => e('div', { key: i, className: 'flex gap-2' }, e('input', { value: c.code, maxLength: 2, onChange: ev => setCs({ ...d, categories: d.categories.map((x, k) => k === i ? { ...x, code: ev.target.value.toUpperCase() } : x) }), className: 'w-16 border rounded-lg px-2 py-2 text-sm text-center font-bold outline-none' }), e('input', { value: c.name, onChange: ev => setCs({ ...d, categories: d.categories.map((x, k) => k === i ? { ...x, name: ev.target.value } : x) }), className: inp }), d.categories.length > 1 && e('button', { onClick: () => setCs({ ...d, categories: d.categories.filter((x, k) => k !== i) }), className: 'text-red-500 px-2' }, '✕'))),
+      e('button', { onClick: () => setCs({ ...d, categories: [...d.categories, { code: String.fromCharCode(65 + d.categories.length), name: '' }] }), className: 'text-xs text-blue-700 border border-dashed border-blue-300 rounded-lg px-3 py-1' }, '+ Add category'),
+      e('div', { className: 'flex items-center gap-2 text-sm text-gray-600' }, 'Default time per customer', e('input', { type: 'number', min: 1, value: d.avgMinutes, onChange: ev => setCs({ ...d, avgMinutes: Number(ev.target.value) || 1 }), className: 'w-20 border rounded-lg px-2 py-1 outline-none' }), 'min (used until 3 customers are served today, then the real average is used)'),
+      e('button', { onClick: async () => { const codes = d.categories.map(c => c.code.trim()); if (codes.some(c => !c) || new Set(codes).size !== codes.length || d.categories.some(c => !c.name.trim())) return showMessage('Every category needs a unique letter and a name.', 'error'); await db.ref('csc-token-settings').set({ categories: d.categories.map(c => ({ code: c.code.trim(), name: c.name.trim() })), avgMinutes: d.avgMinutes }); setCs(null); showMessage('Token settings saved.'); }, className: 'text-white px-5 py-2 rounded-lg text-sm font-semibold', style: { background: '#0f9d8a' } }, 'Save Settings')); })()),
+    form && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setForm(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto', onClick: ev => ev.stopPropagation() },
+        e('div', { className: 'flex items-center justify-between px-5 py-4 border-b' }, e('h3', { className: 'font-semibold', style: { color: '#0f2240' } }, 'New Token'), e('button', { onClick: () => setForm(null), className: 'text-gray-400 text-xl leading-none' }, '×')),
+        e('div', { className: 'p-5 space-y-3' },
+          e('div', null, lbl('Find existing customer (name / mobile / ID) — optional'), e('input', { value: cq, onChange: ev => setCq(ev.target.value), className: inp }), matches.length > 0 && e('div', { className: 'mt-1 border rounded-lg divide-y' }, matches.map(c => e('button', { key: c.id, onClick: () => { setForm({ ...form, name: c.name, phone: c.phone || '', customerId: c.id, custCode: c.custCode || '' }); setCq(''); }, className: 'w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50' }, e('b', null, c.custCode || '—'), ' · ' + c.name + ' · ' + (c.phone || ''))))),
+          e('div', { className: 'grid grid-cols-2 gap-3' }, e('div', null, lbl('Name (optional)'), e('input', { value: form.name, onChange: ev => setForm({ ...form, name: ev.target.value, customerId: '', custCode: '' }), className: inp })), e('div', null, lbl('Mobile (optional)'), e('input', { value: form.phone, maxLength: 12, onChange: ev => setForm({ ...form, phone: ev.target.value }), className: inp }))),
+          form.custCode && e('p', { className: 'text-xs text-green-700' }, '✓ Linked to customer ' + form.custCode),
+          e('div', null, lbl('Line / Category'), e('div', { className: 'flex flex-wrap gap-2' }, cats.map(c => e('button', { key: c.code, onClick: () => setForm({ ...form, category: c.code }), className: 'px-3 py-2 rounded-lg border text-sm ' + (form.category === c.code ? 'text-white border-transparent' : 'bg-white text-gray-700'), style: form.category === c.code ? { background: '#1565c0' } : {} }, e('b', null, c.code), ' · ' + c.name)))),
+          e('div', null, lbl('What for? (optional)'), e('input', { value: form.purpose, onChange: ev => setForm({ ...form, purpose: ev.target.value }), placeholder: 'e.g. PAN correction, bank form', className: inp })),
+          e('div', { className: 'flex flex-wrap items-center gap-3 p-2 rounded-lg bg-red-50/50 border border-red-100' }, e('label', { className: 'flex items-center gap-2 text-sm text-gray-700' }, e('input', { type: 'checkbox', checked: form.priority, onChange: ev => setForm({ ...form, priority: ev.target.checked }) }), '★ Priority (goes first)'), form.priority && e('select', { value: form.reason, onChange: ev => setForm({ ...form, reason: ev.target.value }), className: 'border rounded-lg px-2 py-1 text-sm outline-none' }, TK_REASONS.map(r => e('option', { key: r }, r)))),
+          e('button', { onClick: issue, disabled: busy, className: 'w-full py-3 rounded-xl text-white font-bold', style: { background: 'linear-gradient(90deg,#1565c0,#0f9d8a)' } }, busy ? 'Please wait...' : 'Get Token Number')))),
+    slip && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setSlip(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-2', onClick: ev => ev.stopPropagation() },
+        e('p', { className: 'text-xs text-gray-400' }, 'TOKEN NUMBER'), e('p', { className: 'text-6xl font-extrabold', style: { color: '#0a2a6b' } }, slip.label), slip.priority && e('p', { className: 'text-xs text-red-600' }, '★ Priority — ' + slip.reason), e('p', { className: 'text-sm text-gray-500' }, [slip.name, slip.categoryName].filter(Boolean).join(' · ')),
+        e('p', { className: 'text-sm text-gray-700' }, 'People ahead: ', e('b', null, aheadOf(slip)), ' · Approx. wait: ', e('b', null, aheadOf(slip) * avg + ' min')),
+        e('div', { className: 'flex gap-2 pt-2' }, e('button', { onClick: () => tkPrint(slip, biz, aheadOf(slip), aheadOf(slip) * avg), className: 'flex-1 py-2 rounded-lg text-white font-semibold text-sm', style: { background: '#1565c0' } }, '🖨 Print Slip'), e('button', { onClick: () => setSlip(null), className: 'flex-1 py-2 rounded-lg border text-sm' }, 'Close')))),
+    fin && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setFin(null) },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-3', onClick: ev => ev.stopPropagation() },
+        e('h3', { className: 'font-semibold', style: { color: '#0f2240' } }, fin.label + ' — how did it end?'),
+        ['Service done', 'Inquiry only', 'Did not take service'].map(o => e('button', { key: o, onClick: () => finish(fin, o), className: 'w-full text-left px-4 py-2.5 rounded-lg border hover:bg-gray-50 text-sm' }, o === 'Inquiry only' ? 'Only asked / inquiry (creates a follow-up inquiry)' : o)),
+        e('button', { onClick: () => setFin(null), className: 'text-xs text-gray-500' }, 'Cancel'))));
 }
 
 function Expenses({ expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }) {
@@ -5449,7 +5713,7 @@ function SystemSettings({ currentUser, users, setUsers, services, setServices, b
           ),
           e('div', { className: 'space-y-2' }, ...services.map(s =>
             e('div', { key: s.id, className: 'flex items-center justify-between bg-white border rounded-xl px-4 py-3' },
-              e('span', { className: 'font-medium text-gray-800' }, s.name),
+              e('div', { className: 'flex-1 min-w-0 mr-3' }, e('span', { className: 'font-medium text-gray-800' }, s.name), e('input', { value: s.docsRequired || '', onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, docsRequired: ev.target.value } : x)), placeholder: 'Required documents (shown in Inquiries)', className: 'block w-full mt-1 border border-gray-200 rounded px-2 py-1 text-xs outline-none' })),
               e('div', { className: 'flex items-center gap-3' },
                 e('div', { className: 'flex items-center gap-1 text-xs text-gray-500', title: 'When this service is added for a customer, this stock item is reduced automatically' },
                   e('select', { value: s.stockItemId || '', onChange: ev => setServices(services.map(x => x.id === s.id ? { ...x, stockItemId: ev.target.value ? Number(ev.target.value) : '', stockQty: x.stockQty || 1 } : x)), className: 'border rounded px-1.5 py-1 text-xs outline-none max-w-[140px]' }, e('option', { value: '' }, 'No stock link'), stockItems.map(i => e('option', { key: i.id, value: i.id }, 'Uses: ' + i.name))),
@@ -5561,6 +5825,8 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [editRequestId, setEditRequestId] = useState(null);
+  const [newCustomerRequest, setNewCustomerRequest] = useState(null);
+  const goNewCustomer = r => { setNewCustomerRequest(r); setActiveTab('crm'); };
   const goAddService = c => { setEditRequestId(c.id); setActiveTab('crm'); };
   const [message, setMessage] = useState(null);
   const [printingReceipt, setPrintingReceipt] = useState(null);
@@ -5653,6 +5919,17 @@ function App() {
     catch { setSyncOk(false); showMessage('Save failed. Check internet connection.', 'error'); }
   }, []);
 
+  const [tkWaiting, setTkWaiting] = useState(0);
+  useEffect(() => {   // sidebar badge: how many are waiting today
+    if (!currentUser) return;
+    const r = db.ref('csc-tokens/' + todayStr), cb = r.on('value', sn => setTkWaiting(bkArr(sn.val()).filter(t => t.status === 'Waiting').length));
+    return () => r.off('value', cb);
+  }, [currentUser && currentUser.id]);
+  useEffect(() => {   // Admin session tidies up token days older than 90 days
+    if (!currentUser || currentUser.role !== 'admin') return;
+    const t = setTimeout(() => { const cut = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10); ['csc-tokens', 'csc-token-counters'].forEach(p => db.ref(p).orderByKey().endAt(cut).once('value').then(sn => sn.forEach(c => { c.ref.remove(); })).catch(() => {})); }, 20000);
+    return () => clearTimeout(t);
+  }, [currentUser && currentUser.id]);
   useEffect(() => { window.__drvToast = showMessage; window.__drvUser = currentUser; drvLoadCfg(); });
   // Automatic backup: checked every 15 min while an admin is logged in (the schedule itself lives in Firebase)
   useEffect(() => {
@@ -5806,6 +6083,8 @@ function App() {
     { id: 'tracking', label: 'Service Tracking', icon: 'Briefcase' },
     { id: 'crm', label: 'Customer CRM', icon: 'Users' },
     { id: 'reports', label: 'Reports & Invoice', icon: 'FileText' },
+    { id: 'queue', label: 'Serial / Token', icon: 'Users' },
+    { id: 'inquiry', label: 'Inquiries', icon: 'Phone' },
     { id: 'approvals', label: currentUser.role === 'admin' ? 'Approvals' : 'My Requests', icon: 'CheckCircle' },
     { id: 'pending', label: 'Pending Amount', icon: 'AlertCircle' },
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
@@ -5823,7 +6102,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', documents: 'Documents', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', queue: 'Serial / Token', inquiry: 'Inquiries', documents: 'Documents', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -5837,7 +6116,7 @@ function App() {
         )
       ),
       e('nav', { className: 'flex-1 p-3 space-y-1 overflow-y-auto' },
-        ...navItems.map(n => e(NavItem, { key: n.id, icon: e(Icon, { name: n.icon, size: 18 }), label: n.label, isActive: activeTab === n.id, onClick: () => setActiveTab(n.id), sideColor, badge: n.id === 'approvals' ? apList(appData).filter(r => r.status === 'pending' && !apExpired(r) && (currentUser.role === 'admin' || r.by === currentUser.id)).length : 0 })),
+        ...navItems.map(n => e(NavItem, { key: n.id, icon: e(Icon, { name: n.icon, size: 18 }), label: n.label, isActive: activeTab === n.id, onClick: () => setActiveTab(n.id), sideColor, badge: n.id === 'queue' ? tkWaiting : n.id === 'inquiry' ? inqDueCount(appData, currentUser) : n.id === 'approvals' ? apList(appData).filter(r => r.status === 'pending' && !apExpired(r) && (currentUser.role === 'admin' || r.by === currentUser.id)).length : 0 })),
         e('div', { className: `pt-3 mt-3 border-t border-${sideColor}-800` },
           e(NavItem, { icon: e(Icon, { name: 'Settings', size: 18 }), label: currentUser.role === 'admin' ? 'System Settings' : 'My Settings', isActive: activeTab === 'settings', onClick: () => setActiveTab('settings'), sideColor }),
           e('button', { onClick: () => { if (window.confirm('Are you sure you want to log out?')) setCurrentUser(null); }, className: 'flex items-center w-full p-3 rounded-lg text-indigo-300 hover:bg-red-600 hover:text-white transition-colors mt-1 text-left gap-3' }, e(Icon, { name: 'LogOut', size: 18 }), e('span', { className: 'font-medium text-sm' }, 'Logout'))
@@ -5871,12 +6150,14 @@ function App() {
       e('div', { key: activeTab, className: 'pg-enter flex-1 overflow-y-auto p-6 relative' },
         activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
-        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null) }),
+        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null), newCustomerRequest, clearNewRequest: () => setNewCustomerRequest(null) }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, currentUser }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'backup' && currentUser.role === 'admin' && e(BackupCenter, { appData, persist, currentUser, showMessage }),
+        activeTab === 'queue' && e(TokenQueue, { appData, customers, currentUser, showMessage, goNewCustomer, goAddService }),
+        activeTab === 'inquiry' && e(InquiryPage, { appData, currentUser, showMessage, services, customers, users, goNewCustomer }),
         activeTab === 'documents' && e(DocumentsPage, { appData, currentUser, showMessage, customers }),
         activeTab === 'approvals' && e(ApprovalsPage, { appData, persist, currentUser, showMessage, addAuditLog }),
         activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
