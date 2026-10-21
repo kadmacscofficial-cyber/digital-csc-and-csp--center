@@ -3426,6 +3426,11 @@ const pcLedgerRows = list => { const out = []; bkArr(list).forEach(r => { const 
   out.push({ id: r.id, rowKey: 'pc' + r.id, date: r.date, customerName: r.customerName + ' (Pending withdrawal)', cashIn: 0, cashOut: pcRound(r.paidNow), location: loc, pending: true, pcNote: note, pcRec: r.id });
   bkArr(r.payments).forEach(p => out.push({ id: p.id, rowKey: 'pcp' + r.id + '-' + p.id, date: p.date, customerName: r.customerName + ' — Pending cash paid', cashIn: 0, cashOut: pcRound(p.amount), location: loc, pending: true, pcNote: note, pcRec: r.id, pcPay: p.id })); }); return out; };
 const pcPayable = list => pcRound(bkArr(list).reduce((s, r) => s + Math.max(0, pcRemaining(r)), 0));
+// Self Transfer can use Savings or any Saving-category account (same list as Online Transaction charge).
+function selfSavOpts(simpleAccounts, walletInfo) {
+  const sn = ((walletInfo || {}).savings || {}).name || 'Savings Account';
+  return [{ id: 'sav', name: sn }, ...bkArr(simpleAccounts).filter(a => a.active !== false && a.category === 'saving').map(a => ({ id: a.id, name: a.name }))];
+}
 function bkCalcBalances(d, selectedDate) {
   const bankTransactions = Array.isArray(d.bankTransactions) ? d.bankTransactions : [];
   const safeOnline = Array.isArray(d.onlineTransactions) ? d.onlineTransactions : [];
@@ -3469,8 +3474,10 @@ function bkCalcBalances(d, selectedDate) {
   const chargeTo = id => safeOnline.reduce((s, t) => s + ((t.chargeAmount && t.chargeMode !== 'cash' && (t.chargeAccId || 'sav') === id) ? (Number(t.chargeAmount) || 0) : 0), 0);   // Online charges credited to Savings (sav) or CSC Wallet (csc)
   const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime + mtNet('csc') + cscOnlineNet + chargeTo('csc');
   const savingsExpenseTotal = savingsExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
+  // Self Transfers that belong to Savings itself (older entries without selfAccId count as Savings).
+  const selfSavNet = bankTransactions.filter(t => t.location === 'Self Transfer' && (t.selfAccId || 'sav') === 'sav').reduce((s, t) => s + (t.selfTransferType === 'deposit' ? 1 : -1) * (t.selfTransferAmount || 0), 0);
   // Savings = manual base + self in − self out + Digipay withdrawals + online received − online transfers − wallet top-ups − savings expenses.
-  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal + payoutTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal + mtNet('sav') + chargeTo('sav');
+  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfSavNet + digipayWithdrawalTotal + payoutTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal + mtNet('sav') + chargeTo('sav');
   // Account Balance: a manual override for the selected date wins; otherwise the calculated figure.
   // Branch Deposit: My Cash + Outside Cash both go INTO the Account Balance.
   const allTimeBranchDeposit = branchDepositList.reduce((s, b) => s + (Number(b.myCash) || 0) + (Number(b.outsideCash) || 0), 0);
@@ -3479,7 +3486,7 @@ function bkCalcBalances(d, selectedDate) {
   const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore + allTimeBranchDeposit + allTimePendingTotal - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
   const safeOverrides = (d.accountBalanceOverrides && typeof d.accountBalanceOverrides === 'object') ? d.accountBalanceOverrides : {};
   const accountBalance = safeOverrides[selectedDate] !== undefined ? safeOverrides[selectedDate] : autoAccountBalance;
-  return { mtNetSav: mtNet('sav'), mtNetCsc: mtNet('csc'), cscOnlineNet, payoutTotal, accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived, savingsOnlineTransfer, selfDepTotal, selfWithTotal, totalPortalCostAllTime };
+  return { mtNetSav: mtNet('sav'), mtNetCsc: mtNet('csc'), cscOnlineNet, payoutTotal, accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived, savingsOnlineTransfer, selfDepTotal, selfWithTotal, selfSavNet, totalPortalCostAllTime };
 }
 // ════════ END BALANCE CORE ════════
 // ════════ SIMPLE ACCOUNTS CORE (pure) ════════
@@ -3506,6 +3513,7 @@ function saBalance(acc, txs, bankTxs, trs, onl, tasks) {
   (trs || []).forEach(t => { if (t.from === acc.id) b -= t.amount; if (t.to === acc.id) b += t.amount; });   // Money Transfer entries
   txs.forEach(t => { if (t.from === acc.id) b -= t.amount; if (t.to === acc.id) b += t.amount; });
   (bankTxs || []).forEach(t => {
+    if (t.location === 'Self Transfer' && (t.selfAccId || 'sav') === acc.id) { const a = saRupeesToPaise(t.selfTransferAmount); b += t.selfTransferType === 'deposit' ? a : -a; }   // Self Transfer: deposit adds, withdrawal takes away
     if (saLocId(t.location) === acc.id) {
       const inP = saRupeesToPaise(t.cashIn), outP = saRupeesToPaise(t.cashOut);
       b += outP - inP;   // withdrawal: cash goes out to the customer, the account gains; deposit: the reverse
@@ -3564,7 +3572,7 @@ function saValidateTx(form, accounts, today, balances) {
 }
 // An account can be deleted only if no transaction touches it. Otherwise it can be deactivated.
 function saCanDelete(acc, txs, bankTxs, trs, onl, tasks) {
-  const usedInBanking = (bankTxs || []).some(t => saLocId(t.location) === acc.id || t.digipayAccId === acc.id) || (tasks || []).some(t => t.portalWallet === acc.id);
+  const usedInBanking = (bankTxs || []).some(t => saLocId(t.location) === acc.id || t.digipayAccId === acc.id || (t.location === 'Self Transfer' && t.selfAccId === acc.id)) || (tasks || []).some(t => t.portalWallet === acc.id);
   if (usedInBanking || txs.some(t => t.from === acc.id || t.to === acc.id) || (trs || []).some(t => t.from === acc.id || t.to === acc.id) || (onl || []).some(t => t.accId === acc.id)) return 'This account has transactions, so it cannot be deleted. Deactivate it instead: its history is kept.';
   return null;
 }
@@ -4110,7 +4118,7 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
 
 function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceFor, applyDayBook = () => {}, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors = {}, setWalletColors = () => {}, walletInfo = {}, setWalletInfo = () => {}, simpleAccounts = [], simpleTx = [], setSimpleAccounts = () => {}, moneyTransfers = [], setMoneyTransfers = () => {} }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
-  const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank', selfTransferType: 'deposit' });
+  const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank', selfTransferType: 'deposit', selfAccId: 'sav' });
   const [editingBase, setEditingBase] = useState(false);
   const [baseInput, setBaseInput] = useState(String(openingBalances[todayStr] || 0));
   const [showArchive, setShowArchive] = useState(false);
@@ -4181,7 +4189,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   const {
     accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal,
     mtNetSav, mtNetCsc, cscOnlineNet, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived,
-    savingsOnlineTransfer, selfDepTotal, selfWithTotal, totalPortalCostAllTime
+    savingsOnlineTransfer, selfDepTotal, selfWithTotal, selfSavNet, totalPortalCostAllTime
   } = bkCalcBalances({ bankTransactions, onlineTransactions: safeOnline, tasks, cscWalletTopups, cscWalletExpenses, savingsExpenses, accountBalanceExpenses, addMoreHistory, branchDeposits, pendingCash, savingsAccountBalance, cscWalletBase, accountBalanceArchivedOffset, accountBalanceOverrides, moneyTransfers: bkArr(moneyTransfers) }, selectedDate);
 
   // Location: Bank, Self Transfer, or one of your accounts (acc:<id>). Digipay is now an account.
@@ -4193,16 +4201,18 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     if (form.location === 'Self Transfer') {
       const amt = Number(form.cashIn) || 0;
       if (amt <= 0) return showMessage('Transfer Amount Please provide.', 'error');
+      const selfAcc = selfSavOpts(simpleAccounts, walletInfo).find(o => o.id === form.selfAccId);
+      if (!selfAcc) return showMessage('Savings account select korun.', 'error');
       const label = form.selfTransferType === 'deposit'
-        ? 'Self Transfer: Account → Savings'
-        : 'Self Transfer: Savings → Account';
+        ? 'Self Transfer: Account → ' + selfAcc.name
+        : 'Self Transfer: ' + selfAcc.name + ' → Account';
       setBankTransactions([...bankTransactions, {
         id: Date.now(), date: selectedDate,
         customerName: form.customerName || label,
         cashIn: 0, cashOut: 0,
         location: 'Self Transfer',
         selfTransferType: form.selfTransferType,
-        selfTransferAmount: amt,
+        selfTransferAmount: amt, selfAccId: selfAcc.id, selfAccName: selfAcc.name,
         staffId: currentUser.id, staffName: currentUser.name
       }]);
       setForm(f => ({ ...f, customerName: '', cashIn: '', cashOut: '' }));
@@ -4442,7 +4452,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
             // they typed (previously this set the base directly, so the displayed total kept
             // including the old deltas on top of it and never matched what was typed — that's
             // the bug being fixed here).
-            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal - savingsOnlineReceived + savingsOnlineTransfer + cscTopupTotal + savingsExpenseTotal - mtNetSav;
+            const newBase = val - selfSavNet - digipayWithdrawalTotal - savingsOnlineReceived + savingsOnlineTransfer + cscTopupTotal + savingsExpenseTotal - mtNetSav;
             setSavingsAccountBalance(newBase);
             setShowSetSavings(false); setSavingsInput('');
             showMessage('Savings Account Balance set to ₹' + val.toLocaleString('en-IN'));
@@ -4697,6 +4707,13 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
               (form.selfTransferType === 'withdrawal' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-orange-50')
           }, '📤 Withdrawal (Savings → Account)')
         ),
+        e('div', null,
+          e('label', { className: 'block text-xs font-medium text-gray-600 mb-1' },
+            form.selfTransferType === 'deposit' ? 'Deposit into which Savings account? *' : 'Withdraw from which Savings account? *'),
+          e('select', { value: form.selfAccId, onChange: ev => setForm({ ...form, selfAccId: ev.target.value }),
+            className: 'w-full border border-purple-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-400 text-sm bg-white' },
+            selfSavOpts(simpleAccounts, walletInfo).map(o => e('option', { key: o.id, value: o.id }, o.name)))
+        ),
         e('div', { className: 'flex gap-3 items-end' },
           e('div', { className: 'flex-1' },
             e('label', { className: 'block text-xs font-medium text-gray-600 mb-1' },
@@ -4762,7 +4779,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
               e('td', { className: 'p-4' }, e('span', { className: `text-xs px-2 py-1 rounded-full font-medium ${
                 r.location === 'Self Transfer' ? 'bg-purple-100 text-purple-700' :
                 r.location === 'Digipay' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
-              }` }, r.location === 'Self Transfer' ? (r.selfTransferType === 'deposit' ? 'Acc to Sav' : 'Sav to Acc') : (r.location === 'Digipay payout' ? 'Payout to Savings' : locLabel(r.location)))),
+              }` }, r.location === 'Self Transfer' ? (r.selfTransferType === 'deposit' ? 'Acc → ' : '') + (r.selfAccName || 'Savings') + (r.selfTransferType === 'withdrawal' ? ' → Acc' : '') : (r.location === 'Digipay payout' ? 'Payout to Savings' : locLabel(r.location)))),
               e('td', { className: 'p-4 font-semibold text-gray-800' }, `₹${r.runningBalance}`),
               e('td', { className: 'p-4 text-right' }, r.pending ? (currentUser.role === 'admin' && e('button', { onClick: () => deletePc(r), title: r.pcPay === undefined ? 'Delete this Pending Cash entry' : 'Remove this payment', className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 }))) : currentUser.role === 'admin' && e('button', { onClick: () => deleteTxn(r.id), className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 })))
             )
