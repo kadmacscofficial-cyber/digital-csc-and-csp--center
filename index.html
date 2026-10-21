@@ -3466,9 +3466,9 @@ function bkCalcBalances(d, selectedDate) {
   const cscExpenseTotal = cscWalletExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
   const totalPortalCostAllTime = tasks.reduce((s, t) => s + ((!t.portalWallet || t.portalWallet === 'csc') ? (Number(t.portalCost) || 0) : 0), 0);   // portal costs paid from the CSC Wallet
   const cscOnlineNet = safeOnline.filter(t => t.toSavings && t.accId === 'csc').reduce((s, t) => s + (t.type === 'received' ? 1 : -1) * (Number(t.amount) || 0), 0);   // online received adds, online transfer takes away
+  const chargeTo = id => safeOnline.reduce((s, t) => s + ((t.chargeAmount && t.chargeMode !== 'cash' && (t.chargeAccId || 'sav') === id) ? (Number(t.chargeAmount) || 0) : 0), 0);   // Online charges credited to Savings (sav) or CSC Wallet (csc)
   const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime + mtNet('csc') + cscOnlineNet + chargeTo('csc');
   const savingsExpenseTotal = savingsExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
-  const chargeTo = id => safeOnline.reduce((s, t) => s + ((t.chargeAmount && t.chargeMode !== 'cash' && (t.chargeAccId || 'sav') === id) ? (Number(t.chargeAmount) || 0) : 0), 0);   // Online charges credited to Savings (sav) or CSC Wallet (csc)
   // Savings = manual base + self in − self out + Digipay withdrawals + online received − online transfers − wallet top-ups − savings expenses.
   const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal + payoutTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal + mtNet('sav') + chargeTo('sav');
   // Account Balance: a manual override for the selected date wins; otherwise the calculated figure.
@@ -5499,12 +5499,12 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
     return s + histToday;
   }, 0);
   // Online Transaction charges paid in Cash: they are cash received today (they go to Cash, not to a Savings account).
+  const safeOnlineTxns = Array.isArray(onlineTransactions) ? onlineTransactions : [];
   const cashChargeToday = safeOnlineTxns.filter(t => t.date === selectedDate && t.chargeMode === 'cash').reduce((s, t) => s + (Number(t.chargeAmount) || 0), 0);
   const cashIncomeToday = cashEntryIncomeToday + cashHistoryIncomeToday + cashChargeToday;
   const cashProfitToday = cashIncomeToday - expenseTotal;
   // 4) Banking Current Balance — Banking Ledger's "Current Balance" for this date
   //    includes online transactions (received → withdrawal side, transfer → deposit side)
-  const safeOnlineTxns = Array.isArray(onlineTransactions) ? onlineTransactions : [];
   const todaysOnline = safeOnlineTxns.filter(t => t.date === selectedDate);
   const onlineReceivedToday = todaysOnline.filter(t => t.type === 'received').reduce((s, t) => s + (t.amount || 0), 0);
   const onlineTransferToday = todaysOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (t.amount || 0), 0);
