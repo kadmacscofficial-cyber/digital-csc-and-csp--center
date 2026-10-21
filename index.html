@@ -1691,6 +1691,8 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   // Portal Cost is what the govt portal actually charges — kept fully separate from
   // customer Price/Paid/Due above so it never affects billing math. Profit = Price − Portal Cost.
   const crmPortalCostTotal = selectedServices.reduce((sum, row) => sum + (Number(row.portalCost) || 0), 0);
+  const portalWalletAccs = bkArr(appData && appData.simpleAccounts).filter(a => a.active !== false && a.category === 'wallet');
+  const portalCscLabel = (((appData && appData.walletInfo) || {}).csc || {}).name || 'CSC Digital Seva Wallet';
   const crmProfitTotal = crmTotal - crmPortalCostTotal;
 
   // Validates the core-detail fields of the Add/Edit Customer form and returns the
@@ -1767,7 +1769,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: cid + i + 1, groupId: cid, customerId: cid, customerName: cf.name, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, portalWallet: row.portalWallet || 'csc', profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     // Payment Mode = "Online" adds that row's paid amount to the Savings Account Balance
     // (Banking menu); "Cash" behaves exactly as before — no Banking balance is touched.
@@ -1820,7 +1822,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
       const portalCostAmt = Number(row.portalCost) || 0;
       const finalAmount = svcPrice - discountAmt;
       const isOnline = (row.paymentMode || 'Cash') === 'Online';
-      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: nameNow, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
+      return { id: gid + i + 1, groupId: gid, customerId: editingCustomerId, customerName: nameNow, service: svcName, qty: Math.max(1, parseInt(row.qty) || 1), ...memberFields(row), price: svcPrice - discountAmt, grossPrice: svcPrice, paidAmount: paidAmt, discount: discountAmt, paymentMode: row.paymentMode || 'Cash', status: row.status || (paidAmt >= finalAmount ? 'Successful' : 'Pending'), date: todayStr, staffId: currentUser.id, staffName: currentUser.name, portalCost: portalCostAmt, portalWallet: row.portalWallet || 'csc', profit: svcPrice - discountAmt - portalCostAmt, utrNumber: isOnline ? (row.utrNumber || '').trim() : '', screenshotFileName: isOnline ? (row.screenshotFileName || '').trim() : '' };
     });
     const updatedCustomers = customers.map(c => {
       if (c.id !== editingCustomerId) return c;
@@ -2052,6 +2054,13 @@ showMessage((held ? 'Details sent to Admin for verification ⏳ (current details
             e('div', { className: 'flex flex-col' },
               e('label', { className: 'text-xs font-medium text-purple-800 mb-0.5' }, 'Portal Cost (₹)'),
               e('input', { type: 'number', value: row.portalCost, onChange: ev => updateServiceRow(row.id, 'portalCost', ev.target.value), className: 'w-28 border rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-purple-400 text-sm', placeholder: '₹0' })
+            ),
+            Number(row.portalCost) > 0 && e('div', { className: 'flex flex-col' },
+              e('label', { className: 'text-xs font-medium text-purple-800 mb-0.5' }, 'Portal Cost kothay theke'),
+              e('select', { value: row.portalWallet || 'csc', onChange: ev => updateServiceRow(row.id, 'portalWallet', ev.target.value), className: 'border rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-purple-400 text-sm bg-white' },
+                e('option', { value: 'csc' }, portalCscLabel),
+                portalWalletAccs.map(a => e('option', { key: a.id, value: a.id }, a.name))
+              )
             ),
             currentUser.role === 'admin' && e('span', { className: 'text-xs text-purple-700' }, 'Profit: ', e('span', { className: 'font-semibold' }, '₹' + (getRowPrice(row) - (Number(row.portalCost) || 0))))
           )
@@ -3409,6 +3418,11 @@ const bkWithPending = (bankTxs, pending) => {
   const extra = bkArr(pending).filter(r => saLocId(r.location) !== null).map(r => ({ id: 'pc' + r.id, date: r.date, customerName: 'Pending withdrawal — ' + r.customerName, cashIn: 0, cashOut: Number(r.total) || 0, location: r.location }));
   return extra.length ? [...bkArr(bankTxs), ...extra] : bankTxs;
 };
+// Display rows for the Banking ledger and Reports: the cash really handed over (given on the entry day, and each later payment on its own day).
+// Never saved and never added to a balance: Current Balance already takes these amounts through pcCashOutOn, Account Balance through the full total.
+const pcLedgerRows = list => { const out = []; bkArr(list).forEach(r => { const loc = r.location || 'Bank', note = 'Pending: total ₹' + pcRound(r.total) + ' · given ₹' + pcPaidSoFar(r) + ' · baki ₹' + pcRemaining(r);
+  out.push({ id: r.id, rowKey: 'pc' + r.id, date: r.date, customerName: r.customerName + ' (Pending withdrawal)', cashIn: 0, cashOut: pcRound(r.paidNow), location: loc, pending: true, pcNote: note, pcRec: r.id });
+  bkArr(r.payments).forEach(p => out.push({ id: p.id, rowKey: 'pcp' + r.id + '-' + p.id, date: p.date, customerName: r.customerName + ' — Pending cash paid', cashIn: 0, cashOut: pcRound(p.amount), location: loc, pending: true, pcNote: note, pcRec: r.id, pcPay: p.id })); }); return out; };
 const pcPayable = list => pcRound(bkArr(list).reduce((s, r) => s + Math.max(0, pcRemaining(r)), 0));
 function bkCalcBalances(d, selectedDate) {
   const bankTransactions = Array.isArray(d.bankTransactions) ? d.bankTransactions : [];
@@ -3424,7 +3438,7 @@ function bkCalcBalances(d, selectedDate) {
   const mtNet = k => mtList.reduce((s, t) => s + (t.to === k ? t.amount : 0) - (t.from === k ? t.amount : 0), 0) / 100;   // Money Transfer entries, paise -> rupees
   // Savings: online entries flagged toSavings go to Savings; older ones stay in Account Balance.
   const legacyOnline = safeOnline.filter(t => !t.toSavings);
-  const savingsOnline = safeOnline.filter(t => t.toSavings);
+  const savingsOnline = safeOnline.filter(t => t.toSavings && (!t.accId || t.accId === 'sav'));   // entries tagged to another account go to that account
   const allOnlineReceived = legacyOnline.filter(t => t.type === 'received').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const allOnlineTransfer = legacyOnline.filter(t => t.type === 'transfer').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const savingsOnlineReceived = savingsOnline.filter(t => t.type === 'received').reduce((s, t) => s + (Number(t.amount) || 0), 0);
@@ -3448,8 +3462,9 @@ function bkCalcBalances(d, selectedDate) {
   // CSC Wallet: topped up from Savings, spent on wallet expenses and every service's portal cost (live from tasks).
   const cscTopupTotal = cscWalletTopups.reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const cscExpenseTotal = cscWalletExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
-  const totalPortalCostAllTime = tasks.reduce((s, t) => s + (Number(t.portalCost) || 0), 0);
-  const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime + mtNet('csc');
+  const totalPortalCostAllTime = tasks.reduce((s, t) => s + ((!t.portalWallet || t.portalWallet === 'csc') ? (Number(t.portalCost) || 0) : 0), 0);   // portal costs paid from the CSC Wallet
+  const cscOnlineNet = safeOnline.filter(t => t.toSavings && t.accId === 'csc').reduce((s, t) => s + (t.type === 'received' ? 1 : -1) * (Number(t.amount) || 0), 0);   // online received adds, online transfer takes away
+  const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime + mtNet('csc') + cscOnlineNet;
   const savingsExpenseTotal = savingsExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
   // Savings = manual base + self in − self out + Digipay withdrawals + online received − online transfers − wallet top-ups − savings expenses.
   const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal + payoutTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal + mtNet('sav');
@@ -3461,7 +3476,7 @@ function bkCalcBalances(d, selectedDate) {
   const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore + allTimeBranchDeposit + allTimePendingTotal - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
   const safeOverrides = (d.accountBalanceOverrides && typeof d.accountBalanceOverrides === 'object') ? d.accountBalanceOverrides : {};
   const accountBalance = safeOverrides[selectedDate] !== undefined ? safeOverrides[selectedDate] : autoAccountBalance;
-  return { payoutTotal, accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived, savingsOnlineTransfer, selfDepTotal, selfWithTotal, totalPortalCostAllTime };
+  return { mtNetSav: mtNet('sav'), mtNetCsc: mtNet('csc'), cscOnlineNet, payoutTotal, accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived, savingsOnlineTransfer, selfDepTotal, selfWithTotal, totalPortalCostAllTime };
 }
 // ════════ END BALANCE CORE ════════
 // ════════ SIMPLE ACCOUNTS CORE (pure) ════════
@@ -3469,6 +3484,8 @@ function bkCalcBalances(d, selectedDate) {
 // in ('in'), out ('out') or between two accounts ('move'). Balance = opening + in − out, always calculated.
 // Amounts are integer paise (₹96.75 = 9675).
 const SA_TYPES = { cash: 'Cash', bank: 'Bank', wallet: 'Wallet', digipay: 'Digipay wallet', other: 'Other' };
+// Category: a 'saving' account is kept out of the Banking Transaction Location list (it can still be used in Money Transfer and Online Transaction). No category = transaction.
+const SA_CATEGORIES = { transaction: 'Transaction', saving: 'Saving', wallet: 'Wallet' };
 // "12.5" -> 1250, "1,000" -> 100000, "-50" -> -5000. Null if not a valid rupee amount (max 2 decimals).
 function saParse(v) {
   const t = String(v == null ? '' : v).replace(/,/g, '').trim();
@@ -3478,8 +3495,10 @@ function saParse(v) {
 function saFmt(p) { const a = Math.abs(p); const r = Math.floor(a / 100), c = String(a % 100).padStart(2, '0'); const s = String(r); const g = s.length > 3 ? s.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + s.slice(-3) : s; return (p < 0 ? '-' : '') + '₹' + g + '.' + c; }
 // bankTxs (optional): Banking entries. Entries tagged to this account move its balance: a withdrawal adds, a deposit
 // takes away. A Digipay wallet also loses on its payouts to Savings.
-function saBalance(acc, txs, bankTxs, trs) {
+function saBalance(acc, txs, bankTxs, trs, onl, tasks) {
   let b = acc.opening || 0;
+  (tasks || []).forEach(t => { if (acc.id !== 'csc' && t.portalWallet === acc.id) b -= saRupeesToPaise(t.portalCost); });   // CRM portal cost paid from this Wallet account
+  (onl || []).forEach(t => { if (t.toSavings && t.accId === acc.id) b += (t.type === 'received' ? 1 : -1) * saRupeesToPaise(t.amount); });   // Online Transaction: received adds, transfer takes away
   (trs || []).forEach(t => { if (t.from === acc.id) b -= t.amount; if (t.to === acc.id) b += t.amount; });   // Money Transfer entries
   txs.forEach(t => { if (t.from === acc.id) b -= t.amount; if (t.to === acc.id) b += t.amount; });
   (bankTxs || []).forEach(t => {
@@ -3491,7 +3510,7 @@ function saBalance(acc, txs, bankTxs, trs) {
   });
   return b;
 }
-function saBalances(accounts, txs, bankTxs, trs) { const m = {}; accounts.forEach(a => { m[a.id] = saBalance(a, txs, bankTxs, trs); }); return m; }
+function saBalances(accounts, txs, bankTxs, trs, onl, tasks) { const m = {}; accounts.forEach(a => { m[a.id] = saBalance(a, txs, bankTxs, trs, onl, tasks); }); return m; }
 // Digipay payout: moves the whole or part of a Digipay wallet into Savings. form: { amount, date }. Returns { error } or { rec }.
 function saValidatePayout(form, wallet, walletBalance, today) {
   if (!wallet || wallet.type !== 'digipay') return { error: 'Pick a Digipay wallet to pay out from.' };
@@ -3510,6 +3529,7 @@ function saValidateAccount(form, accounts, editing, txs) {
   if (name.length > 40) return 'The name is too long (40 characters at most).';
   if (accounts.some(a => a.id !== (editing && editing.id) && a.name.toLowerCase() === name.toLowerCase())) return 'Another account already has this name.';
   if (!SA_TYPES[form.type]) return 'Pick what kind of account this is.';
+  if (form.category && !SA_CATEGORIES[form.category]) return 'Pick a category: Transaction, Saving or Wallet.';
   if (form.color && !WALLET_COLORS.some(c => c.key === form.color)) return 'Pick a colour from the list.';
   if (String(form.code || '').trim().length > 20) return 'The account number is too long (20 characters at most).';
   const opening = saParse(form.opening === '' || form.opening == null ? '0' : form.opening);
@@ -3539,9 +3559,9 @@ function saValidateTx(form, accounts, today, balances) {
   return { rec: { date: form.date, kind: form.kind, from, to, amount, note }, warn };
 }
 // An account can be deleted only if no transaction touches it. Otherwise it can be deactivated.
-function saCanDelete(acc, txs, bankTxs, trs) {
-  const usedInBanking = (bankTxs || []).some(t => saLocId(t.location) === acc.id || t.digipayAccId === acc.id);
-  if (usedInBanking || txs.some(t => t.from === acc.id || t.to === acc.id) || (trs || []).some(t => t.from === acc.id || t.to === acc.id)) return 'This account has transactions, so it cannot be deleted. Deactivate it instead: its history is kept.';
+function saCanDelete(acc, txs, bankTxs, trs, onl, tasks) {
+  const usedInBanking = (bankTxs || []).some(t => saLocId(t.location) === acc.id || t.digipayAccId === acc.id) || (tasks || []).some(t => t.portalWallet === acc.id);
+  if (usedInBanking || txs.some(t => t.from === acc.id || t.to === acc.id) || (trs || []).some(t => t.from === acc.id || t.to === acc.id) || (onl || []).some(t => t.accId === acc.id)) return 'This account has transactions, so it cannot be deleted. Deactivate it instead: its history is kept.';
   return null;
 }
 // ════════ END SIMPLE ACCOUNTS CORE ════════
@@ -3549,8 +3569,8 @@ function saCanDelete(acc, txs, bankTxs, trs) {
 const SA_INP = 'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300';
 function SimpleAccounts({ appData, persist, currentUser, showMessage }) {
   const accounts = bkArr(appData && appData.simpleAccounts), txs = bkArr(appData && appData.simpleTx), bts = bkArr(appData && appData.bankTransactions);
-  const today = todayStr, mts = bkArr(appData && appData.moneyTransfers), bal = saBalances(accounts, txs, bkWithPending(bts, appData && appData.pendingCash), mts);
-  const blankAcc = { name: '', type: 'bank', opening: '', color: 'blue' }, blankTx = { kind: 'in', date: today, from: '', to: '', amount: '', note: '' };
+  const today = todayStr, mts = bkArr(appData && appData.moneyTransfers), bal = saBalances(accounts, txs, bkWithPending(bts, appData && appData.pendingCash), mts, bkArr(appData && appData.onlineTransactions), bkArr(appData && appData.tasks));
+  const blankAcc = { name: '', type: 'bank', category: 'transaction', opening: '', color: 'blue' }, blankTx = { kind: 'in', date: today, from: '', to: '', amount: '', note: '' };
   const [editing, setEditing] = useState(null), [accForm, setAccForm] = useState(blankAcc), [txForm, setTxForm] = useState(blankTx), [busy, setBusy] = useState(false), lock = React.useRef(false);
   const active = accounts.filter(a => a.active !== false);
   const nameOf = id => (accounts.find(a => a.id === id) || { name: '?' }).name;
@@ -3572,11 +3592,11 @@ function SimpleAccounts({ appData, persist, currentUser, showMessage }) {
     const opening = saParse(accForm.opening === '' ? '0' : accForm.opening);
     const name = accForm.name.trim();
     if (editing) {
-      const next = accounts.map(a => a.id === editing.id ? { ...a, name, type: accForm.type, opening, color: accForm.color || 'blue' } : a);
+      const next = accounts.map(a => a.id === editing.id ? { ...a, name, type: accForm.type, category: accForm.category || 'transaction', opening, color: accForm.color || 'blue' } : a);
       await save(next, txs, ['Account Edited', name]);
       showMessage('Account updated.');
     } else {
-      const rec = { id: 'sa' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, type: accForm.type, opening, color: accForm.color || 'blue', active: true, createdAt: new Date().toISOString() };
+      const rec = { id: 'sa' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, type: accForm.type, category: accForm.category || 'transaction', opening, color: accForm.color || 'blue', active: true, createdAt: new Date().toISOString() };
       await save([...accounts, rec], txs, ['Account Added', name + ' (' + SA_TYPES[rec.type] + ')']);
       showMessage('Account added.');
     }
@@ -3588,7 +3608,7 @@ function SimpleAccounts({ appData, persist, currentUser, showMessage }) {
     showMessage(a.active === false ? '"' + a.name + '" is active again.' : '"' + a.name + '" is hidden. Its history is kept.');
   });
   const remove = a => run(async () => {
-    const err = saCanDelete(a, txs, bkWithPending(bts, appData && appData.pendingCash), mts);
+    const err = saCanDelete(a, txs, bkWithPending(bts, appData && appData.pendingCash), mts, bkArr(appData && appData.onlineTransactions), bkArr(appData && appData.tasks));
     if (err) return showMessage(err, 'error');
     if (!window.confirm('Delete "' + a.name + '"? This cannot be undone.')) return;
     await save(accounts.filter(x => x.id !== a.id), txs, ['Account Deleted', a.name]);
@@ -3615,7 +3635,7 @@ function SimpleAccounts({ appData, persist, currentUser, showMessage }) {
     e('div', { className: 'flex-1 min-w-[180px]' }, e('p', { className: 'text-sm font-medium text-gray-800 flex items-center gap-2' }, e('span', { className: 'inline-block w-3 h-3 rounded-full ' + wcol(a.color, 'blue').chip }), a.name + (a.active === false ? '  (hidden)' : '')), e('p', { className: 'text-[11px] text-gray-400' }, SA_TYPES[a.type] || 'Other')),
     e('div', { className: 'w-36 text-right text-sm font-semibold ' + ((bal[a.id] || 0) < 0 ? 'text-red-600' : 'text-gray-800') }, saFmt(bal[a.id] || 0)),
     e('div', { className: 'flex gap-2' },
-      e('button', { onClick: () => { setEditing(a); setAccForm({ name: a.name, type: a.type, opening: String((a.opening || 0) / 100), color: a.color || 'blue' }); }, className: 'px-2 py-1 rounded-lg text-xs border border-gray-300 hover:bg-gray-50' }, 'Edit'),
+      e('button', { onClick: () => { setEditing(a); setAccForm({ name: a.name, type: a.type, category: a.category || 'transaction', opening: String((a.opening || 0) / 100), color: a.color || 'blue' }); }, className: 'px-2 py-1 rounded-lg text-xs border border-gray-300 hover:bg-gray-50' }, 'Edit'),
       e('button', { onClick: () => toggle(a), disabled: busy, className: 'px-2 py-1 rounded-lg text-xs border border-gray-300 hover:bg-gray-50' }, a.active === false ? 'Show' : 'Hide'),
       e('button', { onClick: () => remove(a), disabled: busy, className: 'px-2 py-1 rounded-lg text-xs border border-red-200 text-red-600 hover:bg-red-50' }, 'Delete')));
 
@@ -3630,9 +3650,10 @@ function SimpleAccounts({ appData, persist, currentUser, showMessage }) {
         [[(((appData && appData.walletInfo) || {}).savings || {}).name || 'Savings', old.savingsBalance], [(((appData && appData.walletInfo) || {}).csc || {}).name || 'CSC Wallet', old.cscWalletBalance], [(((appData && appData.walletInfo) || {}).account || {}).name || 'Account Balance', old.accountBalance]].map(([l, v]) => e('div', { key: l, className: 'rounded-lg border border-gray-200 p-3' }, e('p', { className: 'text-xs text-gray-500' }, l), e('p', { className: 'text-xl font-bold text-gray-800' }, rupees(v)))))),
     e('div', { className: 'bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg p-3' }, 'The accounts below are a separate list for your own accounts. They are not yet linked to the old figures above.'),
     e(Card, { title: editing ? 'Edit account' : 'Add an account', sub: 'Name it, say what kind it is, and give today\'s balance as the opening figure. The opening figure cannot change once transactions exist.' },
-      e('div', { className: 'grid grid-cols-1 md:grid-cols-5 gap-3 items-end' },
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-6 gap-3 items-end' },
         field('Name', e('input', { value: accForm.name, onChange: ev => setAccForm(p => ({ ...p, name: ev.target.value })), maxLength: 40, placeholder: 'e.g. WBGB Savings', className: SA_INP })),
         field('Kind', e('select', { value: accForm.type, onChange: ev => setAccForm(p => ({ ...p, type: ev.target.value })), className: SA_INP }, Object.keys(SA_TYPES).map(k => e('option', { key: k, value: k }, SA_TYPES[k])))),
+        field('Category', e('select', { value: accForm.category || 'transaction', onChange: ev => setAccForm(p => ({ ...p, category: ev.target.value })), className: SA_INP }, Object.keys(SA_CATEGORIES).map(k => e('option', { key: k, value: k }, SA_CATEGORIES[k]))), 'Saving and Wallet accounts are not shown in Banking Transaction Location.'),
         field('Colour', e(WalletColourDots, { value: accForm.color, canEdit: true, onPick: k => setAccForm(p => ({ ...p, color: k })) })),
         field('Opening balance (₹)', e('input', { value: accForm.opening, onChange: ev => setAccForm(p => ({ ...p, opening: ev.target.value })), placeholder: '0.00', inputMode: 'decimal', disabled: !!editing && txs.some(t => t.from === editing.id || t.to === editing.id), className: SA_INP })),
         e('div', { className: 'flex gap-2' },
@@ -3656,10 +3677,10 @@ function SimpleAccounts({ appData, persist, currentUser, showMessage }) {
 }
 
 // ════════ BANK ACCOUNTS DASHBOARD (Banking page): all account cards in one grid, one-line Add new account, Account Setting panel ════════
-function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bankTransactions, setBankTransactions, setSimpleAccounts, currentUser, showMessage, wallets = [], walletColors = {}, setWalletColors = () => {}, walletInfo = {}, setWalletInfo = () => {}, pendingCash = [] }) {
+function BankAccountsPanel({ tasks = [], onlineTransactions = [], moneyTransfers = [], simpleAccounts, simpleTx, bankTransactions, setBankTransactions, setSimpleAccounts, currentUser, showMessage, wallets = [], walletColors = {}, setWalletColors = () => {}, walletInfo = {}, setWalletInfo = () => {}, pendingCash = [] }) {
   const admin = currentUser.role === 'admin', accounts = simpleAccounts || [], txs = simpleTx || [], bts = bankTransactions || [], btsAll = bkWithPending(bts, pendingCash);   // btsAll = read-only view incl. Pending Cash; bts is what gets saved
-  const mts = bkArr(moneyTransfers), bal = saBalances(accounts, txs, btsAll, mts), today = todayStr;
-  const blank = { name: '', code: '', type: 'bank', opening: '', color: 'blue' };
+  const mts = bkArr(moneyTransfers), bal = saBalances(accounts, txs, btsAll, mts, bkArr(onlineTransactions), bkArr(tasks)), today = todayStr;
+  const blank = { name: '', code: '', type: 'bank', category: 'transaction', opening: '', color: 'blue' };
   const [form, setForm] = useState(blank), [editId, setEditId] = useState(null), [payId, setPayId] = useState(null), [pay, setPay] = useState({ amount: '', date: today }), [showSet, setShowSet] = useState(false), [busy, setBusy] = useState(false), lock = React.useRef(false);
   const [wEdit, setWEdit] = useState(null), [wForm, setWForm] = useState({ name: '', code: '' }), setRef = React.useRef(null);
   const wEditW = wEdit ? wallets.find(w => w.key === wEdit) : null;
@@ -3672,8 +3693,8 @@ function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bank
     const err = saValidateAccount(form, accounts, editing, txs);
     if (err) return showMessage(err, 'error');
     const name = form.name.trim(), code = String(form.code || '').trim(), opening = saParse(form.opening === '' ? '0' : form.opening), color = form.color || 'blue';
-    if (editing) setSimpleAccounts(accounts.map(a => a.id === editing.id ? { ...a, name, code, type: form.type, opening, color } : a));
-    else setSimpleAccounts([...accounts, { id: 'sa' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, code, type: form.type, opening, color, active: true, createdAt: new Date().toISOString() }]);
+    if (editing) setSimpleAccounts(accounts.map(a => a.id === editing.id ? { ...a, name, code, type: form.type, category: form.category || 'transaction', opening, color } : a));
+    else setSimpleAccounts([...accounts, { id: 'sa' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, code, type: form.type, category: form.category || 'transaction', opening, color, active: true, createdAt: new Date().toISOString() }]);
     drvAudit(currentUser, editing ? 'Account Edited' : 'Account Added', name + (code ? ' (A/c ' + code + ')' : ''));
     showMessage(editing ? 'Account updated.' : 'Account added.');
     setForm(blank); setEditId(null);
@@ -3686,7 +3707,7 @@ function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bank
     showMessage(a.active === false ? '"' + a.name + '" is active again.' : '"' + a.name + '" is hidden. Its history is kept.');
   });
   const del = a => run(() => {
-    const err = saCanDelete(a, txs, btsAll, mts);
+    const err = saCanDelete(a, txs, btsAll, mts, bkArr(onlineTransactions), bkArr(tasks));
     if (err) return showMessage(err, 'error');
     if (!window.confirm('Delete "' + a.name + '"? This cannot be undone.')) return;
     setSimpleAccounts(accounts.filter(x => x.id !== a.id));
@@ -3703,7 +3724,7 @@ function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bank
   const INL = SA_INP.replace('w-full ', '') + ' w-36';
   const cardBtn = 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-2.5 py-1 rounded-lg text-xs transition-colors disabled:opacity-50';
   const rowBtn = 'px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50';
-  const startEdit = a => { setWEdit(null); setEditId(a.id); setForm({ name: a.name, code: a.code || '', type: a.type, opening: String((a.opening || 0) / 100), color: a.color || 'blue' }); setTimeout(toTop, 30); };
+  const startEdit = a => { setWEdit(null); setEditId(a.id); setForm({ name: a.name, code: a.code || '', type: a.type, category: a.category || 'transaction', opening: String((a.opening || 0) / 100), color: a.color || 'blue' }); setTimeout(toTop, 30); };
   // Built-in wallets (Account Balance, Savings Account Balance, CSC Digital Seva Wallet): rename + account number
   const startWalletEdit = w => { setEditId(null); setForm(blank); setWEdit(w.key); setWForm({ name: w.name, code: w.code || '' }); setTimeout(toTop, 30); };
   const saveWallet = () => run(() => {
@@ -3731,7 +3752,7 @@ function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bank
   const card = a => shell(a.id, wcol(a.color, 'blue').grad, a.active === false,
     e('p', { className: 'text-xs font-medium opacity-90 truncate' }, a.name + (a.active === false ? ' (hidden)' : '')),
     e('p', { className: 'text-xl font-bold leading-tight' }, saFmt(bal[a.id] || 0)),
-    e('p', { className: 'text-[11px] leading-tight opacity-80 font-mono truncate' }, (SA_TYPES[a.type] || 'Other') + (a.code ? ' · A/c ' + a.code : '')),
+    e('p', { className: 'text-[11px] leading-tight opacity-80 font-mono truncate' }, (SA_TYPES[a.type] || 'Other') + (a.category === 'saving' ? ' · Saving' : a.category === 'wallet' ? ' · Wallet' : '') + (a.code ? ' · A/c ' + a.code : '')),
     { icon: iconBox(a.type === 'digipay' ? 'Smartphone' : 'Landmark'), action: admin && a.type === 'digipay' && a.active !== false && (bal[a.id] || 0) > 0 && e('button', { onClick: () => { setPayId(payId === a.id ? null : a.id); setPay({ amount: '', date: today }); }, disabled: busy, className: cardBtn }, 'Pay out') });
   const payAcc = payId ? accounts.find(a => a.id === payId) : null;
   const dot = k => e('span', { className: 'inline-block w-3 h-3 rounded-full flex-shrink-0 ' + wcol(k, 'blue').chip });
@@ -3760,6 +3781,7 @@ function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bank
       e('input', { value: form.name, onChange: ev => setForm(p => ({ ...p, name: ev.target.value })), placeholder: 'Account name', maxLength: 40, className: INL + ' flex-1 min-w-[130px]' }),
       e('input', { value: form.code, onChange: ev => setForm(p => ({ ...p, code: ev.target.value })), placeholder: 'Account number (optional)', maxLength: 20, className: INL + ' flex-1 min-w-[150px]' }),
       e('select', { value: form.type, onChange: ev => setForm(p => ({ ...p, type: ev.target.value })), className: INL }, Object.keys(SA_TYPES).map(k => e('option', { key: k, value: k }, SA_TYPES[k]))),
+      e('select', { value: form.category || 'transaction', onChange: ev => setForm(p => ({ ...p, category: ev.target.value })), title: 'Saving and Wallet accounts are not shown in Transaction Location', className: INL }, Object.keys(SA_CATEGORIES).map(k => e('option', { key: k, value: k }, SA_CATEGORIES[k] + ' account'))),
       e('input', { value: form.opening, onChange: ev => setForm(p => ({ ...p, opening: ev.target.value })), placeholder: 'Opening ₹', inputMode: 'decimal', disabled: openingLocked, className: INL + ' w-28' }),
       e(WalletColourDots, { value: form.color, canEdit: true, onPick: k => setForm(p => ({ ...p, color: k })) }),
       e('button', { onClick: saveAcc, disabled: busy, className: 'px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 whitespace-nowrap' }, editing ? 'Save changes' : '+ Add account'),
@@ -3768,7 +3790,7 @@ function BankAccountsPanel({ moneyTransfers = [], simpleAccounts, simpleTx, bank
         e(WalletColourDots, { value: walletColors[w.key] || w.def, canEdit: true, onPick: k => setWalletColors({ ...walletColors, [w.key]: k }) }),
         [e('button', { key: 'e', onClick: () => startWalletEdit(w), disabled: busy, className: rowBtn }, 'Edit'),
          e('button', { key: 'b', onClick: () => { w.editBalance(); closeSet(); }, className: rowBtn }, 'Edit balance')])),
-      accounts.map(a => setRow('sa-' + a.id, a.color || 'blue', a.name + (a.active === false ? ' (hidden)' : ''), (SA_TYPES[a.type] || 'Other') + (a.code ? ' · A/c ' + a.code : '') + ' · ' + saFmt(bal[a.id] || 0),
+      accounts.map(a => setRow('sa-' + a.id, a.color || 'blue', a.name + (a.active === false ? ' (hidden)' : ''), (SA_TYPES[a.type] || 'Other') + (a.category === 'saving' ? ' · Saving' : a.category === 'wallet' ? ' · Wallet' : '') + (a.code ? ' · A/c ' + a.code : '') + ' · ' + saFmt(bal[a.id] || 0),
         e(WalletColourDots, { value: a.color || 'blue', canEdit: true, onPick: k => setColour(a, k) }),
         [e('button', { key: 'e', onClick: () => startEdit(a), disabled: busy, className: rowBtn }, 'Edit'),
          e('button', { key: 'h', onClick: () => toggle(a), disabled: busy, className: rowBtn }, a.active === false ? 'Show' : 'Hide'),
@@ -3794,7 +3816,7 @@ function mtAccounts(simpleAccounts, bal, savingsBalance, cscWalletBalance, walle
   ];
 }
 // Every movement of one account, oldest first. Savings and CSC Wallet get their transfers only (their other figures live on the Banking dashboard); your own accounts get everything.
-function mtStatement(acc, simpleTx, bankTx, transfers, nameOf) {
+function mtStatement(acc, simpleTx, bankTx, transfers, nameOf, online) {
   const rows = [], add = (date, ord, text, dr, cr) => rows.push({ date: date || '', ord: String(ord || ''), text, dr, cr });
   const tail = t => (t.ref ? ' · Ref ' + t.ref : '') + (t.note ? ' · ' + t.note : '');
   transfers.forEach(t => {
@@ -3807,6 +3829,7 @@ function mtStatement(acc, simpleTx, bankTx, transfers, nameOf) {
       if (t.from === acc.id) add(t.date, t.at || t.id, (t.kind === 'move' ? 'Moved to ' + nameOf(t.to) : 'Money out') + n, t.amount, 0);
       if (t.to === acc.id) add(t.date, t.at || t.id, (t.kind === 'move' ? 'Moved from ' + nameOf(t.from) : 'Money in') + n, 0, t.amount);
     });
+    (online || []).forEach(t => { if (t.toSavings && t.accId === acc.id) { const p = saRupeesToPaise(t.amount), n = ' · ' + (t.name || '') + (t.utrNumber ? ' · UTR ' + t.utrNumber : ''); if (t.type === 'received') add(t.date, t.id, 'Online money received' + n, 0, p); else add(t.date, t.id, 'Online money transfer' + n, p, 0); } });
     bankTx.forEach(t => {
       if (saLocId(t.location) === acc.id) {
         const inP = saRupeesToPaise(t.cashIn), outP = saRupeesToPaise(t.cashOut);
@@ -3828,10 +3851,10 @@ function mtPeriod(acc, rows, from, to) {
 // ════════ END MONEY TRANSFER CORE ════════
 
 // ════════ MONEY TRANSFER UI (Banking → Money Transfer tab) ════════
-function MoneyTransferTab({ simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }) {
+function MoneyTransferTab({ tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }) {
   const admin = currentUser.role === 'admin', today = todayStr;
   const sa = bkArr(simpleAccounts), stx = bkArr(simpleTx), bts = bkWithPending(bkArr(bankTransactions), pendingCash), mts = bkArr(moneyTransfers);
-  const accounts = mtAccounts(sa, saBalances(sa, stx, bts, mts), savingsBalance, cscWalletBalance, walletInfo);
+  const accounts = mtAccounts(sa, saBalances(sa, stx, bts, mts, bkArr(onlineTransactions), bkArr(tasks)), savingsBalance, cscWalletBalance, walletInfo);
   const by = id => accounts.find(a => a.id === id), nameOf = id => (by(id) || { name: 'Deleted account' }).name, live = accounts.filter(a => a.active);
   const blank = { from: '', to: '', amount: '', date: today, ref: '', note: '' };
   const [f, setF] = useState(blank), [sel, setSel] = useState('sav'), [stFrom, setStFrom] = useState(today.slice(0, 8) + '01'), [stTo, setStTo] = useState(today), [busy, setBusy] = useState(false), lock = React.useRef(false);
@@ -3854,7 +3877,7 @@ function MoneyTransferTab({ simpleAccounts, simpleTx, bankTransactions, moneyTra
     drvAudit(currentUser, 'Money Transfer Reversed', saFmt(t.amount) + ': ' + nameOf(t.from) + ' → ' + nameOf(t.to));
     showMessage('Transfer reversed.');
   });
-  const acc = by(sel) || accounts[0], st = mtPeriod(acc, mtStatement(acc, stx, bts, mts, nameOf), stFrom, stTo);
+  const acc = by(sel) || accounts[0], st = mtPeriod(acc, mtStatement(acc, stx, bts, mts, nameOf, bkArr(onlineTransactions)), stFrom, stTo);
   const exportXlsx = () => {
     const r2 = p => p / 100, aoa = [['Account Statement'], ['Account', acc.name + (acc.code ? ' (A/c ' + acc.code + ')' : '')], ['Period', stFrom + ' to ' + stTo], [], ['Date', 'Details', 'Debit (Out)', 'Credit (In)', 'Balance']];
     if (st.opening !== null) aoa.push([stFrom, 'Opening balance', '', '', r2(st.opening)]);
@@ -4015,7 +4038,73 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
   );
 }
 
-function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors = {}, setWalletColors = () => {}, walletInfo = {}, setWalletInfo = () => {}, simpleAccounts = [], simpleTx = [], setSimpleAccounts = () => {}, moneyTransfers = [], setMoneyTransfers = () => {} }) {
+// ════════ DAY BOOK (Banking → Opening Balance popup) ════════
+// A scratch pad for the start of the day. Count the notes to add up the cash, and check or fix the balance of every wallet and account in one place.
+// Nothing about the notes is saved: only the cash total (the day's Opening Balance) and any balance that was changed.
+const DB_NOTES = [500, 200, 100, 50, 20, 10];
+function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose }) {
+  const [counts, setCounts] = useState({}), [coins, setCoins] = useState(''), [manual, setManual] = useState(String(openingCash || 0));
+  const [vals, setVals] = useState(() => Object.fromEntries(rows.map(r => [r.key, String(r.bal / 100)])));
+  const cnt = d => { const t = String(counts[d] == null ? '' : counts[d]).trim(); return t === '' ? 0 : (/^\d+$/.test(t) ? Number(t) : null); };
+  const counted = DB_NOTES.some(d => String(counts[d] == null ? '' : counts[d]).trim() !== '') || coins.trim() !== '';
+  const coinsP = coins.trim() === '' ? 0 : saParse(coins), manualP = saParse(manual.trim() === '' ? '0' : manual);
+  const badCount = DB_NOTES.some(d => cnt(d) === null) || coinsP === null || coinsP < 0;
+  const cashP = counted ? (badCount ? null : DB_NOTES.reduce((s, d) => s + d * cnt(d) * 100, 0) + coinsP) : (manualP !== null && manualP >= 0 ? manualP : null);
+  const parsed = Object.fromEntries(rows.map(r => [r.key, saParse(String(vals[r.key] == null ? '' : vals[r.key]).trim() === '' ? '0' : vals[r.key])]));
+  const badVal = rows.some(r => parsed[r.key] === null);
+  const walletsP = badVal ? null : rows.reduce((s, r) => s + parsed[r.key], 0);
+  const changed = rows.filter(r => parsed[r.key] !== null && parsed[r.key] !== r.bal).length + (cashP !== null && cashP !== Math.round((openingCash || 0) * 100) ? 1 : 0);
+  const save = () => {
+    if (cashP === null) return onSave({ error: counted ? 'Check the note counts: whole numbers only. Coins must be a rupee amount.' : 'Type the cash total as a rupee amount (not negative).' });
+    if (badVal) return onSave({ error: 'Check the balances: each must be a rupee amount with at most 2 decimals.' });
+    onSave({ cash: cashP / 100, vals: parsed });
+  };
+  const inp = 'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300';
+  const money = p => p === null ? '—' : saFmt(p);
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4', onClick: ev => { if (ev.target === ev.currentTarget) onClose(); } },
+    e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden' },
+      e('div', { className: 'bg-gradient-to-r from-indigo-700 to-purple-700 text-white px-5 py-4 flex items-center justify-between' },
+        e('div', null, e('h3', { className: 'text-lg font-bold' }, 'Day Book'), e('p', { className: 'text-xs opacity-80' }, 'Opening balance for ' + date + ' · count the cash, check every wallet and account')),
+        e('button', { onClick: onClose, className: 'p-1.5 rounded-lg hover:bg-white hover:bg-opacity-20' }, e(Icon, { name: 'X', size: 18 }))),
+      e('div', { className: 'p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-5' },
+        e('div', { className: 'rounded-xl border border-gray-200 p-4' },
+          e('p', { className: 'text-sm font-bold text-gray-800' }, 'Cash in hand'),
+          e('p', { className: 'text-[11px] text-gray-400 mb-3' }, 'Only for adding up. The note counts are not saved; just the total becomes the Opening Balance.'),
+          DB_NOTES.map(d => e('div', { key: d, className: 'flex items-center gap-2 mb-2' },
+            e('span', { className: 'w-16 text-sm font-semibold text-gray-700' }, '₹' + d), e('span', { className: 'text-gray-400 text-sm' }, '×'),
+            e('input', { value: counts[d] == null ? '' : counts[d], onChange: ev => setCounts(p => ({ ...p, [d]: ev.target.value })), inputMode: 'numeric', placeholder: '0', className: inp + ' w-24 text-center' }),
+            e('span', { className: 'flex-1 text-right text-sm font-medium ' + (cnt(d) === null ? 'text-red-500' : 'text-gray-700') }, cnt(d) === null ? 'whole number' : saFmt(d * cnt(d) * 100)))),
+          e('div', { className: 'flex items-center gap-2 mb-3' },
+            e('span', { className: 'w-16 text-sm font-semibold text-gray-700' }, 'Coins'), e('span', { className: 'text-gray-400 text-sm' }, '₹'),
+            e('input', { value: coins, onChange: ev => setCoins(ev.target.value), inputMode: 'decimal', placeholder: '0', className: inp + ' w-24 text-center' }),
+            e('span', { className: 'flex-1 text-right text-sm font-medium text-gray-700' }, coinsP === null ? 'amount?' : saFmt(coinsP))),
+          e('div', { className: 'border-t pt-3' },
+            e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, counted ? 'Cash total (from the count above)' : 'Cash total (₹): already the current Opening Balance'),
+            e('div', { className: 'flex gap-2' },
+              counted ? e('div', { className: inp + ' bg-indigo-50 font-bold text-indigo-700' }, money(cashP)) : e('input', { value: manual, onChange: ev => setManual(ev.target.value), inputMode: 'decimal', className: inp + ' font-bold' }),
+              counted && e('button', { onClick: () => { setCounts({}); setCoins(''); }, className: 'px-3 py-2 rounded-lg text-xs border border-gray-300 hover:bg-gray-50 whitespace-nowrap' }, 'Clear count')))),
+        e('div', { className: 'rounded-xl border border-gray-200 p-4' },
+          e('p', { className: 'text-sm font-bold text-gray-800' }, 'Wallets & accounts'),
+          e('p', { className: 'text-[11px] text-gray-400 mb-3' }, 'Filled with today\'s balances. Change only the ones that are wrong.'),
+          rows.map(r => { const p = parsed[r.key], diff = p === null ? 0 : p - r.bal; return e('div', { key: r.key, className: 'flex items-center gap-2 mb-2' },
+            e('span', { className: 'inline-block w-3 h-3 rounded-full flex-shrink-0 ' + wcol(r.color, 'blue').chip }),
+            e('div', { className: 'flex-1 min-w-0' }, e('p', { className: 'text-sm font-medium text-gray-800 truncate' }, r.name), e('p', { className: 'text-[11px] ' + (diff ? 'text-amber-600 font-semibold' : 'text-gray-400') }, diff ? 'was ' + saFmt(r.bal) + ' (' + (diff > 0 ? '+' : '−') + saFmt(Math.abs(diff)) + ')' : 'no change')),
+            e('input', { value: vals[r.key], onChange: ev => setVals(v => ({ ...v, [r.key]: ev.target.value })), inputMode: 'decimal', className: inp + ' w-36 text-right' + (p === null ? ' border-red-400' : diff ? ' border-amber-400 bg-amber-50' : '') })); }))),
+      e('div', { className: 'border-t bg-gray-50 px-5 py-3' },
+        e('div', { className: 'flex flex-wrap items-center justify-between gap-3' },
+          e('div', { className: 'flex flex-wrap items-center gap-x-5 gap-y-1 text-sm' },
+            e('span', { className: 'text-gray-500' }, 'Cash ', e('b', { className: 'text-gray-800' }, money(cashP))),
+            e('span', { className: 'text-gray-500' }, '+ Wallets & accounts ', e('b', { className: 'text-gray-800' }, money(walletsP))),
+            e('span', { className: 'text-base font-bold text-indigo-700' }, '= Grand Total ' + (cashP === null || walletsP === null ? '—' : saFmt(cashP + walletsP)))),
+          e('div', { className: 'flex items-center gap-2' },
+            e('span', { className: 'text-xs text-gray-400' }, changed ? changed + ' change' + (changed > 1 ? 's' : '') : 'no changes'),
+            e('button', { onClick: onClose, className: 'px-4 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50' }, 'Cancel'),
+            e('button', { onClick: save, disabled: !changed, className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40' }, 'Save Day Book'))),
+        pendingPayable > 0 && e('p', { className: 'text-[11px] text-amber-700 mt-1' }, 'Pending Cash: customer ke dite hobe ₹' + pendingPayable + ' (not taken off the total above).'))));
+}
+// ════════ END DAY BOOK ════════
+
+function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceFor, applyDayBook = () => {}, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors = {}, setWalletColors = () => {}, walletInfo = {}, setWalletInfo = () => {}, simpleAccounts = [], simpleTx = [], setSimpleAccounts = () => {}, moneyTransfers = [], setMoneyTransfers = () => {} }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank', selfTransferType: 'deposit' });
   const [editingBase, setEditingBase] = useState(false);
@@ -4033,6 +4122,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   const [topupInput, setTopupInput] = useState('');
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
+  const [showDayBook, setShowDayBook] = useState(false);
   const [pcOn, setPcOn] = useState(false), [pcPhone, setPcPhone] = useState(''), [pcPaid, setPcPaid] = useState('');   // Pending Cash toggle on the ledger form
   const [showBranch, setShowBranch] = useState(false);
   const [branchForm, setBranchForm] = useState({ name: '', myCash: '', outsideCash: '' });
@@ -4081,17 +4171,17 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   };
 
   let running = openingBalance;
-  const rows = todays.map(t => { running += (t.cashIn || 0) - (t.cashOut || 0); return { ...t, runningBalance: running }; });
+  const rows = [...todays, ...pcLedgerRows(pendingCash).filter(t => t.date === selectedDate)].sort((a, b) => a.id - b.id).map(t => { running += (t.cashIn || 0) - (t.cashOut || 0); return { ...t, runningBalance: running }; });
 
   // ── Account Balance, Savings and CSC Wallet: calculated by the shared bkCalcBalances (also used by Accounts) ──
   const {
     accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal,
-    cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived,
+    mtNetSav, mtNetCsc, cscOnlineNet, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived,
     savingsOnlineTransfer, selfDepTotal, selfWithTotal, totalPortalCostAllTime
   } = bkCalcBalances({ bankTransactions, onlineTransactions: safeOnline, tasks, cscWalletTopups, cscWalletExpenses, savingsExpenses, accountBalanceExpenses, addMoreHistory, branchDeposits, pendingCash, savingsAccountBalance, cscWalletBase, accountBalanceArchivedOffset, accountBalanceOverrides, moneyTransfers: bkArr(moneyTransfers) }, selectedDate);
 
   // Location: Bank, Self Transfer, or one of your accounts (acc:<id>). Digipay is now an account.
-  const simpleAccs = (simpleAccounts || []).filter(a => a.active !== false);
+  const simpleAccs = (simpleAccounts || []).filter(a => a.active !== false && !['saving', 'wallet'].includes(a.category));   // Saving and Wallet accounts never appear as a Transaction Location
   const accById = Object.fromEntries((simpleAccounts || []).map(a => [a.id, a]));
   const locLabel = loc => (loc === 'Bank' || loc === 'Self Transfer' || loc === 'Digipay payout') ? loc : (accById[saLocId(loc)] ? accById[saLocId(loc)].name : (loc || 'Bank'));
   const handleAdd = () => {
@@ -4160,6 +4250,20 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     showMessage('Branch Deposit deleted', 'error');
   };
 
+  const deletePc = r => {
+    const rec = bkArr(pendingCash).find(x => x.id === r.pcRec); if (!rec) return showMessage('This Pending Cash entry no longer exists.', 'error');
+    if (r.pcPay === undefined) {
+      if (!window.confirm('\"' + rec.customerName + '\" er Pending entry delete korben?\n\nEi entry r sob payment muche jabe. ' + (rec.location && rec.location !== 'Bank' ? locLabel(rec.location) + ' balance' : 'Account Balance') + ' ₹' + rec.total + ' kome jabe ar ja cash dewa hoyeche (₹' + pcPaidSoFar(rec) + ') Current Balance e ferot ashbe.')) return;
+      setPendingCash(bkArr(pendingCash).filter(x => x.id !== rec.id));
+      drvAudit(currentUser, 'Pending Cash Deleted', rec.customerName + ' — ₹' + rec.total);
+      showMessage('Pending entry deleted', 'error');
+    } else {
+      if (!window.confirm('₹' + r.cashOut + ' er ei payment ta remove korben? Baki abar barbe ar Current Balance e ₹' + r.cashOut + ' ferot ashbe.')) return;
+      setPendingCash(bkArr(pendingCash).map(x => x.id === rec.id ? { ...x, payments: bkArr(x.payments).filter(y => y.id !== r.pcPay) } : x));
+      drvAudit(currentUser, 'Pending Cash Payment Removed', rec.customerName + ' — ₹' + r.cashOut);
+      showMessage('Payment removed', 'error');
+    }
+  };
   const deleteTxn = (id) => { setBankTransactions(bankTransactions.filter(t => t.id !== id)); showMessage('Deleted', 'error'); };
 
   const saveBase = () => {
@@ -4188,7 +4292,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       [null, "TODAY'S DATE"],
       [null, selectedDate],
       ['Sl. No.', 'Customer Name / Details', 'Cash IN / Deposit (+)', 'Cash OUT / Withdraw (-)', 'Location', 'Running Balance'],
-      ...rows.map((r, idx) => [idx + 1, r.customerName, r.cashIn || '', r.cashOut || '', r.location || 'Bank', r.runningBalance])
+      ...rows.map((r, idx) => [idx + 1, r.customerName + (r.pcNote ? ' [' + r.pcNote + ']' : ''), r.cashIn || '', r.cashOut || '', r.location || 'Bank', r.runningBalance])
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
@@ -4248,7 +4352,31 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       action: { label: 'Top-up from Savings', onClick: () => { setShowTopup(true); setShowSetCscWallet(false); } } },
   ];
 
+  // ── Day Book: rows = every wallet and active account with today's balance (paise) ──
+  const dbSA = bkArr(simpleAccounts), dbBal = saBalances(dbSA, bkArr(simpleTx), bkWithPending(bankTransactions, pendingCash), bkArr(moneyTransfers), safeOnline, bkArr(tasks));
+  const dbRows = [
+    { key: 'acb', name: wName.account, color: 'purple', bal: Math.round(accountBalance * 100) },
+    { key: 'sav', name: wName.savings, color: 'emerald', bal: Math.round(savingsBalance * 100) },
+    { key: 'csc', name: wName.csc, color: 'orange', bal: Math.round(cscWalletBalance * 100) },
+    ...dbSA.filter(a => a.active !== false).map(a => ({ key: a.id, name: a.name + (a.category === 'saving' ? ' (Saving)' : ''), color: a.color || 'blue', bal: dbBal[a.id] || 0 }))
+  ];
+  const saveDayBook = res => {
+    if (res.error) return showMessage(res.error, 'error');
+    const patch = {}, said = [], row = k => dbRows.find(r => r.key === k), ch = k => res.vals[k] !== undefined && row(k) && res.vals[k] !== row(k).bal;
+    if (Math.round(res.cash * 100) !== Math.round((openingBalance || 0) * 100)) { patch.bankingOpeningBalances = { ...openingBalances, [selectedDate]: res.cash }; said.push('Opening cash ₹' + res.cash); }
+    if (ch('acb')) { patch.accountBalanceArchivedOffset = (Number(accountBalanceArchivedOffset) || 0) + pcRound(res.vals.acb / 100 - autoAccountBalance); patch.accountBalanceOverrides = {}; said.push(wName.account + ' ' + saFmt(res.vals.acb)); }   // same rule as the Account Balance "Set Balance"
+    if (ch('sav')) { patch.savingsAccountBalance = pcRound((Number(savingsAccountBalance) || 0) + (res.vals.sav - row('sav').bal) / 100); said.push(wName.savings + ' ' + saFmt(res.vals.sav)); }
+    if (ch('csc')) { patch.cscWalletBase = pcRound((Number(cscWalletBase) || 0) + (res.vals.csc - row('csc').bal) / 100); said.push(wName.csc + ' ' + saFmt(res.vals.csc)); }
+    const moved = dbSA.filter(a => a.active !== false && ch(a.id));
+    if (moved.length) { patch.simpleAccounts = dbSA.map(a => ch(a.id) ? { ...a, opening: (a.opening || 0) + (res.vals[a.id] - row(a.id).bal) } : a); moved.forEach(a => said.push(a.name + ' ' + saFmt(res.vals[a.id]))); }
+    if (!said.length) return showMessage('Nothing changed.');
+    applyDayBook(patch);
+    drvAudit(currentUser, 'Day Book Saved', selectedDate + ' — ' + said.join(' | '));
+    setShowDayBook(false); showMessage('Day Book saved: ' + said.length + ' balance' + (said.length > 1 ? 's' : '') + ' updated.');
+  };
+
   return e('div', { className: 'space-y-4' },
+    showDayBook && e(DayBookModal, { date: selectedDate, openingCash: openingBalance, rows: dbRows, pendingPayable: pcPayableAll, onSave: saveDayBook, onClose: () => setShowDayBook(false) }),
     // ── Tab switcher: Ledger | Reports ──
     e('div', { className: 'flex gap-2 border-b border-gray-100 pb-3' },
       e('button', { onClick: () => setBankingTab('ledger'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='ledger' ? 'bg-green-700 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-green-50') }, 'Ledger'),
@@ -4261,13 +4389,14 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     ),
 
     bankingTab === 'pending' && e(PendingCashTab, { pendingCash, setPendingCash, currentUser, showMessage, cbOn, businessProfile, locLabel }),
-    bankingTab === 'transfer' && e(MoneyTransferTab, { simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }),
+    bankingTab === 'transfer' && e(MoneyTransferTab, { tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }),
 
     bankingTab === 'ledger' && e('div', { className: 'space-y-4' },
     e('div', { className: 'flex flex-wrap justify-between items-start gap-3' },
       e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Banking Ledger'), e('p', { className: 'text-sm text-gray-500' }, 'CSP cash deposit / withdrawal — daily ledger')),
       e('div', { className: 'flex flex-wrap items-center gap-2' },
         e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'Date'), e('input', { type: 'date', value: selectedDate, onChange: ev => setSelectedDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
+        currentUser.role === 'admin' && e('button', { onClick: () => setShowDayBook(true), className: 'flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Calculator', size: 16 }), ' Day Book'),
         e('button', { onClick: () => { setShowBranch(v => !v); setShowAddMore(false); setEditingBase(false); }, className: 'flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Landmark', size: 16 }), ' Branch Deposit'),
         e('button', { onClick: exportLedger, className: 'flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Download', size: 16 }), ' Export'),
         currentUser.role === 'admin' && e('button', { onClick: () => setShowArchive(!showArchive), className: 'flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm' }, e(Icon, { name: 'Trash2', size: 16 }), ' Archive'),
@@ -4287,7 +4416,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       )
     ),
 
-    e(BankAccountsPanel, { moneyTransfers, simpleAccounts, simpleTx, bankTransactions, setBankTransactions, setSimpleAccounts, currentUser, showMessage, wallets: walletDash, walletColors, setWalletColors, walletInfo, setWalletInfo, pendingCash }),
+    e(BankAccountsPanel, { tasks, onlineTransactions, moneyTransfers, simpleAccounts, simpleTx, bankTransactions, setBankTransactions, setSimpleAccounts, currentUser, showMessage, wallets: walletDash, walletColors, setWalletColors, walletInfo, setWalletInfo, pendingCash }),
 
     showSetSavings && currentUser.role === 'admin' && e('div', { className: 'bg-emerald-50 p-4 rounded-xl shadow-sm border border-emerald-300 flex flex-wrap items-end gap-4' },
       e('div', null,
@@ -4309,7 +4438,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
             // they typed (previously this set the base directly, so the displayed total kept
             // including the old deltas on top of it and never matched what was typed — that's
             // the bug being fixed here).
-            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal - savingsOnlineReceived + savingsOnlineTransfer + cscTopupTotal + savingsExpenseTotal;
+            const newBase = val - selfDepTotal + selfWithTotal - digipayWithdrawalTotal - savingsOnlineReceived + savingsOnlineTransfer + cscTopupTotal + savingsExpenseTotal - mtNetSav;
             setSavingsAccountBalance(newBase);
             setShowSetSavings(false); setSavingsInput('');
             showMessage('Savings Account Balance set to ₹' + val.toLocaleString('en-IN'));
@@ -4361,7 +4490,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
             const val = Number(cscWalletInput) || 0;
             // Card shows cscWalletBalance = base + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime.
             // Solve for the hidden base so the displayed total becomes exactly what was typed.
-            const newBase = val - cscTopupTotal + cscExpenseTotal + totalPortalCostAllTime;
+            const newBase = val - cscTopupTotal + cscExpenseTotal + totalPortalCostAllTime - mtNetCsc - cscOnlineNet;
             setCscWalletBase(newBase);
             setShowSetCscWallet(false); setCscWalletInput('');
             showMessage('CSC Wallet Balance set to ₹' + val.toLocaleString('en-IN'));
@@ -4385,8 +4514,8 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
             className: 'text-green-500 hover:text-green-700 p-1.5 rounded hover:bg-green-50'
           }, e(Icon, { name: 'Plus', size: 15 })),
           e('button', {
-            onClick: () => { setBaseInput(String(openingBalances[selectedDate] || 0)); setEditingBase(true); setShowAddMore(false); setShowSetAccBal(false); },
-            title: 'Edit Opening Balance',
+            onClick: () => setShowDayBook(true),
+            title: 'Day Book: set opening cash and balances',
             className: 'text-gray-400 hover:text-indigo-600 p-1.5 rounded hover:bg-indigo-50'
           }, e(Icon, { name: 'Edit3', size: 15 }))
         )
@@ -4617,9 +4746,9 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
         ),
         e('tbody', { className: 'divide-y divide-gray-100' },
           ...(rows.length === 0 ? [e('tr', { key: 'empty' }, e('td', { colSpan: 7, className: 'p-8 text-center text-gray-400' }, 'No transactions added for this date yet.'))] : rows.map((r, idx) =>
-            e('tr', { key: r.id, className: 'hover:bg-gray-50' },
+            e('tr', { key: r.rowKey || r.id, className: 'hover:bg-gray-50' + (r.pending ? ' bg-amber-50' : '') },
               e('td', { className: 'p-4 text-sm text-gray-500' }, idx + 1),
-              e('td', { className: 'p-4 font-medium text-gray-800' }, r.customerName),
+              e('td', { className: 'p-4 font-medium text-gray-800' }, r.customerName, r.pcNote && e('div', { className: 'text-[11px] font-normal text-amber-700' }, r.pcNote)),
               e('td', { className: 'p-4 text-green-600 font-medium' },
                 r.location === 'Self Transfer' ? (r.selfTransferType === 'deposit' ? `⇄ ₹${r.selfTransferAmount}` : '—') : (r.cashIn ? `₹${r.cashIn}` : '—')
               ),
@@ -4631,7 +4760,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
                 r.location === 'Digipay' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'
               }` }, r.location === 'Self Transfer' ? (r.selfTransferType === 'deposit' ? 'Acc to Sav' : 'Sav to Acc') : (r.location === 'Digipay payout' ? 'Payout to Savings' : locLabel(r.location)))),
               e('td', { className: 'p-4 font-semibold text-gray-800' }, `₹${r.runningBalance}`),
-              e('td', { className: 'p-4 text-right' }, currentUser.role === 'admin' && e('button', { onClick: () => deleteTxn(r.id), className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 })))
+              e('td', { className: 'p-4 text-right' }, r.pending ? (currentUser.role === 'admin' && e('button', { onClick: () => deletePc(r), title: r.pcPay === undefined ? 'Delete this Pending Cash entry' : 'Remove this payment', className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 }))) : currentUser.role === 'admin' && e('button', { onClick: () => deleteTxn(r.id), className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 })))
             )
           ))
         )
@@ -4641,7 +4770,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
 
     // ══ REPORTS TAB ══
     bankingTab === 'reports' && (() => {
-      const rptRange = bankTransactions.filter(t => t.date >= rptFrom && t.date <= rptTo);
+      const rptRange = [...bankTransactions, ...pcLedgerRows(pendingCash)].filter(t => t.date >= rptFrom && t.date <= rptTo);   // includes Pending Cash given / paid
       // Account filter: only accounts that actually have cash IN/OUT entries in this date range get a chip.
       const locKey = t => t.location || 'Bank';
       const accCounts = {};
@@ -6173,10 +6302,14 @@ function StaffSalary({ users, appData, persist, showMessage, currentUser, busine
 
 
 // ── ONLINE TRANSACTION ──
-function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }) {
+function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog, simpleAccounts = [], walletInfo = {} }) {
   const safe = Array.isArray(onlineTransactions) ? onlineTransactions : [];
+  // Every account can be picked: Savings, CSC Wallet and each account added in Account Setting (new ones appear by themselves). Older entries without an account stay on Savings.
+  const wnm = (k, d) => (walletInfo[k] && walletInfo[k].name) || d;
+  const accList = [{ id: 'sav', name: wnm('savings', 'Savings Account') }, { id: 'csc', name: wnm('csc', 'CSC Digital Seva Wallet') }, ...bkArr(simpleAccounts).filter(a => a.active !== false).map(a => ({ id: a.id, name: a.name }))];
+  const accNm = t => { const id = t.accId || 'sav'; return id === 'sav' ? wnm('savings', 'Savings Account') : id === 'csc' ? wnm('csc', 'CSC Digital Seva Wallet') : ((bkArr(simpleAccounts).find(a => a.id === id) || {}).name || t.accName || 'Deleted account'); };
   const [tab, setTab]           = useState('received'); // 'received' | 'transfer'
-  const [form, setForm]         = useState({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
+  const [form, setForm]         = useState({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: 'sav' });
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate]     = useState(todayStr);
 
@@ -6188,10 +6321,12 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     if (!form.name.trim()) return showMessage('Please enter a name / details.', 'error');
     const amt = Number(form.amount) || 0;
     if (amt <= 0) return showMessage('Please enter a valid amount.', 'error');
-    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true };
-    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + (form.utrNumber ? ' | UTR: ' + form.utrNumber : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
-    setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '' });
-    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to' : ' deducted from') + ' Savings Account Balance.');
+    const acc = accList.find(a => a.id === form.accId);
+    if (!acc) return showMessage('Please choose the account.', 'error');
+    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true, accId: acc.id, accName: acc.name };
+    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + ' | A/c: ' + acc.name + (form.utrNumber ? ' | UTR: ' + form.utrNumber : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
+    setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: form.accId });
+    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to ' + acc.name + ' and deducted from Cash.' : ' deducted from ' + acc.name + ' and added to Cash.'));
   };
 
   const deleteTxn = (id) => {
@@ -6206,10 +6341,10 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     const rows = [
       ['Online Transaction Report', fromDate + ' to ' + toDate],
       [],
-      ['Type', 'Date', 'Name / Details', 'Amount', 'UTR Number', 'Screenshot File Name', 'Staff'],
+      ['Type', 'Date', 'Name / Details', 'Amount', 'UTR Number', 'Screenshot File Name', 'Staff', 'Account'],
       ...safe.filter(t => t.date >= fromDate && t.date <= toDate)
         .sort((a, b) => a.date < b.date ? -1 : 1)
-        .map(t => [t.type === 'received' ? 'Money Received' : 'Money Transfer', t.date, t.name, t.amount, t.utrNumber || '', t.screenshotFileName || '', t.staffName || '']),
+        .map(t => [t.type === 'received' ? 'Money Received' : 'Money Transfer', t.date, t.name, t.amount, t.utrNumber || '', t.screenshotFileName || '', t.staffName || '', accNm(t)]),
       [],
       ['', '', 'Total Money Received', totalReceived],
       ['', '', 'Total Money Transfer', totalTransfer],
@@ -6227,7 +6362,7 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     e('div', { className: 'flex flex-wrap justify-between items-center gap-3' },
       e('div', null,
         e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Online Transaction'),
-        e('p', { className: 'text-sm text-gray-500' }, 'Track online money received and transfers — affects Banking balance calculations')
+        e('p', { className: 'text-sm text-gray-500' }, 'Pick the account. Money Transfer takes the amount out of that account and adds it to Cash. Money Received adds it to that account and takes it out of Cash.')
       ),
       e('div', { className: 'flex gap-2 items-center flex-wrap' },
         e('div', null, e('label', { className: 'text-xs text-gray-500 block mb-1' }, 'From'), e('input', { type: 'date', value: fromDate, onChange: ev => setFromDate(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-indigo-500' })),
@@ -6271,7 +6406,11 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
       e('h4', { className: 'text-sm font-semibold text-gray-700 mb-3' },
         'Add ' + (tab === 'received' ? 'Money Received' : 'Money Transfer') + ' Entry'
       ),
-      e('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-end' },
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 items-end' },
+        e('div', null,
+          e('label', { className: 'block text-sm font-medium mb-1' }, tab === 'received' ? 'Money goes into account *' : 'Money comes out of account *'),
+          e('select', { value: form.accId, onChange: ev => setForm({ ...form, accId: ev.target.value }), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm bg-white ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400') }, accList.map(a => e('option', { key: a.id, value: a.id }, a.name)))
+        ),
         e('div', null,
           e('label', { className: 'block text-sm font-medium mb-1' }, 'Name / Details *'),
           e('input', { type: 'text', value: form.name, onChange: ev => setForm({ ...form, name: ev.target.value }),
@@ -6314,6 +6453,7 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
             e('th', { className: 'p-4 font-medium' }, 'Sl.'),
             e('th', { className: 'p-4 font-medium' }, 'Date'),
             e('th', { className: 'p-4 font-medium' }, 'Name / Details'),
+            e('th', { className: 'p-4 font-medium' }, 'Account'),
             e('th', { className: 'p-4 font-medium' }, 'Amount'),
             e('th', { className: 'p-4 font-medium' }, 'UTR Number'),
             e('th', { className: 'p-4 font-medium' }, 'Screenshot'),
@@ -6323,12 +6463,13 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
         ),
         e('tbody', { className: 'divide-y divide-gray-100' },
           filtered.length === 0
-            ? e('tr', null, e('td', { colSpan: 8, className: 'p-8 text-center text-gray-400' }, 'No ' + (tab === 'received' ? 'money received' : 'money transfer') + ' entries for this date range.'))
+            ? e('tr', null, e('td', { colSpan: 9, className: 'p-8 text-center text-gray-400' }, 'No ' + (tab === 'received' ? 'money received' : 'money transfer') + ' entries for this date range.'))
             : filtered.slice().sort((a, b) => b.id - a.id).map((t, idx) =>
                 e('tr', { key: t.id, className: 'hover:bg-gray-50' },
                   e('td', { className: 'p-4 text-sm text-gray-500' }, idx + 1),
                   e('td', { className: 'p-4 text-sm text-gray-500' }, t.date),
                   e('td', { className: 'p-4 font-medium text-gray-800' }, t.name),
+                  e('td', { className: 'p-4 text-sm text-gray-600' }, accNm(t)),
                   e('td', { className: 'p-4 font-bold ' + (tab === 'received' ? 'text-green-600' : 'text-red-500') }, '₹' + (t.amount || 0).toLocaleString('en-IN')),
                   e('td', { className: 'p-4 text-sm text-gray-600' }, t.utrNumber || '—'),
                   e('td', { className: 'p-4 text-sm text-gray-600' }, t.screenshotFileName || '—'),
@@ -6784,6 +6925,8 @@ function App() {
     });
     return newBal;
   };
+  // Day Book saves everything it changed in ONE persist(), so no write can overwrite another.
+  const applyDayBook = (patch) => persist({ ...appData, ...patch });
   const setOpeningBalanceFor = (date, amount) => {
     const curBalances = appData.bankingOpeningBalances || {};
     persist({ ...appData, bankingOpeningBalances: { ...curBalances, [date]: amount } });
@@ -6930,8 +7073,8 @@ function App() {
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
         activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, currentUser }),
         activeTab === 'accounts' && currentUser.role === 'admin' && e(SimpleAccounts, { appData, persist, currentUser, showMessage }),
-        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors, setWalletColors, walletInfo, setWalletInfo, simpleAccounts: bkArr(appData && appData.simpleAccounts), simpleTx: bkArr(appData && appData.simpleTx), setSimpleAccounts: (next) => persist({ ...appData, simpleAccounts: next }), moneyTransfers: bkArr(appData && appData.moneyTransfers), setMoneyTransfers: (next) => persist({ ...appData, moneyTransfers: next }) }),
-        activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog }),
+        activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, applyDayBook, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors, setWalletColors, walletInfo, setWalletInfo, simpleAccounts: bkArr(appData && appData.simpleAccounts), simpleTx: bkArr(appData && appData.simpleTx), setSimpleAccounts: (next) => persist({ ...appData, simpleAccounts: next }), moneyTransfers: bkArr(appData && appData.moneyTransfers), setMoneyTransfers: (next) => persist({ ...appData, moneyTransfers: next }) }),
+        activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog, simpleAccounts: bkArr(appData && appData.simpleAccounts), walletInfo }),
         activeTab === 'backup' && currentUser.role === 'admin' && e(BackupCenter, { appData, persist, currentUser, showMessage }),
         activeTab === 'queue' && e(TokenQueue, { appData, customers, currentUser, showMessage, goNewCustomer, goAddService }),
         activeTab === 'inquiry' && e(InquiryPage, { appData, currentUser, showMessage, services, customers, users, goNewCustomer }),
