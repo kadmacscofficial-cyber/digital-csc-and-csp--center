@@ -785,7 +785,7 @@ const Kpi = ({ icon, title, value, delta, color }) => e('div', { className: 'aic
   e('div', { className: 'text-xl font-semibold mt-2', style: { color: color || '#0f2240' } }, e(CountUp, { value })),
   delta != null && isFinite(delta) && e('div', { className: 'text-xs mt-1 font-medium', style: { color: delta >= 0 ? '#10b45f' : '#dc2626' } }, (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% vs previous'));
 
-function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses }) {
+function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses, onlineTransactions }) {
   const admin = currentUser.role === 'admin';
   const [range, setRange] = useState('today');
   const [cFrom, setCFrom] = useState(todayStr), [cTo, setCTo] = useState(todayStr);
@@ -806,7 +806,8 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
     const hist = tasks.reduce((s, t) => s + (t.paymentHistory || []).filter(p => p.date >= f && p.date <= to).reduce((a, p) => a + p.amount, 0), 0);
     const collected = ts.reduce((s, t) => s + initPaid(t), 0) + hist;
     const exp = (expenses || []).filter(x => x.date >= f && x.date <= to).reduce((s, x) => s + x.cost, 0);
-    return { ts, sales, collected, exp, profit: collected - exp, custs: new Set(ts.map(t => t.customerId || t.customerName)).size };
+    const charge = (onlineTransactions || []).filter(x => x.date >= f && x.date <= to).reduce((s, x) => s + (Number(x.chargeAmount) || 0), 0);
+    return { ts, sales, collected, exp, charge, profit: collected - exp, custs: new Set(ts.map(t => t.customerId || t.customerName)).size };
   };
   const cur = calc(fromDate, toDate), prev = pFrom ? calc(pFrom, pTo) : null;
   const dl = k => prev && prev[k] > 0 ? (cur[k] - prev[k]) / prev[k] * 100 : null;
@@ -859,6 +860,7 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
       admin && e(Kpi, { icon: 'TrendingUp', title: 'Total Sales', value: inr(cur.sales), delta: dl('sales') }),
       admin && e(Kpi, { icon: 'Wallet', title: 'Collected', value: inr(cur.collected), delta: dl('collected') }),
       admin && e(Kpi, { icon: 'ShoppingBag', title: 'Total Expense', value: inr(cur.exp), delta: dl('exp'), color: '#b45309' }),
+      admin && e(Kpi, { icon: 'DollarSign', title: 'Online Charge', value: inr(cur.charge), delta: dl('charge'), color: '#0d9488' }),
       admin && e(Kpi, { icon: 'DollarSign', title: 'Net Profit', value: inr(cur.profit), color: cur.profit >= 0 ? '#10b45f' : '#dc2626' }),
       e(Kpi, { icon: 'AlertCircle', title: 'Pending Dues', value: inr(pendingAmt), color: '#dc2626' }),
       e(Kpi, { icon: 'Users', title: 'Customers', value: cur.custs, delta: dl('custs') }),
@@ -3464,10 +3466,11 @@ function bkCalcBalances(d, selectedDate) {
   const cscExpenseTotal = cscWalletExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
   const totalPortalCostAllTime = tasks.reduce((s, t) => s + ((!t.portalWallet || t.portalWallet === 'csc') ? (Number(t.portalCost) || 0) : 0), 0);   // portal costs paid from the CSC Wallet
   const cscOnlineNet = safeOnline.filter(t => t.toSavings && t.accId === 'csc').reduce((s, t) => s + (t.type === 'received' ? 1 : -1) * (Number(t.amount) || 0), 0);   // online received adds, online transfer takes away
-  const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime + mtNet('csc') + cscOnlineNet;
+  const cscWalletBalance = (Number(cscWalletBase) || 0) + cscTopupTotal - cscExpenseTotal - totalPortalCostAllTime + mtNet('csc') + cscOnlineNet + chargeTo('csc');
   const savingsExpenseTotal = savingsExpenses.reduce((s, x) => s + (Number(x.cost) || 0), 0);
+  const chargeTo = id => safeOnline.reduce((s, t) => s + ((t.chargeAmount && t.chargeMode !== 'cash' && (t.chargeAccId || 'sav') === id) ? (Number(t.chargeAmount) || 0) : 0), 0);   // Online charges credited to Savings (sav) or CSC Wallet (csc)
   // Savings = manual base + self in − self out + Digipay withdrawals + online received − online transfers − wallet top-ups − savings expenses.
-  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal + payoutTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal + mtNet('sav');
+  const savingsBalance = (Number(savingsAccountBalance) || 0) + selfDepTotal - selfWithTotal + digipayWithdrawalTotal + payoutTotal + savingsOnlineReceived - savingsOnlineTransfer - cscTopupTotal - savingsExpenseTotal + mtNet('sav') + chargeTo('sav');
   // Account Balance: a manual override for the selected date wins; otherwise the calculated figure.
   // Branch Deposit: My Cash + Outside Cash both go INTO the Account Balance.
   const allTimeBranchDeposit = branchDepositList.reduce((s, b) => s + (Number(b.myCash) || 0) + (Number(b.outsideCash) || 0), 0);
@@ -3497,6 +3500,7 @@ function saFmt(p) { const a = Math.abs(p); const r = Math.floor(a / 100), c = St
 // takes away. A Digipay wallet also loses on its payouts to Savings.
 function saBalance(acc, txs, bankTxs, trs, onl, tasks) {
   let b = acc.opening || 0;
+  (onl || []).forEach(t => { if (t.chargeAmount && t.chargeMode !== 'cash' && t.chargeAccId === acc.id) b += saRupeesToPaise(t.chargeAmount); });   // Online Transaction charge goes into the chosen account
   (tasks || []).forEach(t => { if (acc.id !== 'csc' && t.portalWallet === acc.id) b -= saRupeesToPaise(t.portalCost); });   // CRM portal cost paid from this Wallet account
   (onl || []).forEach(t => { if (t.toSavings && t.accId === acc.id) b += (t.type === 'received' ? 1 : -1) * saRupeesToPaise(t.amount); });   // Online Transaction: received adds, transfer takes away
   (trs || []).forEach(t => { if (t.from === acc.id) b -= t.amount; if (t.to === acc.id) b += t.amount; });   // Money Transfer entries
@@ -5494,7 +5498,9 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       .reduce((hs, p) => hs + p.amount, 0);
     return s + histToday;
   }, 0);
-  const cashIncomeToday = cashEntryIncomeToday + cashHistoryIncomeToday;
+  // Online Transaction charges paid in Cash: they are cash received today (they go to Cash, not to a Savings account).
+  const cashChargeToday = safeOnlineTxns.filter(t => t.date === selectedDate && t.chargeMode === 'cash').reduce((s, t) => s + (Number(t.chargeAmount) || 0), 0);
+  const cashIncomeToday = cashEntryIncomeToday + cashHistoryIncomeToday + cashChargeToday;
   const cashProfitToday = cashIncomeToday - expenseTotal;
   // 4) Banking Current Balance — Banking Ledger's "Current Balance" for this date
   //    includes online transactions (received → withdrawal side, transfer → deposit side)
@@ -5568,6 +5574,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       ['(-) Total Expense', expenseTotal],
       ...(isAdmin ? [['= Net Profit (business, reference only)', netProfit]] : []),
       ['Cash Profit (Cash-mode only, after Expense)', cashProfitToday],
+      ['Online Charge received in Cash (included above)', cashChargeToday],
       ['(+) Banking Current Balance', bankingCurrentBalance],
       ['= Expected Closing Cash', expectedClosing],
       ['Actual Cash Counted', actualInput === '' ? '' : Number(actualInput)],
@@ -5618,10 +5625,11 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       )
     ),
 
-    e('div', { className: 'grid grid-cols-2 md:grid-cols-6 gap-4' },
+    e('div', { className: 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4' },
       currentUser.role === 'admin' && e(StatCard, { title: 'Total Income', value: `₹${totalIncome}`, icon: e(Icon, { name: 'TrendingUp', size: 22 }), color: 'bg-green-50 text-green-600' }),
       e(StatCard, { title: 'Total Expense', value: `₹${expenseTotal}`, icon: e(Icon, { name: 'TrendingDown', size: 22 }), color: 'bg-red-50 text-red-500' }),
       currentUser.role === 'admin' && e(StatCard, { title: 'Net Profit', value: fmtR(netProfit), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: netProfit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600' }),
+      e(StatCard, { title: 'Online Charge (Cash)', value: fmtR(cashChargeToday), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: 'bg-cyan-50 text-cyan-700', sub: 'Included in Cash Profit' }),
       e(StatCard, { title: 'Cash Profit (Cash-mode)', value: fmtR(cashProfitToday), icon: e(Icon, { name: 'Wallet', size: 22 }), color: cashProfitToday >= 0 ? 'bg-teal-50 text-teal-600' : 'bg-red-50 text-red-600', sub: 'Feeds Expected Closing Cash' }),
       e(StatCard, { title: 'Banking Current Balance', value: fmtR(bankingCurrentBalance), icon: e(Icon, { name: 'Landmark', size: 22 }), color: bankingCurrentBalance >= 0 ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600' }),
       e(StatCard, { title: 'Expected Closing Cash', value: fmtR(expectedClosing), icon: e(Icon, { name: 'Wallet', size: 22 }), color: expectedClosing >= 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-red-50 text-red-600' })
@@ -6309,7 +6317,9 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
   const accList = [{ id: 'sav', name: wnm('savings', 'Savings Account') }, { id: 'csc', name: wnm('csc', 'CSC Digital Seva Wallet') }, ...bkArr(simpleAccounts).filter(a => a.active !== false).map(a => ({ id: a.id, name: a.name }))];
   const accNm = t => { const id = t.accId || 'sav'; return id === 'sav' ? wnm('savings', 'Savings Account') : id === 'csc' ? wnm('csc', 'CSC Digital Seva Wallet') : ((bkArr(simpleAccounts).find(a => a.id === id) || {}).name || t.accName || 'Deleted account'); };
   const [tab, setTab]           = useState('received'); // 'received' | 'transfer'
-  const [form, setForm]         = useState({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: 'sav' });
+  const [form, setForm]         = useState({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: 'sav', senderName: '', senderMobile: '', senderAadhaar: '', charge: '', chargeMode: 'cash', chargeAccId: 'sav' });
+  // Charge can go to Savings or to any account whose category is Saving.
+  const savList = [{ id: 'sav', name: wnm('savings', 'Savings Account') }, ...bkArr(simpleAccounts).filter(a => a.active !== false && a.category === 'saving').map(a => ({ id: a.id, name: a.name }))];
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate]     = useState(todayStr);
 
@@ -6323,10 +6333,20 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     if (amt <= 0) return showMessage('Please enter a valid amount.', 'error');
     const acc = accList.find(a => a.id === form.accId);
     if (!acc) return showMessage('Please choose the account.', 'error');
-    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true, accId: acc.id, accName: acc.name };
-    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + ' | A/c: ' + acc.name + (form.utrNumber ? ' | UTR: ' + form.utrNumber : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
-    setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: form.accId });
-    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to ' + acc.name + ' and deducted from Cash.' : ' deducted from ' + acc.name + ' and added to Cash.'));
+    const senderName = form.senderName.trim(), senderMobile = form.senderMobile.trim(), senderAadhaar = form.senderAadhaar.trim().replace(/\s/g, '');
+    if (senderMobile && !/^\d{10}$/.test(senderMobile)) return showMessage('Mobile number must be 10 digits.', 'error');
+    if (senderAadhaar && !/^\d{12}$/.test(senderAadhaar)) return showMessage('Aadhaar number must be 12 digits.', 'error');
+    const chg = Number(form.charge) || 0;
+    if (chg < 0) return showMessage('Charge cannot be negative.', 'error');
+    const chgIsCash = form.chargeMode !== 'online';
+    const chgAcc = chgIsCash ? null : savList.find(a => a.id === form.chargeAccId);
+    if (chg > 0 && !chgIsCash && !chgAcc) return showMessage('Please choose the Savings account for the online charge.', 'error');
+    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true, accId: acc.id, accName: acc.name,
+      senderName, senderMobile, senderAadhaar,
+      chargeAmount: chg, chargeMode: chgIsCash ? 'cash' : 'online', chargeAccId: chg > 0 && chgAcc ? chgAcc.id : null, chargeAccName: chg > 0 && chgAcc ? chgAcc.name : '' };
+    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + ' | A/c: ' + acc.name + (form.utrNumber ? ' | UTR: ' + form.utrNumber : '') + (senderName ? ' | Sender: ' + senderName : '') + (senderMobile ? ' | Mob: ' + senderMobile : '') + (senderAadhaar ? ' | Aadhaar: ' + senderAadhaar : '') + (chg > 0 ? ' | Charge: ₹' + chg + (chgIsCash ? ' (Cash)' : ' → ' + chgAcc.name) : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
+    setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: form.accId, senderName: '', senderMobile: '', senderAadhaar: '', charge: '', chargeMode: form.chargeMode, chargeAccId: form.chargeAccId });
+    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to ' + acc.name + ' and deducted from Cash.' : ' deducted from ' + acc.name + ' and added to Cash.') + (chg > 0 ? (chgIsCash ? ' Charge ₹' + chg + ' added to Cash.' : ' Charge ₹' + chg + ' added to ' + chgAcc.name + '.') : ''));
   };
 
   const deleteTxn = (id) => {
@@ -6341,10 +6361,10 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     const rows = [
       ['Online Transaction Report', fromDate + ' to ' + toDate],
       [],
-      ['Type', 'Date', 'Name / Details', 'Amount', 'UTR Number', 'Screenshot File Name', 'Staff', 'Account'],
+      ['Type', 'Date', 'Name / Details', 'Amount', 'UTR Number', 'Screenshot File Name', 'Staff', 'Account', 'Sender Name', 'Sender Mobile', 'Sender Aadhaar', 'Charge', 'Charge Account'],
       ...safe.filter(t => t.date >= fromDate && t.date <= toDate)
         .sort((a, b) => a.date < b.date ? -1 : 1)
-        .map(t => [t.type === 'received' ? 'Money Received' : 'Money Transfer', t.date, t.name, t.amount, t.utrNumber || '', t.screenshotFileName || '', t.staffName || '', accNm(t)]),
+        .map(t => [t.type === 'received' ? 'Money Received' : 'Money Transfer', t.date, t.name, t.amount, t.utrNumber || '', t.screenshotFileName || '', t.staffName || '', accNm(t), t.senderName || '', t.senderMobile || '', t.senderAadhaar || '', t.chargeAmount || '', t.chargeAccName || '']),
       [],
       ['', '', 'Total Money Received', totalReceived],
       ['', '', 'Total Money Transfer', totalTransfer],
@@ -6355,6 +6375,14 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     XLSX.utils.book_append_sheet(wb, ws, 'Online Transactions');
     XLSX.writeFile(wb, 'Online_Transactions_' + fromDate + '_to_' + toDate + '.xlsx');
   };
+
+  const fld = (label, key, placeholder, type) => e('div', null,
+    e('label', { className: 'block text-sm font-medium mb-1' }, label),
+    e('input', { type: type || 'text', value: form[key], onChange: ev => setForm({ ...form, [key]: ev.target.value }),
+      className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
+      placeholder: placeholder
+    })
+  );
 
   return e('div', { className: 'space-y-4' },
 
@@ -6442,6 +6470,24 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
         e('button', { onClick: handleAdd,
           className: 'px-5 py-2 rounded-lg font-medium text-white flex items-center gap-2 w-full justify-center ' + (tab === 'received' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600')
         }, e(Icon, { name: 'Plus', size: 17 }), ' Add')
+      ),
+      // Sender / depositor details and charge
+      e('p', { className: 'text-xs font-semibold text-gray-500 mt-4 mb-2' }, 'SENDER / DEPOSITOR DETAILS & CHARGE (optional)'),
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 items-end' },
+        fld('Sender Name', 'senderName', 'e.g. Ram Das'),
+        fld('Mobile No', 'senderMobile', '10 digit', 'tel'),
+        fld('Aadhaar No', 'senderAadhaar', 'XXXX XXXX XXXX'),
+        fld('Charge (₹)', 'charge', '0', 'number'),
+        e('div', null,
+          e('label', { className: 'block text-sm font-medium mb-1' }, 'Charge paid by *'),
+          e('select', { value: form.chargeMode, onChange: ev => setForm({ ...form, chargeMode: ev.target.value }), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm bg-white ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400') },
+            e('option', { value: 'cash' }, 'Cash (Cash Closing e jabe)'),
+            e('option', { value: 'online' }, 'Online (Savings e jabe)'))
+        ),
+        form.chargeMode === 'online' && e('div', null,
+          e('label', { className: 'block text-sm font-medium mb-1' }, 'Charge goes to Savings *'),
+          e('select', { value: form.chargeAccId, onChange: ev => setForm({ ...form, chargeAccId: ev.target.value }), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm bg-white ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400') }, savList.map(a => e('option', { key: a.id, value: a.id }, a.name)))
+        )
       )
     ),
 
@@ -6457,13 +6503,15 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
             e('th', { className: 'p-4 font-medium' }, 'Amount'),
             e('th', { className: 'p-4 font-medium' }, 'UTR Number'),
             e('th', { className: 'p-4 font-medium' }, 'Screenshot'),
+            e('th', { className: 'p-4 font-medium' }, 'Sender / Depositor'),
+            e('th', { className: 'p-4 font-medium' }, 'Charge'),
             e('th', { className: 'p-4 font-medium' }, 'Staff'),
             e('th', { className: 'p-4 font-medium text-right' }, 'Action')
           )
         ),
         e('tbody', { className: 'divide-y divide-gray-100' },
           filtered.length === 0
-            ? e('tr', null, e('td', { colSpan: 9, className: 'p-8 text-center text-gray-400' }, 'No ' + (tab === 'received' ? 'money received' : 'money transfer') + ' entries for this date range.'))
+            ? e('tr', null, e('td', { colSpan: 11, className: 'p-8 text-center text-gray-400' }, 'No ' + (tab === 'received' ? 'money received' : 'money transfer') + ' entries for this date range.'))
             : filtered.slice().sort((a, b) => b.id - a.id).map((t, idx) =>
                 e('tr', { key: t.id, className: 'hover:bg-gray-50' },
                   e('td', { className: 'p-4 text-sm text-gray-500' }, idx + 1),
@@ -6473,6 +6521,15 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
                   e('td', { className: 'p-4 font-bold ' + (tab === 'received' ? 'text-green-600' : 'text-red-500') }, '₹' + (t.amount || 0).toLocaleString('en-IN')),
                   e('td', { className: 'p-4 text-sm text-gray-600' }, t.utrNumber || '—'),
                   e('td', { className: 'p-4 text-sm text-gray-600' }, t.screenshotFileName || '—'),
+                  e('td', { className: 'p-4 text-sm text-gray-600' }, (t.senderName || t.senderMobile || t.senderAadhaar) ? e('div', null,
+                    e('div', { className: 'font-medium text-gray-800' }, t.senderName || '—'),
+                    t.senderMobile && e('div', { className: 'text-xs text-gray-500' }, 'Mob: ' + t.senderMobile),
+                    t.senderAadhaar && e('div', { className: 'text-xs text-gray-500' }, 'Aadhaar: ' + t.senderAadhaar)
+                  ) : '—'),
+                  e('td', { className: 'p-4 text-sm' }, t.chargeAmount ? e('div', null,
+                    e('span', { className: 'font-semibold text-teal-700' }, '₹' + t.chargeAmount),
+                    e('div', { className: 'text-xs text-gray-500' }, t.chargeMode === 'cash' ? '→ Cash' : (t.chargeAccName ? '→ ' + t.chargeAccName : ''))
+                  ) : '—'),
                   e('td', { className: 'p-4 text-sm text-gray-500' }, t.staffName || ''),
                   e('td', { className: 'p-4 text-right' },
                     currentUser.role === 'admin' && e('button', { onClick: () => deleteTxn(t.id), className: 'text-red-500 bg-red-50 p-1.5 rounded hover:bg-red-100' }, e(Icon, { name: 'Trash2', size: 17 }))
@@ -7067,7 +7124,7 @@ function App() {
       ),
       message && e('div', { key: message.text, className: `toast-in fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg font-medium text-white ${message.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`, style: { whiteSpace: 'normal', zIndex: 99999, maxWidth: '92vw', textAlign: 'center' } }, message.text),
       e('div', { key: activeTab, className: 'pg-enter flex-1 overflow-y-auto p-6 relative' },
-        activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses }),
+        activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses, onlineTransactions }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
         activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null), newCustomerRequest, clearNewRequest: () => setNewCustomerRequest(null) }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
