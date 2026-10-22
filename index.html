@@ -3490,8 +3490,8 @@ function bkCalcBalances(d, selectedDate) {
   // Entries tagged to an account (acc:<id>) and Digipay payouts belong to that account, not to the old Account Balance.
   const isAccEntry = t => saLocId(t.location) !== null || t.location === 'Digipay payout';
   const passMainTotal = tasks.reduce((s, t) => s + ((t.passThrough && (t.passFrom || 'account') === 'account') ? (Number(t.passThrough) || 0) : 0), 0);   // Pass-through to customer paid from the main account
-  const allTimeWithdrawal = bankTransactions.reduce((s, t) => s + ((t.location === 'Digipay' || isAccEntry(t)) ? 0 : (t.cashOut || 0)), 0) + allOnlineReceived + passMainTotal;
-  const allTimeDeposit = bankTransactions.reduce((s, t) => s + (isAccEntry(t) ? 0 : (t.cashIn || 0)), 0) + allOnlineTransfer;
+  const allTimeWithdrawal = bankTransactions.reduce((s, t) => s + ((t.location === 'Digipay' || isAccEntry(t)) ? 0 : (t.cashOut || 0)), 0) + allOnlineReceived;
+  const allTimeDeposit = bankTransactions.reduce((s, t) => s + (isAccEntry(t) ? 0 : (t.cashIn || 0)), 0) + allOnlineTransfer + passMainTotal;   // money out to a customer from the main account reduces it (same side as a Bank deposit)
   // Digipay payouts (wallet -> Savings) are added to Savings.
   const payoutTotal = bankTransactions.filter(t => t.location === 'Digipay payout').reduce((s, t) => s + (Number(t.payoutAmount) || 0), 0);
   const allTimeAddMore = Object.values(addMoreHistory).flat().filter(x => typeof x === 'number').reduce((s, a) => s + (Number(a) || 0), 0);
