@@ -375,6 +375,11 @@ function generateCashClosingPDF(data, businessProfile, isAdmin) {
 function gidOf(t) { return (t.groupId !== undefined && t.groupId !== null) ? t.groupId : ('single-' + t.id); }
 // Service name with quantity, e.g. "PAN Card × 3" (shown everywhere a service is listed)
 function svcLabel(t) { return (t.service || '') + (Number(t.qty) > 1 ? ' × ' + Number(t.qty) : '') + (t.forMemberName ? ' — for ' + t.forMemberName + (t.forMemberRelation ? ' (' + t.forMemberRelation + ')' : '') : ''); }
+// Name shown on a transaction/register row: the family member the service was taken for (e.g. the account holder), else the customer.
+function txnName(g) {
+  const names = [...new Set((g && g.items ? g.items : []).map(i => i.forMemberName).filter(Boolean))];
+  return names.length ? names.join(' / ') : (g && g.customerName);
+}
 // Gives a discount on an already-added service. `price` always holds the amount the customer
 // really has to pay, so the discount reduces it (capped at the remaining due); the original
 // amount is kept in grossPrice and the total discount in `discount`.
@@ -894,7 +899,7 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
       e(Card, { title: 'Growth Tips', sub: 'Based on your data' }, e('ul', { className: 'space-y-2 text-sm text-gray-600' }, insights.map((s, i) => e('li', { key: i, className: 'flex gap-2' }, e('span', { style: { color: '#10b45f' } }, '●'), s))))),
     e(Card, { title: 'Recent Activity' }, recent.length === 0 ? e('p', { className: 'text-center text-gray-500 py-4' }, 'No data for selected dates.') : e('div', { className: 'space-y-1' }, recent.map(g =>
       e('div', { key: g.groupId, className: 'flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg' },
-        e('div', { className: 'flex items-center' }, e('div', { className: 'w-2 h-2 rounded-full mr-3', style: { background: g.status === 'Successful' ? '#10b45f' : g.status === 'Processing' ? '#1565c0' : '#f59e0b' } }), e('div', null, e('p', { className: 'font-medium text-sm' }, g.customerName), e('p', { className: 'text-xs text-gray-500' }, g.items.map(i => svcLabel(i)).join(', ')))),
+        e('div', { className: 'flex items-center' }, e('div', { className: 'w-2 h-2 rounded-full mr-3', style: { background: g.status === 'Successful' ? '#10b45f' : g.status === 'Processing' ? '#1565c0' : '#f59e0b' } }), e('div', null, e('p', { className: 'font-medium text-sm' }, txnName(g)), e('p', { className: 'text-xs text-gray-500' }, g.items.map(i => svcLabel(i)).join(', ')))),
         e('div', { className: 'flex items-center gap-3' }, e('div', { className: 'text-right' }, admin && e('p', { className: 'font-medium text-sm' }, inr(g.totalAmount)), e('p', { className: 'text-xs text-gray-500' }, g.date)),
           e('button', { onClick: () => setPrintingReceipt(receiptFromGroup(g)), className: 'p-2 rounded-lg', style: { background: '#e7f8ef', color: '#10b45f' } }, e(Icon, { name: 'Printer', size: 16 }))))))));
 }
@@ -994,7 +999,7 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
         e('tbody', { className: 'divide-y divide-gray-100' },
           ...(groups.length === 0 ? [e('tr', { key: 'empty' }, e('td', { colSpan: 7, className: 'p-8 text-center text-gray-400' }, (allSelected ? 'No entries for this period.' : 'No ' + filterLabel + ' entries for this period.')))] : groups.map(g => {
             return e('tr', { key: g.groupId, className: 'hover:bg-gray-50 align-top' },
-              e('td', { className: 'p-4 font-medium text-gray-800' }, g.customerName),
+              e('td', { className: 'p-4 font-medium text-gray-800' }, txnName(g)),
               e('td', { className: 'p-4 text-gray-600' },
                 e('div', { className: 'space-y-1.5' }, ...g.items.map(task =>
                   e('div', { key: task.id, className: 'space-y-0.5' },
@@ -2342,7 +2347,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
     e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => {
       const rows = pending.map(g => {
         const c = getCustomer(g.customerId, g.customerName);
-        return { 'Customer ID': c?.custCode || '', Customer: g.customerName, Mobile: c?.phone || '', Address: c?.address || '', DOB: c?.dob || '', Services: g.items.map(i => svcLabel(i)).join(', '), 'Total Amount': g.totalAmount, 'Amount Paid': g.totalPaid, 'Due Amount': g.totalDue, Date: g.date, Status: g.status };
+        return { 'Customer ID': c?.custCode || '', Customer: txnName(g), Mobile: c?.phone || '', Address: c?.address || '', DOB: c?.dob || '', Services: g.items.map(i => svcLabel(i)).join(', '), 'Total Amount': g.totalAmount, 'Amount Paid': g.totalPaid, 'Due Amount': g.totalDue, Date: g.date, Status: g.status };
       });
       exportToExcel(rows, `PendingDues_${fromDate}_to_${toDate}`);
     }}),
@@ -5645,7 +5650,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       ['Banking Transactions', todaysBankTxns.length],
       [],
       ['Service Collections —', 'Customer', 'Service(s)', 'Total', 'Paid', 'Due', 'Status'],
-      ...todaysServiceGroups.map(g => [null, g.customerName, g.items.map(i => svcLabel(i)).join(', '), g.totalAmount, g.totalPaid, g.totalDue, g.status]),
+      ...todaysServiceGroups.map(g => [null, txnName(g), g.items.map(i => svcLabel(i)).join(', '), g.totalAmount, g.totalPaid, g.totalDue, g.status]),
       [],
       ['Banking Transactions —', 'Customer/Details', 'Cash IN', 'Cash OUT', 'Location', 'Running Balance'],
       ...bankRows.map(t => [null, t.customerName, t.cashIn || '', t.cashOut || '', t.location || 'Bank', t.runningBalance]),
@@ -5657,7 +5662,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       ...todaysNewCustomers.map(c => [null, c.name, c.phone || '', c.address || '', c.service || '']),
       [],
       ['Outstanding Pending Dues (reference only, not in cash formula) —', 'Customer', 'Service(s)', 'Due'],
-      ...pendingGroups.map(g => [null, g.customerName, g.items.map(i => svcLabel(i)).join(', '), g.totalDue])
+      ...pendingGroups.map(g => [null, txnName(g), g.items.map(i => svcLabel(i)).join(', '), g.totalDue])
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
@@ -5722,7 +5727,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
             ),
             e('tbody', { className: 'divide-y divide-gray-100' }, ...todaysServiceGroups.map(g =>
               e('tr', { key: g.groupId },
-                e('td', { className: 'p-2 font-medium text-gray-800' }, g.customerName),
+                e('td', { className: 'p-2 font-medium text-gray-800' }, txnName(g)),
                 e('td', { className: 'p-2 text-gray-600' }, g.items.map(i => svcLabel(i)).join(', ')),
                 e('td', { className: 'p-2 text-gray-800' }, `₹${g.totalAmount}`),
                 e('td', { className: 'p-2 text-green-600 font-medium' }, `₹${g.totalPaid}`),
@@ -5796,7 +5801,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
         ),
         e('tbody', { className: 'divide-y divide-gray-100' }, ...pendingGroups.map(g =>
           e('tr', { key: g.groupId },
-            e('td', { className: 'p-2 font-medium text-gray-800' }, g.customerName),
+            e('td', { className: 'p-2 font-medium text-gray-800' }, txnName(g)),
             e('td', { className: 'p-2 text-gray-600' }, g.items.map(i => svcLabel(i)).join(', ')),
             e('td', { className: 'p-2 text-orange-600 font-medium' }, `₹${g.totalDue}`)
           )
@@ -5858,7 +5863,7 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
 
   return e('div', { className: 'space-y-4' },
     e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Reports & Invoices'),
-    e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(groups.map(g => ({ 'TXN ID': `GRP-${g.groupId}`, Date: g.date, Customer: g.customerName, Services: g.items.map(i => svcLabel(i)).join(', '), Amount: g.totalAmount, Paid: g.totalPaid, Due: g.totalDue, Status: g.status, 'Payment Mode': g.items.some(i => i.paymentMode === 'Online' || i.utrNumber || i.screenshotFileName) ? 'Online' : 'Cash', 'UTR Number': g.items.map(i => i.utrNumber).filter(Boolean).join(', '), 'Screenshot File Name': g.items.map(i => i.screenshotFileName).filter(Boolean).join(', '), Staff: g.staffName || '' })), `Reports_${fromDate}_to_${toDate}`) }),
+    e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(groups.map(g => ({ 'TXN ID': `GRP-${g.groupId}`, Date: g.date, Customer: txnName(g), Services: g.items.map(i => svcLabel(i)).join(', '), Amount: g.totalAmount, Paid: g.totalPaid, Due: g.totalDue, Status: g.status, 'Payment Mode': g.items.some(i => i.paymentMode === 'Online' || i.utrNumber || i.screenshotFileName) ? 'Online' : 'Cash', 'UTR Number': g.items.map(i => i.utrNumber).filter(Boolean).join(', '), 'Screenshot File Name': g.items.map(i => i.screenshotFileName).filter(Boolean).join(', '), Staff: g.staffName || '' })), `Reports_${fromDate}_to_${toDate}`) }),
     currentUser.role === 'admin' && e('div', { className: 'grid grid-cols-2 md:grid-cols-3 gap-4' },
       e(StatCard, { title: 'Total Invoiced', value: `₹${totalInvoiced}`, icon: e(Icon, { name: 'FileText', size: 22 }), color: 'bg-indigo-50 text-indigo-600' }),
       e(StatCard, { title: 'Total Collected', value: `₹${totalCollected}`, icon: e(Icon, { name: 'TrendingUp', size: 22 }), color: 'bg-green-50 text-green-600' }),
@@ -5878,7 +5883,7 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
           ...(groups.length === 0 ? [e('tr', { key: 'empty' }, e('td', { colSpan: 8, className: 'p-8 text-center text-gray-400' }, 'No entries for this period.'))] : groups.map(g =>
             e('tr', { key: g.groupId, className: 'hover:bg-gray-50' },
               e('td', { className: 'p-4 text-sm text-gray-500 font-mono' }, `GRP-${g.groupId}`),
-              e('td', { className: 'p-4 font-medium text-gray-800' }, g.customerName),
+              e('td', { className: 'p-4 font-medium text-gray-800' }, txnName(g)),
               e('td', { className: 'p-4 text-gray-600' }, g.items.map(i => svcLabel(i)).join(', ')),
               e('td', { className: 'p-4 text-sm text-gray-500' }, g.date),
               currentUser.role === 'admin' && e('td', { className: 'p-4 font-medium' }, `₹${g.totalAmount}`),
