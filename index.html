@@ -417,6 +417,38 @@ function groupTasks(taskList) {
   }).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (String(b.groupId)).localeCompare(String(a.groupId))));
 }
 
+// ── MONEY ACTUALLY RECEIVED IN A DATE RANGE ──
+// One definition of "Collected" for every screen that shows it (Dashboard, Reports & Invoices):
+// the cash/online really received from customers between `from` and `to` (inclusive), by the
+// day it was received:
+//   • entry-time payment — for tasks DATED in the range: paidAmount minus every later
+//     paymentHistory entry (that remainder is what was paid when the service was entered);
+//   • later due clearances — every paymentHistory entry whose own date is in the range, even
+//     if the task itself was entered on an earlier day.
+// Portal cost / expenses / pass-through are NOT deducted here — that is profit, not collection.
+// (Using a group's lifetime paidAmount instead makes a ₹50 payment today on an old ₹500 bill
+// look like ₹500 collected today.)
+function collectedBetween(taskList, from, to) {
+  const inR = d => d >= from && d <= to;
+  let entry = 0, later = 0, cash = 0, online = 0;
+  (taskList || []).forEach(t => {
+    const hist = t.paymentHistory || [];
+    const laterAll = hist.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    if (inR(t.date)) {
+      const init = Math.max(0, (Number(t.paidAmount) || 0) - laterAll);
+      entry += init;
+      if (t.paymentMode === 'Online') online += init; else cash += init;
+    }
+    hist.forEach(p => {
+      if (!inR(p.date)) return;
+      const a = Number(p.amount) || 0;
+      later += a;
+      if (p.mode === 'Online') online += a; else cash += a;
+    });
+  });
+  return { total: entry + later, entry, later, cash, online };
+}
+
 // ── ONLINE-PAID HELPER ──
 // How much of a task's money actually reached the Savings Account Balance, i.e. was paid
 // in "Online" mode. Two separate sources now:
@@ -805,16 +837,18 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
   const span = range === 'all' ? 0 : daysBetween(fromDate, toDate);
   const pFrom = span ? addDays(fromDate, -span) : null, pTo = span ? addDays(fromDate, -1) : null;
 
-  const initPaid = t => Math.max(0, (t.paidAmount || 0) - (t.paymentHistory || []).reduce((s, p) => s + p.amount, 0)) - (t.portalCost || 0);
   const calc = (f, to) => {
     const ts = tasks.filter(t => t.date >= f && t.date <= to);
     const sales = ts.reduce((s, t) => s + (t.price || 0), 0);
-    const hist = tasks.reduce((s, t) => s + (t.paymentHistory || []).filter(p => p.date >= f && p.date <= to).reduce((a, p) => a + p.amount, 0), 0);
-    const collected = ts.reduce((s, t) => s + initPaid(t), 0) + hist;
+    // Collected = money actually received in the range (see collectedBetween). Portal cost is a
+    // cost, not a reduction of what was collected, so it is taken off in the profit line below.
+    const col = collectedBetween(tasks, f, to);
+    const collected = col.total;
+    const portalCostSum = ts.reduce((s, t) => s + (Number(t.portalCost) || 0), 0);
     const exp = (expenses || []).filter(x => x.date >= f && x.date <= to).reduce((s, x) => s + x.cost, 0);
     const charge = (onlineTransactions || []).filter(x => x.date >= f && x.date <= to).reduce((s, x) => s + (Number(x.chargeAmount) || 0), 0);
     const passT = ts.reduce((s, t) => s + (Number(t.passThrough) || 0), 0);
-    return { ts, sales, collected, exp, charge, passT, profit: collected - exp - passT, custs: new Set(ts.map(t => t.customerId || t.customerName)).size };
+    return { ts, sales, collected, col, exp, charge, passT, profit: collected - portalCostSum - exp - passT, custs: new Set(ts.map(t => t.customerId || t.customerName)).size };
   };
   const cur = calc(fromDate, toDate), prev = pFrom ? calc(pFrom, pTo) : null;
   const dl = k => prev && prev[k] > 0 ? (cur[k] - prev[k]) / prev[k] * 100 : null;
@@ -826,7 +860,7 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
   const byCust = sumBy(ts, t => t.customerName, t => t.price || 0).slice(0, 10);
   const byStaff = sumBy(ts, t => t.staffName, t => t.price || 0);
   const dueCust = sumBy(tasks, t => t.customerName, dueOf).filter(x => x[1] > 0).slice(0, 8);
-  const mode = [['Cash', ts.filter(t => t.paymentMode !== 'Online').reduce((s, t) => s + Math.max(0, initPaid(t)), 0)], ['Online', ts.filter(t => t.paymentMode === 'Online').reduce((s, t) => s + Math.max(0, initPaid(t)), 0)]];
+  const mode = [['Cash', cur.col.cash], ['Online', cur.col.online]];
   const status = ['Successful', 'Processing', 'Pending'].map(s => [s, ts.filter(t => t.status === s).length]);
   const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], wdv = [0, 0, 0, 0, 0, 0, 0];
   ts.forEach(t => { wdv[new Date(t.date + 'T00:00:00Z').getUTCDay()] += t.price || 0; });
@@ -5858,7 +5892,7 @@ function ReportsInvoices({ tasks, setTasks, customers, setCustomers, appData, pe
   const groups = groupTasks(filteredTasks);
 
   const totalInvoiced = groups.reduce((s, g) => s + g.totalAmount, 0);
-  const totalCollected = groups.reduce((s, g) => s + g.totalPaid, 0);
+  const totalCollected = collectedBetween(tasks, fromDate, toDate).total;   // money received in these dates (not the groups' lifetime paid)
   const totalDue = groups.reduce((s, g) => s + g.totalDue, 0);
 
   return e('div', { className: 'space-y-4' },
