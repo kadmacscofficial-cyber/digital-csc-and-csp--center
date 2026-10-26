@@ -4193,6 +4193,212 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
 }
 // ════════ END DAY BOOK ════════
 
+// ════════ DAY BOOK CORE (pure): every movement of the day, per account ════════
+// Amounts are integer paise. Each event carries lines { a: account key, p: signed paise } where a is 'cash', 'acb' (Account Balance),
+// 'sav' (Savings), 'csc' (CSC Wallet) or the id of one of your accounts. Nothing here changes any balance: it only reads and lists.
+const dbP = x => Math.round((Number(x) || 0) * 100), DB_END = 9e15;
+function dbAllEvents(d, nm) {
+  const out = [];
+  const ev = (date, time, kind, text, lines) => { const m = {}; lines.forEach(l => { if (l.a && l.p) m[l.a] = (m[l.a] || 0) + l.p; }); const ls = Object.keys(m).filter(k => m[k]).map(k => ({ a: k, p: m[k] })); if (date && ls.length) out.push({ date, time: Number(time) || DB_END, kind, text, lines: ls }); };
+  bkArr(d.tasks).forEach(t => {
+    const later = bkArr(t.paymentHistory).reduce((s, p) => s + (Number(p.amount) || 0), 0), paid = Math.max(0, (Number(t.paidAmount) || 0) - later), who = (t.customerName || 'Customer') + ' — ' + (t.service || 'Service');
+    if (paid > 0) { if (t.paymentMode === 'Online') ev(t.date, t.id, 'Customer payment (Online)', who + (t.utrNumber ? ' · UTR ' + t.utrNumber : ''), [{ a: t.onlineToAcc || 'sav', p: dbP(t.onlineToAcc ? t.onlineAccAmt : paid) }]); else ev(t.date, t.id, 'Customer payment (Cash)', who, [{ a: 'cash', p: dbP(paid) }]); }
+    if (Number(t.portalCost) > 0) ev(t.date, t.id, 'Portal cost', who, [{ a: (!t.portalWallet || t.portalWallet === 'csc') ? 'csc' : t.portalWallet, p: -dbP(t.portalCost) }]);
+    if (Number(t.passThrough) > 0) ev(t.date, t.id, 'Pass-through to customer', who, [{ a: (t.passFrom || 'account') === 'account' ? 'acb' : t.passFrom, p: -dbP(t.passThrough) }]);
+    bkArr(t.paymentHistory).forEach(p => ev(p.date, DB_END, 'Due collected' + (p.mode === 'Online' ? ' (Online)' : ' (Cash)'), who, [{ a: p.mode === 'Online' ? 'sav' : 'cash', p: dbP(p.amount) }]));
+  });
+  bkArr(d.expenses).forEach(x => ev(x.date, x.id, 'Expense', x.name + (x.remarks ? ' (' + x.remarks + ')' : ''), [{ a: 'cash', p: -dbP(x.cost) }]));
+  bkArr(d.accountBalanceExpenses).forEach(x => ev(x.date, x.id, 'Account Balance expense', x.name || '', [{ a: 'acb', p: -dbP(x.cost) }]));
+  bkArr(d.savingsExpenses).forEach(x => ev(x.date, x.id, 'Savings expense', x.name || '', [{ a: 'sav', p: -dbP(x.cost) }]));
+  bkArr(d.cscWalletExpenses).forEach(x => ev(x.date, x.id, 'CSC Wallet expense', x.name || '', [{ a: 'csc', p: -dbP(x.cost) }]));
+  bkArr(d.cscWalletTopups).forEach(x => ev(x.date, x.id, 'Wallet Top-up', 'Savings → CSC Wallet', [{ a: 'csc', p: dbP(x.amount) }, { a: 'sav', p: -dbP(x.amount) }]));
+  bkArr(d.bankTransactions).forEach(t => {
+    const inP = dbP(t.cashIn), outP = dbP(t.cashOut), loc = saLocId(t.location), L = [{ a: 'cash', p: inP - outP }];
+    if (loc) L.push({ a: loc, p: outP - inP });
+    else if (t.location === 'Digipay payout') { const pp = dbP(t.payoutAmount); L.push({ a: t.digipayAccId, p: -pp }, { a: 'sav', p: pp }); }
+    else {
+      L.push({ a: 'acb', p: (t.location === 'Digipay' ? 0 : outP) - inP });
+      if (t.location === 'Digipay') L.push({ a: 'sav', p: outP });
+      if (t.location === 'Self Transfer') { const sp = dbP(t.selfTransferAmount), dep = t.selfTransferType === 'deposit'; L.push({ a: t.selfAccId || 'sav', p: dep ? sp : -sp }, { a: 'acb', p: dep ? -sp : sp }); }
+    }
+    const kind = t.location === 'Self Transfer' ? 'Self Transfer' : t.location === 'Digipay payout' ? 'Digipay payout' : outP ? 'Bank Cash Out' : 'Bank Cash In';
+    ev(t.date, t.id, kind, (t.customerName || '') + (loc ? ' · ' + nm(loc) : (t.location && t.location !== 'Bank' ? ' · ' + t.location : '')), L);
+  });
+  bkArr(d.onlineTransactions).forEach(t => {
+    const amt = dbP(t.amount), rec = t.type === 'received';
+    ev(t.date, t.id, 'Online ' + (rec ? 'Received' : 'Transfer'), (t.name || '') + (t.utrNumber ? ' · UTR ' + t.utrNumber : ''), [{ a: 'cash', p: rec ? -amt : amt }, { a: t.toSavings ? (t.accId || 'sav') : 'acb', p: rec ? amt : -amt }]);
+    const ch = dbP(t.chargeAmount); if (ch > 0) ev(t.date, t.id, 'Online Charge', t.name || '', [{ a: t.chargeMode === 'cash' ? 'cash' : (t.chargeAccId || 'sav'), p: ch }]);
+  });
+  bkArr(d.branchDeposits).forEach(b => ev(b.date, b.id, 'Branch Deposit', b.branchName || '', [{ a: 'cash', p: -dbP(b.myCash) }, { a: 'acb', p: dbP(b.myCash) + dbP(b.outsideCash) }]));
+  bkArr(d.pendingCash).forEach(r => {
+    ev(r.date, r.id, 'Pending Cash', r.customerName + ' · total ' + saFmt(dbP(r.total)) + ', given ' + saFmt(dbP(r.paidNow)), [{ a: saLocId(r.location) || 'acb', p: dbP(r.total) }, { a: 'cash', p: -dbP(r.paidNow) }]);
+    bkArr(r.payments).forEach(p => ev(p.date, p.id, 'Pending cash paid', r.customerName, [{ a: 'cash', p: -dbP(p.amount) }]));
+  });
+  bkArr(d.moneyTransfers).forEach(t => ev(t.date, t.at ? Date.parse(t.at) : t.id, 'Money Transfer', nm(t.from) + ' → ' + nm(t.to) + (t.ref ? ' · Ref ' + t.ref : '') + (t.note ? ' · ' + t.note : ''), [{ a: t.from, p: -t.amount }, { a: t.to, p: t.amount }]));
+  bkArr(d.simpleTx).forEach(t => ev(t.date, t.at ? Date.parse(t.at) : t.id, 'Account entry', (t.kind === 'move' ? nm(t.from) + ' → ' + nm(t.to) : t.kind === 'in' ? 'Money in' : 'Money out') + (t.note ? ' · ' + t.note : ''), [{ a: t.from, p: -t.amount }, { a: t.to, p: t.amount }]));
+  const am = d.addMoreHistory && typeof d.addMoreHistory === 'object' ? d.addMoreHistory : {};
+  Object.keys(am).forEach(date => bkArr(am[date]).filter(x => typeof x === 'number').forEach(x => ev(date, DB_END, 'Add More Balance', 'Cash added to the day', [{ a: 'cash', p: dbP(x) }, { a: 'acb', p: -dbP(x) }])));
+  return out.map((x, i) => ({ ...x, seq: i })).sort((a, b) => a.date.localeCompare(b.date) || a.time - b.time || a.seq - b.seq);
+}
+const dbDay = (all, date) => all.filter(x => x.date === date);
+const dbSum = (evs, k) => evs.reduce((s, x) => s + x.lines.reduce((t, l) => t + (l.a === k ? l.p : 0), 0), 0);
+const dbSig = evs => { let h = 5381; const s = evs.map(x => x.kind + '|' + x.text + '|' + x.lines.map(l => l.a + ':' + l.p).join(',')).join(';'); for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return evs.length + ':' + h; };
+const dbPrevDay = date => new Date(Date.parse(date + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+// Opening of each account for a date. A closed day just before it (or before a quiet gap) hands over its counted closing; otherwise cash comes from the Banking opening
+// (minus Add More, which is listed as an entry) and every account from "balance now minus everything that moved from that date on".
+function dbOpening(date, all, cur, books, keys, cashFallback) {
+  const closed = Object.keys(books || {}).filter(k => k < date).sort(), prev = closed[closed.length - 1];
+  const chain = prev && !all.some(x => x.date > prev && x.date < date) ? books[prev] : null;
+  const opening = {}, src = {};
+  keys.forEach(k => {
+    const handed = chain && chain.actual && chain.actual[k] !== undefined ? chain.actual[k] : (chain && chain.expected && chain.expected[k] !== undefined ? chain.expected[k] : null);
+    if (handed !== null) { opening[k] = handed; src[k] = 'closing of ' + prev; }
+    else if (k === 'cash') { opening[k] = cashFallback; src[k] = 'Banking opening'; }
+    else { opening[k] = (cur[k] || 0) - dbSum(all.filter(x => x.date >= date), k); src[k] = 'calculated'; }
+  });
+  return { opening, src };
+}
+// Statement rows for one account (or the cash book when key = 'cash' and all = true): running balance after each entry.
+function dbStatement(evs, key, opening) {
+  let run = opening; const rows = [];
+  evs.forEach(x => { const p = dbSum([x], key); if (!p) return; run += p; rows.push({ ev: x, p, bal: run }); });
+  const inn = rows.reduce((s, r) => s + (r.p > 0 ? r.p : 0), 0), out = rows.reduce((s, r) => s + (r.p < 0 ? -r.p : 0), 0);
+  return { rows, inn, out, closing: opening + inn - out };
+}
+// ════════ END DAY BOOK CORE ════════
+
+// ════════ DAY BOOK UI (menu: Day Book) ════════
+const dbRs = p => 'Rs. ' + (p / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dbTime = x => (x.time > 1e12 && x.time < 8e15) ? new Date(x.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+const dbPlain = evs => evs.map(x => ({ date: x.date, time: x.time, kind: x.kind, text: x.text, lines: x.lines }));   // what a closed page keeps
+// Rows for the summary, Excel and PDF: opening, in, out, expected, counted, difference per account.
+function dbSummary(keys, nm, evs, opening, actual) {
+  return keys.map(k => { const inn = evs.reduce((s, x) => s + x.lines.reduce((t, l) => t + (l.a === k && l.p > 0 ? l.p : 0), 0), 0), out = evs.reduce((s, x) => s + x.lines.reduce((t, l) => t + (l.a === k && l.p < 0 ? -l.p : 0), 0), 0), op = opening[k] || 0, exp = op + inn - out, act = actual && actual[k] !== undefined ? actual[k] : null; return { key: k, name: nm(k), opening: op, inn, out, expected: exp, actual: act, diff: act === null ? null : act - exp }; });
+}
+function dbExcel(date, title, nm, evs, summary, rec) {
+  const m = p => p / 100, wb = XLSX.utils.book_new();
+  let run = (summary.find(r => r.key === 'cash') || {}).opening || 0;
+  const head = [[title + ' — DAY BOOK'], ['Date', date], ['Status', rec ? 'Closed by ' + rec.closedBy + ' on ' + new Date(rec.closedAt).toLocaleString('en-IN') : 'Not closed (live)'], []];
+  const sumRows = [['Account', 'Opening', 'In', 'Out', 'Expected Closing', 'Counted / Seen', 'Difference'], ...summary.map(r => [r.name, m(r.opening), m(r.inn), m(r.out), m(r.expected), r.actual === null ? '' : m(r.actual), r.diff === null ? '' : m(r.diff)])];
+  const book = [['Time', 'Entry', 'Details', 'Cash In', 'Cash Out', 'Running Cash', 'Other accounts'], ['', 'Opening cash', '', '', '', m(run), ''], ...evs.map(x => { const c = dbSum([x], 'cash'); run += c; return [dbTime(x), x.kind, x.text, c > 0 ? m(c) : '', c < 0 ? m(-c) : '', m(run), x.lines.filter(l => l.a !== 'cash').map(l => nm(l.a) + ' ' + (l.p > 0 ? '+' : '-') + m(Math.abs(l.p))).join('; ')]; }), ['', 'Closing cash (expected)', '', '', '', m(run), '']];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([...head, ...sumRows, [], ['Reason for difference', rec && rec.reason || ''], [], ...book]), 'Day Book');
+  summary.forEach(r => { if (r.key === 'cash') return; let b = r.opening; const rows = evs.filter(x => dbSum([x], r.key)).map(x => { const p = dbSum([x], r.key); b += p; return [dbTime(x), x.kind, x.text, p < 0 ? m(-p) : '', p > 0 ? m(p) : '', m(b)]; }); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[r.name + ' — ' + date], ['Time', 'Entry', 'Details', 'Debit (Out)', 'Credit (In)', 'Balance'], ['', 'Opening', '', '', '', m(r.opening)], ...rows, ['', 'Closing', '', '', '', m(b)]]), r.name.replace(/[\[\]\*\?:\/\\]/g, ' ').slice(0, 28) || r.key); });
+  XLSX.writeFile(wb, 'DayBook_' + date + '.xlsx');
+}
+function dbPdf(date, title, nm, evs, summary, rec) {
+  const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  doc.setFontSize(14); doc.text(title + ' - Day Book', 14, 15); doc.setFontSize(10); doc.text('Date: ' + date + (rec ? '   Closed by ' + rec.closedBy + ' on ' + new Date(rec.closedAt).toLocaleString('en-IN') : '   (not closed)'), 14, 22);
+  doc.autoTable({ startY: 27, head: [['Account', 'Opening', 'In', 'Out', 'Expected', 'Counted', 'Diff']], body: summary.map(r => [r.name, dbRs(r.opening), dbRs(r.inn), dbRs(r.out), dbRs(r.expected), r.actual === null ? '-' : dbRs(r.actual), r.diff === null ? '-' : dbRs(r.diff)]), styles: { fontSize: 8 }, headStyles: { fillColor: [67, 56, 202] } });
+  let y = doc.lastAutoTable.finalY + 6; if (rec && rec.reason) { doc.setFontSize(9); doc.text('Reason for difference: ' + rec.reason, 14, y); y += 6; }
+  let run = (summary.find(r => r.key === 'cash') || {}).opening || 0;
+  const body = [['', 'Opening cash', '', '', dbRs(run)], ...evs.map(x => { const c = dbSum([x], 'cash'); run += c; return [dbTime(x), x.kind + ' - ' + x.text + (x.lines.some(l => l.a !== 'cash') ? ' [' + x.lines.filter(l => l.a !== 'cash').map(l => nm(l.a) + ' ' + (l.p > 0 ? '+' : '-') + dbRs(Math.abs(l.p))).join('; ') + ']' : ''), c > 0 ? dbRs(c) : '', c < 0 ? dbRs(-c) : '', dbRs(run)]; }), ['', 'Closing cash (expected)', '', '', dbRs(run)]];
+  doc.autoTable({ startY: y, head: [['Time', 'Entry', 'Cash In', 'Cash Out', 'Running']], body, styles: { fontSize: 7.5 }, headStyles: { fillColor: [67, 56, 202] }, columnStyles: { 1: { cellWidth: 82 } } });
+  doc.save('DayBook_' + date + '.pdf');
+}
+function DayBookCloseModal({ date, rows, isToday, onClose, onConfirm }) {
+  const [counts, setCounts] = useState({}), [coins, setCoins] = useState(''), [manual, setManual] = useState(''), [reason, setReason] = useState('');
+  const [seen, setSeen] = useState(() => Object.fromEntries(rows.filter(r => r.key !== 'cash').map(r => [r.key, String(((r.app !== null ? r.app : r.expected)) / 100)])));
+  const cnt = d => { const t = String(counts[d] == null ? '' : counts[d]).trim(); return t === '' ? 0 : (/^\d+$/.test(t) ? Number(t) : null); };
+  const counted = DB_NOTES.some(d => String(counts[d] == null ? '' : counts[d]).trim() !== '') || coins.trim() !== '', coinsP = coins.trim() === '' ? 0 : saParse(coins);
+  const badCount = DB_NOTES.some(d => cnt(d) === null) || coinsP === null || coinsP < 0;
+  const cashP = counted ? (badCount ? null : DB_NOTES.reduce((s, d) => s + d * cnt(d) * 100, 0) + coinsP) : (manual.trim() === '' ? null : saParse(manual));
+  const cashRow = rows.find(r => r.key === 'cash'), others = rows.filter(r => r.key !== 'cash');
+  const act = { cash: cashP }; others.forEach(r => { act[r.key] = saParse(String(seen[r.key] == null ? '' : seen[r.key]).trim() === '' ? '0' : seen[r.key]); });
+  const ready = cashP !== null && cashP >= 0 && others.every(r => act[r.key] !== null);
+  const diffs = ready ? rows.filter(r => act[r.key] - r.expected !== 0) : [];
+  const ok = ready && diffs.length === 0, need = ready && diffs.length > 0 && reason.trim().length < 3;
+  const inp = 'px-2 py-1.5 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300', th = 'px-3 py-2 text-xs font-semibold text-gray-500 uppercase';
+  const confirm = () => onConfirm({ actual: Object.fromEntries(rows.map(r => [r.key, act[r.key]])), reason: reason.trim() });
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4' },
+    e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden' },
+      e('div', { className: 'bg-gradient-to-r from-indigo-700 to-purple-700 text-white px-5 py-4 flex justify-between items-center' }, e('div', null, e('h3', { className: 'text-lg font-bold' }, 'Close Day Book — ' + date), e('p', { className: 'text-xs opacity-80' }, 'Count the cash and check every account against what the Day Book expects')), e('button', { onClick: onClose, className: 'p-1.5 rounded-lg hover:bg-white hover:bg-opacity-20' }, e(Icon, { name: 'X', size: 18 }))),
+      e('div', { className: 'p-5 overflow-y-auto grid grid-cols-1 lg:grid-cols-5 gap-5' },
+        e('div', { className: 'lg:col-span-2 rounded-xl border border-gray-200 p-4' },
+          e('p', { className: 'text-sm font-bold text-gray-800' }, 'Count the cash'), e('p', { className: 'text-[11px] text-gray-400 mb-3' }, 'Only for adding up. The note counts are not saved.'),
+          DB_NOTES.map(d => e('div', { key: d, className: 'flex items-center gap-2 mb-2' }, e('span', { className: 'w-14 text-sm font-semibold text-gray-700' }, '₹' + d), e('span', { className: 'text-gray-400 text-sm' }, '×'), e('input', { value: counts[d] == null ? '' : counts[d], onChange: ev => setCounts(p => ({ ...p, [d]: ev.target.value })), inputMode: 'numeric', placeholder: '0', className: inp + ' w-20 text-center' }), e('span', { className: 'flex-1 text-right text-sm ' + (cnt(d) === null ? 'text-red-500' : 'text-gray-700') }, cnt(d) === null ? 'whole number' : saFmt(d * cnt(d) * 100)))),
+          e('div', { className: 'flex items-center gap-2 mb-3' }, e('span', { className: 'w-14 text-sm font-semibold text-gray-700' }, 'Coins'), e('span', { className: 'text-gray-400 text-sm' }, '₹'), e('input', { value: coins, onChange: ev => setCoins(ev.target.value), inputMode: 'decimal', placeholder: '0', className: inp + ' w-20 text-center' })),
+          e('div', { className: 'border-t pt-3' }, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, counted ? 'Cash counted' : 'Or type the cash you have (₹)'), counted ? e('div', { className: inp + ' bg-indigo-50 font-bold text-indigo-700' }, cashP === null ? '—' : saFmt(cashP)) : e('input', { value: manual, onChange: ev => setManual(ev.target.value), inputMode: 'decimal', placeholder: 'required', className: inp + ' w-full font-bold' }))),
+        e('div', { className: 'lg:col-span-3 rounded-xl border border-gray-200 p-4 overflow-x-auto' },
+          e('table', { className: 'w-full text-left' }, e('thead', null, e('tr', null, e('th', { className: th }, 'Account'), e('th', { className: th + ' text-right' }, 'Day Book'), isToday && e('th', { className: th + ' text-right' }, 'App now'), e('th', { className: th + ' text-right' }, 'You see'), e('th', { className: th + ' text-right' }, 'Diff'))),
+            e('tbody', null, [cashRow, ...others].map(r => { const a = act[r.key], d = a === null || a === undefined ? null : a - r.expected; return e('tr', { key: r.key, className: 'border-t border-gray-100' },
+              e('td', { className: 'px-3 py-2 text-sm font-medium text-gray-800' }, r.name), e('td', { className: 'px-3 py-2 text-sm text-right' }, saFmt(r.expected)), isToday && e('td', { className: 'px-3 py-2 text-sm text-right text-gray-500' }, r.app === null ? '—' : saFmt(r.app)),
+              e('td', { className: 'px-3 py-2 text-right' }, r.key === 'cash' ? e('span', { className: 'text-sm font-semibold' }, cashP === null ? 'count →' : saFmt(cashP)) : e('input', { value: seen[r.key], onChange: ev => setSeen(v => ({ ...v, [r.key]: ev.target.value })), inputMode: 'decimal', className: inp + ' w-32 text-right' + (a === null ? ' border-red-400' : '') })),
+              e('td', { className: 'px-3 py-2 text-sm text-right font-bold ' + (d === null ? 'text-gray-300' : d === 0 ? 'text-green-600' : 'text-red-600') }, d === null ? '—' : d === 0 ? '✓' : (d > 0 ? '+' : '−') + saFmt(Math.abs(d)))); }))))),
+      e('div', { className: 'border-t bg-gray-50 px-5 py-3 space-y-2' },
+        ready && diffs.length > 0 && e('div', null, e('p', { className: 'text-sm font-semibold text-red-600' }, diffs.length + ' account' + (diffs.length > 1 ? 's' : '') + ' do not match: ' + diffs.map(r => r.name).join(', ')), e('textarea', { value: reason, onChange: ev => setReason(ev.target.value), rows: 2, placeholder: 'Reason for the difference (required to close)', className: inp + ' w-full mt-1' })),
+        ok && e('p', { className: 'text-sm font-semibold text-green-700' }, 'Everything matches.'), !ready && e('p', { className: 'text-xs text-gray-400' }, 'Enter the cash you have and check each balance.'),
+        e('div', { className: 'flex justify-end gap-2' }, e('button', { onClick: onClose, className: 'px-4 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50' }, 'Cancel'), e('button', { onClick: confirm, disabled: !ready || need, className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 ' + (ok ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700') }, ok ? 'All OK — Close Day' : 'Close with difference')))));
+}
+function DailyDayBook({ appData, persist, currentUser, showMessage, businessProfile, walletInfo }) {
+  const admin = currentUser.role === 'admin', today = todayStr, books = (appData && appData.dayBooks) || {};
+  const [date, setDate] = useState(today), [tab, setTab] = useState('cash'), [closing, setClosing] = useState(false);
+  const wi = k => ((walletInfo || {})[k] || {}).name || '', sa = bkArr(appData.simpleAccounts);
+  const names = { cash: 'Cash', acb: wi('account') || 'Account Balance', sav: wi('savings') || 'Savings Account', csc: wi('csc') || 'CSC Digital Seva Wallet', ...Object.fromEntries(sa.map(a => [a.id, a.name])) };
+  const nm = k => names[k] || 'Deleted account';
+  const d = { ...appData, bankTransactions: bkArr(appData.bankTransactions), onlineTransactions: bkArr(appData.onlineTransactions), tasks: bkArr(appData.tasks) };
+  const all = dbAllEvents(d, nm), rec = books[date] || null, live = dbDay(all, date), evs = rec ? bkArr(rec.events) : live;
+  const bal = bkCalcBalances(d, today), sb = saBalances(sa, bkArr(appData.simpleTx), bkWithPending(d.bankTransactions, appData.pendingCash), bkArr(appData.moneyTransfers), d.onlineTransactions, d.tasks);
+  const cur = { acb: Math.round(bal.accountBalance * 100), sav: Math.round(bal.savingsBalance * 100), csc: Math.round(bal.cscWalletBalance * 100), ...sb };
+  const amDay = bkArr(appData.addMoreHistory && appData.addMoreHistory[date]).filter(x => typeof x === 'number').reduce((s, x) => s + dbP(x), 0);
+  const baseKeys = ['cash', 'acb', 'sav', 'csc', ...sa.filter(a => a.active !== false).map(a => a.id)], extra = [...new Set(evs.flatMap(x => x.lines.map(l => l.a)))].filter(k => !baseKeys.includes(k));
+  const keys = rec ? Object.keys(rec.opening).sort((a, b) => baseKeys.indexOf(a) - baseKeys.indexOf(b)) : [...baseKeys, ...extra];
+  const op = rec ? { opening: rec.opening, src: {} } : dbOpening(date, all, cur, books, keys, dbP((appData.bankingOpeningBalances || {})[date]) - amDay);
+  const summary = dbSummary(keys, nm, evs, op.opening, rec ? rec.actual : null), tabKey = keys.includes(tab) ? tab : 'cash', S = summary.find(r => r.key === tabKey) || summary[0];
+  const changed = rec && dbSig(live) !== rec.sig, isToday = date === today, sum0 = summary.find(r => r.key === 'cash');
+  const move = n => { const t = new Date(Date.parse(date + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10); if (t <= today) setDate(t); };
+  const doClose = res => {
+    const expected = Object.fromEntries(summary.map(r => [r.key, r.expected])), diff = Object.fromEntries(summary.map(r => [r.key, res.actual[r.key] - r.expected]));
+    const record = { date, opening: op.opening, openingSrc: op.src, events: dbPlain(evs), sig: dbSig(evs), expected, actual: res.actual, diff, reason: res.reason, closedBy: currentUser.name, closedAt: new Date().toISOString(), names: Object.fromEntries(keys.map(k => [k, nm(k)])) };
+    persist({ ...appData, dayBooks: { ...books, [date]: record } });
+    const bad = summary.filter(r => diff[r.key] !== 0).length; drvAudit(currentUser, 'Day Book Closed', date + (bad ? ' — ' + bad + ' difference(s): ' + res.reason : ' — all matched'));
+    setClosing(false); showMessage(bad ? 'Day Book closed with a difference.' : 'Day Book closed. All OK!', bad ? 'error' : 'success');
+  };
+  const reopen = () => { if (!window.confirm('Reopen the Day Book for ' + date + '? The saved page will be removed and the day becomes live again.')) return; const nb = { ...books }; delete nb[date]; persist({ ...appData, dayBooks: nb }); drvAudit(currentUser, 'Day Book Reopened', date + ' (was closed by ' + rec.closedBy + ')'); showMessage('Day Book reopened.'); };
+  const th = 'px-3 py-2 text-xs font-semibold text-gray-500 uppercase', td = 'px-3 py-2 text-sm', prof = (businessProfile && businessProfile.name) || 'CSC';
+  let run = S.opening, cashRun = (sum0 || {}).opening || 0;
+  const cashRows = tabKey === 'cash' ? evs.map(x => { const c = dbSum([x], 'cash'); cashRun += c; return { x, c, bal: cashRun }; }) : [];
+  const accRows = tabKey !== 'cash' ? evs.filter(x => dbSum([x], tabKey)).map(x => { const p = dbSum([x], tabKey); run += p; return { x, p, bal: run }; }) : [];
+  const closed = Object.keys(books).sort().reverse();
+  return e('div', { className: 'space-y-4' },
+    closing && e(DayBookCloseModal, { date, isToday, rows: summary.map(r => ({ key: r.key, name: r.name, expected: r.expected, app: isToday && r.key !== 'cash' && cur[r.key] !== undefined ? cur[r.key] : null })), onClose: () => setClosing(false), onConfirm: doClose }),
+    e('div', { className: 'flex flex-wrap items-center gap-3' },
+      e('button', { onClick: () => move(-1), className: 'px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm' }, '‹'),
+      e('input', { type: 'date', value: date, max: today, onChange: ev => ev.target.value && setDate(ev.target.value), className: 'px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm' }),
+      e('button', { onClick: () => move(1), disabled: isToday, className: 'px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm disabled:opacity-40' }, '›'),
+      rec ? e('span', { className: 'px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700' }, 'Closed by ' + rec.closedBy + ' · ' + new Date(rec.closedAt).toLocaleString('en-IN')) : e('span', { className: 'px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700' }, 'Open'),
+      e('div', { className: 'flex-1' }),
+      e('button', { onClick: () => dbExcel(date, prof, nm, evs, summary, rec), className: 'px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm' }, 'Excel'),
+      e('button', { onClick: () => dbPdf(date, prof, nm, evs, summary, rec), className: 'px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm' }, 'PDF'),
+      admin && !rec && e('button', { onClick: () => setClosing(true), className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700' }, 'Close Day Book'),
+      admin && rec && e('button', { onClick: reopen, className: 'px-4 py-2 rounded-lg text-sm font-semibold border border-red-300 text-red-600 hover:bg-red-50' }, 'Reopen')),
+    changed && e('div', { className: 'rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 font-medium' }, 'Close-এর পরে বদলানো হয়েছে: এই দিনের কোনো এন্ট্রি Close করার পর বদলেছে। নিচের পাতা Close করার সময়ের হিসাবই দেখাচ্ছে।'),
+    rec && rec.reason && e('div', { className: 'rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800' }, 'Reason for difference: ' + rec.reason),
+    e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 p-4 overflow-x-auto' },
+      e('p', { className: 'text-sm font-bold text-gray-800 mb-2' }, 'Opening · ' + date),
+      e('div', { className: 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3' }, summary.map(r => e('div', { key: r.key, className: 'rounded-lg border border-gray-200 p-3' }, e('p', { className: 'text-xs text-gray-500 truncate' }, r.name), e('p', { className: 'text-base font-bold text-gray-800' }, saFmt(r.opening)), e('p', { className: 'text-[10px] text-gray-400' }, rec ? 'saved' : (op.src[r.key] || ''))))),
+    ),
+    e('div', { className: 'flex flex-wrap gap-2' }, summary.map(r => e('button', { key: r.key, onClick: () => setTab(r.key), className: 'px-4 py-2 rounded-lg text-sm font-medium ' + (tabKey === r.key ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50') }, r.name))),
+    e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto' },
+      e('table', { className: 'w-full text-left' },
+        e('thead', { className: 'bg-gray-50' }, e('tr', null, e('th', { className: th }, 'Time'), e('th', { className: th }, 'Entry'), tabKey === 'cash' ? [e('th', { key: 'i', className: th + ' text-right' }, 'Cash In'), e('th', { key: 'o', className: th + ' text-right' }, 'Cash Out'), e('th', { key: 'r', className: th + ' text-right' }, 'Running Cash'), e('th', { key: 'a', className: th }, 'Other accounts')] : [e('th', { key: 'i', className: th + ' text-right' }, 'Debit (Out)'), e('th', { key: 'o', className: th + ' text-right' }, 'Credit (In)'), e('th', { key: 'r', className: th + ' text-right' }, 'Balance')])),
+        e('tbody', null,
+          e('tr', { className: 'bg-indigo-50' }, e('td', { className: td }), e('td', { className: td + ' font-semibold text-indigo-700', colSpan: tabKey === 'cash' ? 3 : 2 }, 'Opening ' + S.name), e('td', { className: td + ' text-right font-bold text-indigo-700' }, saFmt(S.opening)), tabKey === 'cash' && e('td')),
+          (tabKey === 'cash' ? cashRows : accRows).length === 0 && e('tr', null, e('td', { colSpan: 6, className: 'p-6 text-center text-sm text-gray-400' }, 'No entries for this day.')),
+          tabKey === 'cash' ? cashRows.map((r, i) => e('tr', { key: i, className: 'border-t border-gray-100' }, e('td', { className: td + ' text-gray-400 whitespace-nowrap' }, dbTime(r.x)), e('td', { className: td }, e('span', { className: 'font-medium text-gray-800' }, r.x.kind), e('span', { className: 'text-gray-500' }, ' — ' + r.x.text)), e('td', { className: td + ' text-right text-green-700' }, r.c > 0 ? saFmt(r.c) : ''), e('td', { className: td + ' text-right text-red-600' }, r.c < 0 ? saFmt(-r.c) : ''), e('td', { className: td + ' text-right font-medium' }, saFmt(r.bal)), e('td', { className: 'px-3 py-2 text-xs text-gray-500' }, r.x.lines.filter(l => l.a !== 'cash').map(l => nm(l.a) + ' ' + (l.p > 0 ? '+' : '−') + saFmt(Math.abs(l.p))).join(' · '))))
+            : accRows.map((r, i) => e('tr', { key: i, className: 'border-t border-gray-100' }, e('td', { className: td + ' text-gray-400 whitespace-nowrap' }, dbTime(r.x)), e('td', { className: td }, e('span', { className: 'font-medium text-gray-800' }, r.x.kind), e('span', { className: 'text-gray-500' }, ' — ' + r.x.text)), e('td', { className: td + ' text-right text-red-600' }, r.p < 0 ? saFmt(-r.p) : ''), e('td', { className: td + ' text-right text-green-700' }, r.p > 0 ? saFmt(r.p) : ''), e('td', { className: td + ' text-right font-medium' }, saFmt(r.bal)))),
+          e('tr', { className: 'border-t-2 border-gray-200 bg-gray-50' }, e('td'), e('td', { className: td + ' font-bold text-gray-700' }, 'Total · ' + S.name), e('td', { className: td + ' text-right font-bold text-green-700' }, saFmt(S.inn)), e('td', { className: td + ' text-right font-bold text-red-600' }, saFmt(S.out)), e('td', { className: td + ' text-right font-bold text-indigo-700' }, 'Expected ' + saFmt(S.expected)), tabKey === 'cash' && e('td'))))),
+    e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 p-4 overflow-x-auto' },
+      e('p', { className: 'text-sm font-bold text-gray-800 mb-2' }, 'Day summary'),
+      e('table', { className: 'w-full text-left' }, e('thead', null, e('tr', null, ['Account', 'Opening', 'In', 'Out', 'Expected Closing', rec ? 'Counted / Seen' : '', rec ? 'Difference' : ''].map((h, i) => e('th', { key: i, className: th + (i ? ' text-right' : '') }, h)))),
+        e('tbody', null, summary.map(r => e('tr', { key: r.key, className: 'border-t border-gray-100' }, e('td', { className: td + ' font-medium' }, r.name), e('td', { className: td + ' text-right' }, saFmt(r.opening)), e('td', { className: td + ' text-right text-green-700' }, saFmt(r.inn)), e('td', { className: td + ' text-right text-red-600' }, saFmt(r.out)), e('td', { className: td + ' text-right font-bold' }, saFmt(r.expected)), e('td', { className: td + ' text-right' }, rec && r.actual !== null ? saFmt(r.actual) : ''), e('td', { className: td + ' text-right font-bold ' + (r.diff === 0 ? 'text-green-600' : 'text-red-600') }, rec && r.diff !== null ? (r.diff === 0 ? '✓' : saFmt(r.diff)) : ''))),
+          e('tr', { className: 'border-t-2 border-gray-200 bg-gray-50' }, e('td', { className: td + ' font-bold' }, 'Total of all'), e('td', { className: td + ' text-right font-bold' }, saFmt(summary.reduce((s, r) => s + r.opening, 0))), e('td'), e('td'), e('td', { className: td + ' text-right font-bold text-indigo-700' }, saFmt(summary.reduce((s, r) => s + r.expected, 0))), e('td'), e('td'))))),
+    e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 p-4 overflow-x-auto' },
+      e('p', { className: 'text-sm font-bold text-gray-800 mb-2' }, 'Closed days'),
+      closed.length === 0 ? e('p', { className: 'text-sm text-gray-400 py-3' }, 'No day has been closed yet.') : e('table', { className: 'w-full text-left' }, e('thead', null, e('tr', null, ['Date', 'Opening cash', 'Closing cash', 'Difference', 'Closed by', ''].map((h, i) => e('th', { key: i, className: th + (i === 1 || i === 2 ? ' text-right' : '') }, h)))),
+        e('tbody', null, closed.map(k => { const b = books[k], bad = Object.keys(b.diff || {}).filter(x => b.diff[x] !== 0), ch = dbSig(dbDay(all, k)) !== b.sig; return e('tr', { key: k, onClick: () => { setDate(k); setTab('cash'); window.scrollTo(0, 0); }, className: 'border-t border-gray-100 cursor-pointer hover:bg-indigo-50' }, e('td', { className: td + ' font-medium' }, k), e('td', { className: td + ' text-right' }, saFmt((b.opening || {}).cash || 0)), e('td', { className: td + ' text-right' }, saFmt((b.actual || {}).cash || 0)), e('td', { className: td + ' font-semibold ' + (bad.length ? 'text-red-600' : 'text-green-600') }, bad.length ? bad.length + ' account' + (bad.length > 1 ? 's' : '') + ' off' : 'All OK'), e('td', { className: td + ' text-gray-500' }, b.closedBy), e('td', { className: td + ' text-xs text-red-600' }, ch ? 'changed after close' : '')); })))));
+}
+// ════════ END DAY BOOK UI ════════
+
 function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBalances, setOpeningBalances, setOpeningBalanceFor, applyDayBook = () => {}, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses, setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors = {}, setWalletColors = () => {}, walletInfo = {}, setWalletInfo = () => {}, simpleAccounts = [], simpleTx = [], setSimpleAccounts = () => {}, moneyTransfers = [], setMoneyTransfers = () => {} }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [form, setForm] = useState({ customerName: '', cashIn: '', cashOut: '', location: 'Bank', selfTransferType: 'deposit', selfAccId: 'sav' });
@@ -7163,6 +7369,7 @@ function App() {
     { id: 'stock', label: 'Stock', icon: 'Package' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
+    { id: 'daybook', label: 'Day Book', icon: 'Wallet' },
     { id: 'sss', label: 'SSS Reports', icon: 'Shield' },
     ...(currentUser.role === 'admin' ? [
       { id: 'accounts', label: 'Accounts', icon: 'Wallet' },
@@ -7173,7 +7380,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', accounts: 'Accounts', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', queue: 'Serial / Token', inquiry: 'Inquiries', documents: 'Documents', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', accounts: 'Accounts', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', queue: 'Serial / Token', inquiry: 'Inquiries', documents: 'Documents', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', daybook: 'Day Book', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -7235,6 +7442,7 @@ function App() {
         activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'cashclosing' && e(DailyCashClosing, { tasks, expenses, bankTransactions, bankingOpeningBalances, branchDeposits, pendingCash, cashClosingLogs, setCashClosingLogs, onlineTransactions, customers, currentUser, showMessage, businessProfile }),
+        activeTab === 'daybook' && e(DailyDayBook, { appData, persist, currentUser, showMessage, businessProfile, walletInfo }),
         activeTab === 'sss' && e(SSSReports, { appData, persist, currentUser, showMessage }),
         activeTab === 'performance' && currentUser.role === 'admin' && e(StaffPerformance, { tasks, users, expenses }),
         activeTab === 'auditlog' && currentUser.role === 'admin' && e(AuditLog, { auditLogs: gl('auditLogs') || [] }),
