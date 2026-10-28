@@ -4134,6 +4134,9 @@ const DB_NOTES = [500, 200, 100, 50, 20, 10];
 function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose }) {
   const [counts, setCounts] = useState({}), [coins, setCoins] = useState(''), [manual, setManual] = useState(String(openingCash || 0));
   const [vals, setVals] = useState(() => Object.fromEntries(rows.map(r => [r.key, String(r.bal / 100)])));
+  const [touched, setTouched] = useState({});   // values you typed in (even the same number) are kept as this day's opening
+  const touch = k => setTouched(t => (t[k] ? t : { ...t, [k]: true }));
+  const touchedKeys = Object.keys(touched);
   const cnt = d => { const t = String(counts[d] == null ? '' : counts[d]).trim(); return t === '' ? 0 : (/^\d+$/.test(t) ? Number(t) : null); };
   const counted = DB_NOTES.some(d => String(counts[d] == null ? '' : counts[d]).trim() !== '') || coins.trim() !== '';
   const coinsP = coins.trim() === '' ? 0 : saParse(coins), manualP = saParse(manual.trim() === '' ? '0' : manual);
@@ -4146,7 +4149,7 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
   const save = () => {
     if (cashP === null) return onSave({ error: counted ? 'Check the note counts: whole numbers only. Coins must be a rupee amount.' : 'Type the cash total as a rupee amount (not negative).' });
     if (badVal) return onSave({ error: 'Check the balances: each must be a rupee amount with at most 2 decimals.' });
-    onSave({ cash: cashP / 100, vals: parsed });
+    onSave({ cash: cashP / 100, vals: parsed, touched: touchedKeys });
   };
   const inp = 'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300';
   const money = p => p === null ? '—' : saFmt(p);
@@ -4161,16 +4164,16 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
           e('p', { className: 'text-[11px] text-gray-400 mb-3' }, 'Only for adding up. The note counts are not saved; just the total becomes the Opening Balance.'),
           DB_NOTES.map(d => e('div', { key: d, className: 'flex items-center gap-2 mb-2' },
             e('span', { className: 'w-16 text-sm font-semibold text-gray-700' }, '₹' + d), e('span', { className: 'text-gray-400 text-sm' }, '×'),
-            e('input', { value: counts[d] == null ? '' : counts[d], onChange: ev => setCounts(p => ({ ...p, [d]: ev.target.value })), inputMode: 'numeric', placeholder: '0', className: inp + ' w-24 text-center' }),
+            e('input', { value: counts[d] == null ? '' : counts[d], onChange: ev => { touch('cash'); setCounts(p => ({ ...p, [d]: ev.target.value })); }, inputMode: 'numeric', placeholder: '0', className: inp + ' w-24 text-center' }),
             e('span', { className: 'flex-1 text-right text-sm font-medium ' + (cnt(d) === null ? 'text-red-500' : 'text-gray-700') }, cnt(d) === null ? 'whole number' : saFmt(d * cnt(d) * 100)))),
           e('div', { className: 'flex items-center gap-2 mb-3' },
             e('span', { className: 'w-16 text-sm font-semibold text-gray-700' }, 'Coins'), e('span', { className: 'text-gray-400 text-sm' }, '₹'),
-            e('input', { value: coins, onChange: ev => setCoins(ev.target.value), inputMode: 'decimal', placeholder: '0', className: inp + ' w-24 text-center' }),
+            e('input', { value: coins, onChange: ev => { touch('cash'); setCoins(ev.target.value); }, inputMode: 'decimal', placeholder: '0', className: inp + ' w-24 text-center' }),
             e('span', { className: 'flex-1 text-right text-sm font-medium text-gray-700' }, coinsP === null ? 'amount?' : saFmt(coinsP))),
           e('div', { className: 'border-t pt-3' },
             e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, counted ? 'Cash total (from the count above)' : 'Cash total (₹): already the current Opening Balance'),
             e('div', { className: 'flex gap-2' },
-              counted ? e('div', { className: inp + ' bg-indigo-50 font-bold text-indigo-700' }, money(cashP)) : e('input', { value: manual, onChange: ev => setManual(ev.target.value), inputMode: 'decimal', className: inp + ' font-bold' }),
+              counted ? e('div', { className: inp + ' bg-indigo-50 font-bold text-indigo-700' }, money(cashP)) : e('input', { value: manual, onChange: ev => { touch('cash'); setManual(ev.target.value); }, inputMode: 'decimal', className: inp + ' font-bold' }),
               counted && e('button', { onClick: () => { setCounts({}); setCoins(''); }, className: 'px-3 py-2 rounded-lg text-xs border border-gray-300 hover:bg-gray-50 whitespace-nowrap' }, 'Clear count')))),
         e('div', { className: 'rounded-xl border border-gray-200 p-4' },
           e('p', { className: 'text-sm font-bold text-gray-800' }, 'Wallets & accounts'),
@@ -4178,7 +4181,7 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
           rows.map(r => { const p = parsed[r.key], diff = p === null ? 0 : p - r.bal; return e('div', { key: r.key, className: 'flex items-center gap-2 mb-2' },
             e('span', { className: 'inline-block w-3 h-3 rounded-full flex-shrink-0 ' + wcol(r.color, 'blue').chip }),
             e('div', { className: 'flex-1 min-w-0' }, e('p', { className: 'text-sm font-medium text-gray-800 truncate' }, r.name), e('p', { className: 'text-[11px] ' + (diff ? 'text-amber-600 font-semibold' : 'text-gray-400') }, diff ? 'was ' + saFmt(r.bal) + ' (' + (diff > 0 ? '+' : '−') + saFmt(Math.abs(diff)) + ')' : 'no change')),
-            e('input', { value: vals[r.key], onChange: ev => setVals(v => ({ ...v, [r.key]: ev.target.value })), inputMode: 'decimal', className: inp + ' w-36 text-right' + (p === null ? ' border-red-400' : diff ? ' border-amber-400 bg-amber-50' : '') })); }))),
+            e('input', { value: vals[r.key], onChange: ev => { touch(r.key); setVals(v => ({ ...v, [r.key]: ev.target.value })); }, inputMode: 'decimal', className: inp + ' w-36 text-right' + (p === null ? ' border-red-400' : diff ? ' border-amber-400 bg-amber-50' : '') })); }))),
       e('div', { className: 'border-t bg-gray-50 px-5 py-3' },
         e('div', { className: 'flex flex-wrap items-center justify-between gap-3' },
           e('div', { className: 'flex flex-wrap items-center gap-x-5 gap-y-1 text-sm' },
@@ -4186,9 +4189,10 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
             e('span', { className: 'text-gray-500' }, '+ Wallets & accounts ', e('b', { className: 'text-gray-800' }, money(walletsP))),
             e('span', { className: 'text-base font-bold text-indigo-700' }, '= Grand Total ' + (cashP === null || walletsP === null ? '—' : saFmt(cashP + walletsP)))),
           e('div', { className: 'flex items-center gap-2' },
-            e('span', { className: 'text-xs text-gray-400' }, changed ? changed + ' change' + (changed > 1 ? 's' : '') : 'no changes'),
+            e('span', { className: 'text-xs text-gray-400' }, changed ? changed + ' change' + (changed > 1 ? 's' : '') : (touchedKeys.length ? touchedKeys.length + ' value' + (touchedKeys.length > 1 ? 's' : '') + ' to keep' : 'no changes')),
             e('button', { onClick: onClose, className: 'px-4 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50' }, 'Cancel'),
-            e('button', { onClick: save, disabled: !changed, className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40' }, 'Save Day Book'))),
+            e('button', { onClick: save, disabled: !changed && !touchedKeys.length, className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40' }, 'Save Day Book'))),
+        e('p', { className: 'text-[11px] text-indigo-600 mt-1' }, 'The values you type here become this day\'s opening in the Day Book menu — they are not replaced by the previous day\'s closing.'),
         pendingPayable > 0 && e('p', { className: 'text-[11px] text-amber-700 mt-1' }, 'Pending Cash: customer ke dite hobe ₹' + pendingPayable + ' (not taken off the total above).'))));
 }
 // ════════ END DAY BOOK ════════
@@ -4246,15 +4250,16 @@ const dbSig = evs => { let h = 5381; const s = evs.map(x => x.kind + '|' + x.tex
 const dbPrevDay = date => new Date(Date.parse(date + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
 // Opening of each account for a date. A closed day just before it (or before a quiet gap) hands over its counted closing; otherwise cash comes from the Banking opening
 // (minus Add More, which is listed as an entry) and every account from "balance now minus everything that moved from that date on".
-function dbOpening(date, all, cur, books, keys, cashFallback) {
-  const closed = Object.keys(books || {}).filter(k => k < date).sort(), prev = closed[closed.length - 1];
+function dbOpening(date, all, cur, books, keys, cashFallback, manualKeys) {
+  // manualKeys = accounts whose opening was set by hand in Banking → Day Book. Those beat the automatic hand-over from the previous closed day.
+  const closed = Object.keys(books || {}).filter(k => k < date).sort(), prev = closed[closed.length - 1], manual = new Set(bkArr(manualKeys));
   const chain = prev && !all.some(x => x.date > prev && x.date < date) ? books[prev] : null;
   const opening = {}, src = {};
   keys.forEach(k => {
-    const handed = chain && chain.actual && chain.actual[k] !== undefined ? chain.actual[k] : (chain && chain.expected && chain.expected[k] !== undefined ? chain.expected[k] : null);
+    const handed = manual.has(k) ? null : (chain && chain.actual && chain.actual[k] !== undefined ? chain.actual[k] : (chain && chain.expected && chain.expected[k] !== undefined ? chain.expected[k] : null));
     if (handed !== null) { opening[k] = handed; src[k] = 'closing of ' + prev; }
-    else if (k === 'cash') { opening[k] = cashFallback; src[k] = 'Banking opening'; }
-    else { opening[k] = (cur[k] || 0) - dbSum(all.filter(x => x.date >= date), k); src[k] = 'calculated'; }
+    else if (k === 'cash') { opening[k] = cashFallback; src[k] = manual.has(k) ? 'set in Banking Day Book' : 'Banking opening'; }
+    else { opening[k] = (cur[k] || 0) - dbSum(all.filter(x => x.date >= date), k); src[k] = manual.has(k) ? 'set in Banking Day Book' : 'calculated'; }
   });
   return { opening, src };
 }
@@ -4342,7 +4347,7 @@ function DailyDayBook({ appData, persist, currentUser, showMessage, businessProf
   const amDay = bkArr(appData.addMoreHistory && appData.addMoreHistory[date]).filter(x => typeof x === 'number').reduce((s, x) => s + dbP(x), 0);
   const baseKeys = ['cash', 'acb', 'sav', 'csc', ...sa.filter(a => a.active !== false).map(a => a.id)], extra = [...new Set(evs.flatMap(x => x.lines.map(l => l.a)))].filter(k => !baseKeys.includes(k));
   const keys = rec ? Object.keys(rec.opening).sort((a, b) => baseKeys.indexOf(a) - baseKeys.indexOf(b)) : [...baseKeys, ...extra];
-  const op = rec ? { opening: rec.opening, src: {} } : dbOpening(date, all, cur, books, keys, dbP((appData.bankingOpeningBalances || {})[date]) - amDay);
+  const op = rec ? { opening: rec.opening, src: {} } : dbOpening(date, all, cur, books, keys, dbP((appData.bankingOpeningBalances || {})[date]) - amDay, (appData.dayBookSets || {})[date]);
   const summary = dbSummary(keys, nm, evs, op.opening, rec ? rec.actual : null), tabKey = keys.includes(tab) ? tab : 'cash', S = summary.find(r => r.key === tabKey) || summary[0];
   const changed = rec && dbSig(live) !== rec.sig, isToday = date === today, sum0 = summary.find(r => r.key === 'cash');
   const move = n => { const t = new Date(Date.parse(date + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10); if (t <= today) setDate(t); };
@@ -4667,10 +4672,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     if (ch('csc')) { patch.cscWalletBase = pcRound((Number(cscWalletBase) || 0) + (res.vals.csc - row('csc').bal) / 100); said.push(wName.csc + ' ' + saFmt(res.vals.csc)); }
     const moved = dbSA.filter(a => a.active !== false && ch(a.id));
     if (moved.length) { patch.simpleAccounts = dbSA.map(a => ch(a.id) ? { ...a, opening: (a.opening || 0) + (res.vals[a.id] - row(a.id).bal) } : a); moved.forEach(a => said.push(a.name + ' ' + saFmt(res.vals[a.id]))); }
-    if (!said.length) return showMessage('Nothing changed.');
+    const pin = [...new Set([...(res.touched || []), ...Object.keys(res.vals).filter(k => ch(k)), ...(Math.round(res.cash * 100) !== Math.round((openingBalance || 0) * 100) ? ['cash'] : [])])].filter(k => k === 'cash' || row(k));
+    if (!said.length && !pin.length) return showMessage('Nothing changed.');
+    if (pin.length) patch.__daySet = { date: selectedDate, keys: pin };
     applyDayBook(patch);
     drvAudit(currentUser, 'Day Book Saved', selectedDate + ' — ' + said.join(' | '));
-    setShowDayBook(false); showMessage('Day Book saved: ' + said.length + ' balance' + (said.length > 1 ? 's' : '') + ' updated.');
+    setShowDayBook(false); showMessage(said.length ? 'Day Book saved: ' + said.length + ' balance' + (said.length > 1 ? 's' : '') + ' updated. The Day Book menu now starts ' + selectedDate + ' with these values.' : 'Day Book saved: the Day Book menu now starts ' + selectedDate + ' with the values you entered.');
   };
 
   return e('div', { className: 'space-y-4' },
@@ -7284,7 +7291,14 @@ function App() {
     return newBal;
   };
   // Day Book saves everything it changed in ONE persist(), so no write can overwrite another.
-  const applyDayBook = (patch) => persist({ ...appData, ...patch });
+  const applyDayBook = (patch) => {
+    const { __daySet, ...rest } = patch, next = { ...appData, ...rest };
+    if (__daySet) {   // remember which values were set by hand for that date, so the Day Book menu uses them
+      const before = bkArr((appData.dayBookSets || {})[__daySet.date]);
+      next.dayBookSets = { ...(appData.dayBookSets || {}), [__daySet.date]: [...new Set([...before, ...__daySet.keys])] };
+    }
+    persist(next);
+  };
   const setOpeningBalanceFor = (date, amount) => {
     const curBalances = appData.bankingOpeningBalances || {};
     persist({ ...appData, bankingOpeningBalances: { ...curBalances, [date]: amount } });
