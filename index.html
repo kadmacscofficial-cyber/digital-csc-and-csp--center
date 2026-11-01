@@ -1083,21 +1083,62 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
 // (wa.me link). WhatsApp itself then needs one tap on "Send" — fully automatic sending
 // without that tap needs the paid WhatsApp Business API, which a plain web app can't do.
 const DEFAULT_WA_TEMPLATES = [
-  { id: 'due',      title: 'Payment Due Reminder',  text: 'Hello {name}, this is a reminder from {shop} that ₹{due} is due for your {service} service. Please make the payment at your earliest convenience. Thank you. 📞 {shop_phone}' },
-  { id: 'done',     title: 'Service Completed',     text: 'Hello {name}, your {service} work has been completed. Please collect your documents from the centre. Thank you — {shop}' },
-  { id: 'progress', title: 'Application In Progress', text: 'Hello {name}, your {service} application is currently in process. You will be notified once it is completed. Thank you — {shop}' },
-  { id: 'docs',     title: 'Documents Required',    text: 'Hello {name}, some documents are required for your {service}. Please contact the centre as soon as possible. — {shop}, 📞 {shop_phone}' },
-  { id: 'thanks',   title: 'Thank You',             text: 'Thank you {name}! We are grateful for using {shop} services. Please visit us again. 🙏' },
-  { id: 'bday',     title: 'Birthday Wish',         text: 'Happy Birthday {name}! 🎂 Warm wishes and love from {shop}.' },
-  { id: 'closed',   title: 'Shop Closed Notice',    text: 'Hello {name}, please be informed that {shop} will remain closed tomorrow. We apologise for the inconvenience. Thank you.' }
+  { id: 'due', title: 'Payment Due Reminder',
+    textBn: 'নমস্কার {name}, {shop}-এর পক্ষ থেকে জানাচ্ছি যে আপনার {service} সার্ভিসের ₹{due} বকেয়া আছে। অনুগ্রহ করে সুবিধামতো সময়ে পরিশোধ করুন। ধন্যবাদ। 📞 {shop_phone}',
+    textEn: 'Hello {name}, this is a reminder from {shop} that ₹{due} is due for your {service} service. Please make the payment at your earliest convenience. Thank you. 📞 {shop_phone}' },
+  { id: 'done', title: 'Service Completed',
+    textBn: 'নমস্কার {name}, আপনার {service} এর কাজ সম্পন্ন হয়েছে। অনুগ্রহ করে দোকান থেকে আপনার ডকুমেন্ট সংগ্রহ করুন। ধন্যবাদ — {shop}',
+    textEn: 'Hello {name}, your {service} work has been completed. Please collect your documents from the centre. Thank you — {shop}' },
+  { id: 'progress', title: 'Application In Progress',
+    textBn: 'নমস্কার {name}, আপনার {service} এর আবেদন প্রক্রিয়াধীন আছে। কাজ শেষ হলেই আপনাকে জানানো হবে। ধন্যবাদ — {shop}',
+    textEn: 'Hello {name}, your {service} application is currently in process. You will be notified once it is completed. Thank you — {shop}' },
+  { id: 'docs', title: 'Documents Required',
+    textBn: 'নমস্কার {name}, আপনার {service} এর জন্য কিছু ডকুমেন্ট প্রয়োজন। অনুগ্রহ করে দ্রুত দোকানে যোগাযোগ করুন। — {shop}, 📞 {shop_phone}',
+    textEn: 'Hello {name}, some documents are required for your {service}. Please contact the centre as soon as possible. — {shop}, 📞 {shop_phone}' },
+  { id: 'thanks', title: 'Thank You',
+    textBn: 'ধন্যবাদ {name}! {shop}-এর সার্ভিস ব্যবহার করার জন্য আমরা কৃতজ্ঞ। আবার আসবেন। 🙏',
+    textEn: 'Thank you {name}! We are grateful for using {shop} services. Please visit us again. 🙏' },
+  { id: 'bday', title: 'Birthday Wish',
+    textBn: 'শুভ জন্মদিন {name}! 🎂 {shop}-এর পক্ষ থেকে আপনাকে অনেক শুভেচ্ছা ও ভালোবাসা।',
+    textEn: 'Happy Birthday {name}! 🎂 Warm wishes and love from {shop}.' },
+  { id: 'closed', title: 'Shop Closed Notice',
+    textBn: 'নমস্কার {name}, জানানো যাচ্ছে যে আগামীকাল {shop} বন্ধ থাকবে। অসুবিধার জন্য দুঃখিত। ধন্যবাদ।',
+    textEn: 'Hello {name}, please be informed that {shop} will remain closed tomorrow. We apologise for the inconvenience. Thank you.' }
 ];
 
+// Every template has a Bangla and an English version. Templates saved BEFORE this (a single `text`) are read as whichever language
+// that text is written in; a missing language of a standard template is filled from the standard wording.
+const WA_BN_RE = /[\u0980-\u09FF]/;
+function waLangs(t) {
+  const def = DEFAULT_WA_TEMPLATES.find(d => d.id === t.id) || {};
+  let en = t.textEn, bn = t.textBn;
+  if (en === undefined && bn === undefined && t.text) { if (WA_BN_RE.test(t.text)) bn = t.text; else en = t.text; }
+  return { bn: bn !== undefined ? bn : (def.textBn || ''), en: en !== undefined ? en : (def.textEn || '') };
+}
 function getWaTemplates(appData) {
   const raw = appData && appData.whatsappTemplates;
   const arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
-  const clean = arr.filter(t => t && t.text);
-  return clean.length ? clean : DEFAULT_WA_TEMPLATES;
+  const clean = arr.filter(t => t && (t.text || t.textEn || t.textBn));
+  return (clean.length ? clean : DEFAULT_WA_TEMPLATES).map(t => ({ id: t.id, title: t.title, ...waLangs(t) }));
 }
+// Joins a Bangla and an English message into one. A shared closing line ("— Shop name") is written once, at the very end.
+function waBoth(bn, en) {
+  bn = String(bn || ''); en = String(en || '');
+  if (!bn) return en; if (!en) return bn;
+  const m = en.match(/\n— [^\n]*$/);
+  if (m && bn.endsWith(m[0])) bn = bn.slice(0, bn.length - m[0].length);
+  return bn + '\n\n' + en;
+}
+// lang: 'both' (Bangla first, then English) | 'bn' | 'en'. If the chosen language was never written for this template, the other one is used.
+function waText(t, vars, lang) {
+  const b = waFill(t.bn, vars), n = waFill(t.en, vars);
+  if (lang === 'bn') return b || n;
+  if (lang === 'en') return n || b;
+  return waBoth(b, n);
+}
+// The chosen language is remembered on this device. (Browser storage can be blocked — then it simply starts as "both" every time.)
+function waLangPref() { try { const v = window.localStorage.getItem('sevacore_wa_lang'); return v === 'bn' || v === 'en' || v === 'both' ? v : 'both'; } catch (err) { return 'both'; } }
+function waSaveLang(v) { try { window.localStorage.setItem('sevacore_wa_lang', v); } catch (err) { /* ignore */ } }
 
 // Normalises an Indian mobile number to WhatsApp's international format (no + or spaces).
 // Returns '' if it doesn't look like a valid number.
@@ -1133,6 +1174,7 @@ function openWhatsApp(phone, text) {
 }
 
 // Pick a message (or tick several to send together as one) and send in one click.
+// Language: বাংলা + English together (default), or just one of them — remembered on this device.
 function WhatsAppModal({ customer, tasks, appData, onClose, onSent, preferId }) {
   const templates = getWaTemplates(appData);
   const vars = waVars(customer, tasks, appData && appData.businessProfile);
@@ -1140,6 +1182,8 @@ function WhatsAppModal({ customer, tasks, appData, onClose, onSent, preferId }) 
   const [selected, setSelected] = useState([]);
   const [custom, setCustom] = useState('');
   const [err, setErr] = useState('');
+  const [lang, setLangState] = useState(waLangPref());
+  const setLang = l => { setLangState(l); waSaveLang(l); };
   const ordered = preferId ? [...templates].sort((a, b) => (b.id === preferId ? 1 : 0) - (a.id === preferId ? 1 : 0)) : templates;
   const toggle = id => setSelected(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   const send = (text, label) => {
@@ -1150,7 +1194,8 @@ function WhatsAppModal({ customer, tasks, appData, onClose, onSent, preferId }) 
     openWhatsApp(p, text);
     onSent && onSent(label, p);
   };
-  const selectedText = templates.filter(t => selected.includes(t.id)).map(t => waFill(t.text, vars)).join('\n\n');
+  const selectedText = templates.filter(t => selected.includes(t.id)).map(t => waText(t, vars, lang)).join('\n\n');
+  const chip = (k, label) => e('button', { key: k, onClick: () => setLang(k), className: 'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ' + (lang === k ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-green-50') }, label);
 
   return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4', onClick: ev => { if (ev.target === ev.currentTarget) onClose(); } },
     e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col' },
@@ -1164,15 +1209,19 @@ function WhatsAppModal({ customer, tasks, appData, onClose, onSent, preferId }) 
           e('input', { type: 'text', value: phone, onChange: ev => setPhone(ev.target.value), className: 'border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-green-500 w-48', placeholder: '10-digit mobile' }),
           e('span', { className: 'text-xs ' + (waPhone(phone) ? 'text-green-600' : 'text-red-500') }, waPhone(phone) ? '+' + waPhone(phone) : 'invalid number')
         ),
+        e('div', null, e('p', { className: 'text-xs font-medium text-gray-500 mb-1.5' }, 'Message language / ভাষা'),
+          e('div', { className: 'flex flex-wrap gap-2' }, chip('both', 'বাংলা + English'), chip('bn', 'বাংলা'), chip('en', 'English'))),
         err && e('p', { className: 'text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2' }, err),
         ...ordered.map(t => {
-          const filled = waFill(t.text, vars);
-          const zeroDue = /\{due\}/.test(t.text) && vars.due === '0';
+          const filled = waText(t, vars, lang);
+          const zeroDue = /\{due\}/.test((t.bn || '') + (t.en || '')) && vars.due === '0';
+          const missing = lang === 'bn' ? !t.bn : lang === 'en' ? !t.en : false;
           return e('div', { key: t.id, className: 'border rounded-xl p-3 flex gap-3 items-start ' + (selected.includes(t.id) ? 'border-green-400 bg-green-50' : 'border-gray-200') },
             e('input', { type: 'checkbox', checked: selected.includes(t.id), onChange: () => toggle(t.id), className: 'mt-1 h-4 w-4', title: 'Tick to combine with other messages' }),
             e('div', { className: 'flex-1 min-w-0' },
               e('p', { className: 'font-semibold text-gray-800 text-sm' }, t.title || 'Message', t.id === preferId && e('span', { className: 'ml-2 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full' }, 'Suggested')),
               e('p', { className: 'text-xs text-gray-500 whitespace-pre-wrap break-words mt-0.5' }, filled),
+              missing && e('p', { className: 'text-xs text-amber-600 mt-1' }, 'Note: this message has no ' + (lang === 'bn' ? 'Bangla' : 'English') + ' version yet — the other language is used.'),
               zeroDue && e('p', { className: 'text-xs text-amber-600 mt-1' }, 'Note: this customer has no pending due (₹0).')
             ),
             e('button', { onClick: () => send(filled, t.title), className: 'bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 whitespace-nowrap' }, e(Icon, { name: 'MessageCircle', size: 15 }), 'Send')
@@ -1192,19 +1241,20 @@ function WhatsAppModal({ customer, tasks, appData, onClose, onSent, preferId }) 
   );
 }
 
-// Admin: add / edit / delete the message list used by the WhatsApp buttons.
+// Admin: add / edit / delete the message list used by the WhatsApp buttons — each message has a Bangla and an English version.
 function WhatsAppTemplatesModal({ appData, persist, addAuditLog, showMessage, onClose }) {
-  const [draft, setDraft] = useState(getWaTemplates(appData).map(t => ({ id: t.id, title: t.title || '', text: t.text || '' })));
+  const [draft, setDraft] = useState(getWaTemplates(appData).map(t => ({ id: t.id, title: t.title || '', textBn: t.bn || '', textEn: t.en || '' })));
   const update = (i, k, v) => setDraft(draft.map((t, j) => j === i ? { ...t, [k]: v } : t));
   const remove = i => setDraft(draft.filter((_, j) => j !== i));
-  const add = () => setDraft([...draft, { id: 'tpl' + Date.now(), title: '', text: '' }]);
+  const add = () => setDraft([...draft, { id: 'tpl' + Date.now(), title: '', textBn: '', textEn: '' }]);
   const save = () => {
-    const cleaned = draft.filter(t => t.text.trim()).map(t => ({ id: t.id, title: t.title.trim() || 'Message', text: t.text.trim() }));
+    const cleaned = draft.filter(t => t.textBn.trim() || t.textEn.trim()).map(t => ({ id: t.id, title: t.title.trim() || 'Message', textBn: t.textBn.trim(), textEn: t.textEn.trim() }));
     if (!cleaned.length) return showMessage('Add at least one message.', 'error');
     addAuditLog('WhatsApp Templates Updated', cleaned.length + ' message(s) saved', '', { ...appData, whatsappTemplates: cleaned });
     showMessage('WhatsApp messages saved!');
     onClose();
   };
+  const ta = 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500';
   return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4' },
     e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col' },
       e('div', { className: 'flex items-center justify-between px-5 py-4 border-b' },
@@ -1212,18 +1262,19 @@ function WhatsAppTemplatesModal({ appData, persist, addAuditLog, showMessage, on
         e('button', { onClick: onClose, className: 'text-gray-500 text-2xl leading-none px-2' }, '×')
       ),
       e('div', { className: 'p-5 overflow-y-auto space-y-3' },
-        e('p', { className: 'text-xs text-gray-500 bg-gray-50 border rounded-lg p-2' }, 'You can use these placeholders — they are replaced per customer: {name}  {due}  {service}  {shop}  {shop_phone}  {date}'),
+        e('p', { className: 'text-xs text-gray-500 bg-gray-50 border rounded-lg p-2' }, 'Write each message in Bangla and in English. When sending, staff choose বাংলা + English, বাংলা only, or English only. Placeholders (replaced per customer): {name}  {due}  {service}  {shop}  {shop_phone}  {date}'),
         ...draft.map((t, i) => e('div', { key: t.id, className: 'border rounded-xl p-3 space-y-2' },
           e('div', { className: 'flex gap-2' },
             e('input', { type: 'text', value: t.title, onChange: ev => update(i, 'title', ev.target.value), className: 'flex-1 border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-green-500', placeholder: 'Title (e.g. Payment Due Reminder)' }),
             e('button', { disabled: draft.length <= 1, onClick: () => remove(i), className: 'text-red-500 bg-red-50 px-3 rounded-lg text-sm ' + (draft.length <= 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-100') }, 'Delete')
           ),
-          e('textarea', { value: t.text, onChange: ev => update(i, 'text', ev.target.value), rows: 3, className: 'w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-500', placeholder: 'Message text…' })
+          e('div', null, e('p', { className: 'text-[11px] font-semibold text-gray-500 mb-1' }, 'বাংলা (Bangla)'), e('textarea', { value: t.textBn, onChange: ev => update(i, 'textBn', ev.target.value), rows: 3, className: ta, placeholder: 'বাংলায় মেসেজ লিখুন…' })),
+          e('div', null, e('p', { className: 'text-[11px] font-semibold text-gray-500 mb-1' }, 'English'), e('textarea', { value: t.textEn, onChange: ev => update(i, 'textEn', ev.target.value), rows: 3, className: ta, placeholder: 'Message in English…' }))
         )),
         e('button', { onClick: add, className: 'text-green-700 border border-green-300 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg text-sm font-medium' }, '+ Add Message')
       ),
       e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex justify-end gap-2' },
-        e('button', { onClick: () => setDraft(DEFAULT_WA_TEMPLATES.map(t => ({ ...t }))), className: 'text-gray-600 bg-white border px-4 py-2 rounded-lg text-sm' }, 'Reset to defaults'),
+        e('button', { onClick: () => setDraft(DEFAULT_WA_TEMPLATES.map(t => ({ id: t.id, title: t.title, textBn: t.textBn, textEn: t.textEn }))), className: 'text-gray-600 bg-white border px-4 py-2 rounded-lg text-sm' }, 'Reset to defaults'),
         e('button', { onClick: onClose, className: 'text-gray-600 bg-white border px-4 py-2 rounded-lg text-sm' }, 'Cancel'),
         e('button', { onClick: save, className: 'bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm font-medium' }, 'Save')
       )
@@ -3155,7 +3206,7 @@ function InquiryPage({ appData, currentUser, showMessage, services, customers, u
   const markLost = async () => { await update(live, { status: 'Lost', lostReason: lostWhy, closedAt: new Date().toISOString() }, 'Marked Lost — ' + lostWhy); drvAudit(currentUser, 'Inquiry Lost', live.name + ' — ' + lostWhy); showMessage('Marked as lost.'); };
   const reopen = async () => { await update(live, { status: 'Follow-up', lostReason: '', followUpDate: inqTomorrow() }, 'Re-opened'); };
   const del = async rec => { if (!window.confirm('Delete this inquiry permanently?')) return; await db.ref('csc-app-data/inquiries/' + rec.id).remove(); drvAudit(currentUser, 'Inquiry Deleted', rec.name); setView(null); };
-  const wa = rec => { const s = svcOf(rec), biz = (appData.businessProfile && appData.businessProfile.name) || ''; const t = 'Namaste ' + rec.name + ', ' + (rec.serviceName ? 'regarding ' + rec.serviceName + ': ' : '') + (rec.quote || (s ? 'Price ₹' + s.price : '')) + (biz ? '\n— ' + biz : ''); return 'https://wa.me/91' + rec.phone + '?text=' + encodeURIComponent(t); };
+  const wa = rec => { const s = svcOf(rec), biz = (appData.businessProfile && appData.businessProfile.name) || '', sg = biz ? '\n— ' + biz : ''; const bn = 'নমস্কার ' + rec.name + ', ' + (rec.serviceName ? rec.serviceName + ' সম্পর্কে: ' : '') + (rec.quote || (s ? 'মূল্য ₹' + s.price : '')) + sg, en = 'Hello ' + rec.name + ', ' + (rec.serviceName ? 'regarding ' + rec.serviceName + ': ' : '') + (rec.quote || (s ? 'Price ₹' + s.price : '')) + sg; return 'https://wa.me/91' + rec.phone + '?text=' + encodeURIComponent(waBoth(bn, en)); };
   const convert = rec => goNewCustomer({ inquiryId: rec.id, name: rec.name, phone: rec.phone, address: rec.address, serviceId: rec.serviceId });
   const cnt = (arr, kf) => { const m = {}; arr.forEach(x => { const k = kf(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
   const bySvc = cnt(all, i => i.serviceName).slice(0, 8), bySrc = cnt(all, i => i.source), byLost = cnt(all.filter(i => i.status === 'Lost'), i => i.lostReason);
@@ -3487,19 +3538,52 @@ const pcRound = v => Math.round((Number(v) || 0) * 100) / 100;
 const pcPaidSoFar = r => pcRound((Number(r.paidNow) || 0) + bkArr(r.payments).reduce((s, p) => s + (Number(p.amount) || 0), 0));
 const pcRemaining = r => pcRound((Number(r.total) || 0) - pcPaidSoFar(r));
 // Cash that really left the drawer on one date for Pending Cash: cash given on the entry day + payments made that day.
-const pcCashOutOn = (list, date) => pcRound(bkArr(list).reduce((s, r) => s + (r.date === date ? (Number(r.paidNow) || 0) : 0) + bkArr(r.payments).filter(p => p.date === date).reduce((a, p) => a + (Number(p.amount) || 0), 0), 0));
+// ── DEPOSIT PENDING (customer gave cash to deposit, but we could not credit it to the account yet) ──
+// Stored in appData.pendingCash with kind:'deposit' (old withdrawal entries have no kind). Same fields:
+//   total = cash taken from the customer, paidNow = credited to the account on the entry day,
+//   payments = later { type:'credit' } (credited to the account) or { type:'refund' } (cash handed back to the customer).
+// CASH side: the full amount the customer handed over is in the drawer at once -> Current Balance +total on the entry day.
+// TRANSACTION side: the account / location balance and the Reports count only what is really credited (paidNow + later credits), on their own day.
+// The part not credited yet is the CUSTOMER'S money held in the drawer (not your cash). A refund hands that cash back: Current Balance -amount.
+const pcIsDep = r => !!r && r.kind === 'deposit';
+const dpIsRefund = p => !!p && p.type === 'refund';
+// Credits that reached the account: the amount done on the entry day + every later credit (refunds are not credits).
+const dpCreditEvents = r => [...(Number(r.paidNow) > 0 ? [{ id: r.id, date: r.date, amount: Number(r.paidNow) }] : []), ...bkArr(r.payments).filter(p => !dpIsRefund(p)).map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0 }))];
+// Cash that really left the drawer on one date: Pending Cash given (withdrawals) + cash handed back on a Deposit Pending.
+const pcCashOutOn = (list, date) => pcRound(bkArr(list).reduce((s, r) => s + (pcIsDep(r)
+  ? bkArr(r.payments).filter(p => dpIsRefund(p) && p.date === date).reduce((a, p) => a + (Number(p.amount) || 0), 0)
+  : (r.date === date ? (Number(r.paidNow) || 0) : 0) + bkArr(r.payments).filter(p => p.date === date).reduce((a, p) => a + (Number(p.amount) || 0), 0)), 0));
+// Cash that came into the drawer on one date for Deposit Pending: the FULL amount the customer handed over on the entry day.
+const pcCashInOn = (list, date) => pcRound(bkArr(list).filter(r => pcIsDep(r) && r.date === date).reduce((s, r) => s + (Number(r.total) || 0), 0));
+// Customer's money still held (not yet credited / not handed back) as of a date (no date = today's full picture).
+const dpHeldAsOf = (list, date) => pcRound(bkArr(list).filter(r => pcIsDep(r) && (!date || r.date <= date)).reduce((s, r) => s + Math.max(0, (Number(r.total) || 0) - (Number(r.paidNow) || 0) - bkArr(r.payments).filter(p => !date || p.date <= date).reduce((a, p) => a + (Number(p.amount) || 0), 0)), 0));
 // Pending Cash entered on one of your accounts (location 'acc:<id>') adds its FULL amount to THAT account, exactly like a withdrawal.
 // Used only to read balances — the result is never saved back into bankTransactions.
 const bkWithPending = (bankTxs, pending) => {
-  const extra = bkArr(pending).filter(r => saLocId(r.location) !== null).map(r => ({ id: 'pc' + r.id, date: r.date, customerName: 'Pending withdrawal — ' + r.customerName, cashIn: 0, cashOut: Number(r.total) || 0, location: r.location }));
+  const extra = bkArr(pending).filter(r => !pcIsDep(r) && saLocId(r.location) !== null).map(r => ({ id: 'pc' + r.id, date: r.date, customerName: 'Pending withdrawal — ' + r.customerName, cashIn: 0, cashOut: Number(r.total) || 0, location: r.location }));
+  bkArr(pending).filter(r => pcIsDep(r) && saLocId(r.location) !== null).forEach(r => dpCreditEvents(r).forEach(ev => extra.push({ id: 'pd' + r.id + '-' + ev.id, date: ev.date, customerName: 'Pending deposit — ' + r.customerName, cashIn: ev.amount, cashOut: 0, location: r.location })));
   return extra.length ? [...bkArr(bankTxs), ...extra] : bankTxs;
 };
 // Display rows for the Banking ledger and Reports: the cash really handed over (given on the entry day, and each later payment on its own day).
 // Never saved and never added to a balance: Current Balance already takes these amounts through pcCashOutOn, Account Balance through the full total.
-const pcLedgerRows = list => { const out = []; bkArr(list).forEach(r => { const loc = r.location || 'Bank', note = 'Pending: total ₹' + pcRound(r.total) + ' · given ₹' + pcPaidSoFar(r) + ' · baki ₹' + pcRemaining(r);
+const pcLedgerRows = (list, forReport) => { const out = []; bkArr(list).forEach(r => { const loc = r.location || 'Bank';
+  if (pcIsDep(r)) {
+    const cr = dpCreditEvents(r).reduce((a, ev) => a + ev.amount, 0), rf = bkArr(r.payments).filter(dpIsRefund).reduce((a, p) => a + (Number(p.amount) || 0), 0);
+    const dnote = 'Pending Deposit: customer gave ₹' + pcRound(r.total) + ' · credited to account ₹' + pcRound(cr) + (rf ? ' · returned ₹' + pcRound(rf) : '') + ' · pending (customer money) ₹' + pcRemaining(r);
+    if (forReport) {   // Reports count only what was really credited to the account
+      dpCreditEvents(r).forEach(ev => out.push({ id: ev.id, rowKey: 'pdr' + r.id + '-' + ev.id, date: ev.date, customerName: r.customerName + ' (Pending deposit — credited to account)', cashIn: pcRound(ev.amount), cashOut: 0, location: loc, pending: true, pcNote: dnote, pcRec: r.id }));
+      return;
+    }
+    // Cash received / handed back: only moves the running balance (hidden row, NOT a transaction). Credits to the account are the real transactions (cash already counted).
+    out.push({ id: r.id, rowKey: 'pc' + r.id, date: r.date, customerName: r.customerName, cashIn: pcRound(r.total), cashOut: 0, location: loc, pending: true, hidden: true, pcNote: dnote, pcRec: r.id });
+    dpCreditEvents(r).forEach(ev => out.push({ id: ev.id === r.id ? r.id + 0.5 : ev.id, rowKey: ev.id === r.id ? 'pcc' + r.id : 'pcp' + r.id + '-' + ev.id, date: ev.date, customerName: r.customerName + ' (Pending deposit — credited to account)', cashIn: pcRound(ev.amount), cashOut: 0, noCash: true, location: loc, pending: true, pcNote: dnote, pcRec: r.id, ...(ev.id === r.id ? {} : { pcPay: ev.id }) }));
+    bkArr(r.payments).filter(dpIsRefund).forEach(p => out.push({ id: p.id, rowKey: 'pcp' + r.id + '-' + p.id, date: p.date, customerName: r.customerName, cashIn: 0, cashOut: pcRound(p.amount), location: loc, pending: true, hidden: true, pcNote: dnote, pcRec: r.id, pcPay: p.id }));
+    return;
+  }
+  const note = 'Pending: total ₹' + pcRound(r.total) + ' · given ₹' + pcPaidSoFar(r) + ' · pending ₹' + pcRemaining(r);
   out.push({ id: r.id, rowKey: 'pc' + r.id, date: r.date, customerName: r.customerName + ' (Pending withdrawal)', cashIn: 0, cashOut: pcRound(r.paidNow), location: loc, pending: true, pcNote: note, pcRec: r.id });
   bkArr(r.payments).forEach(p => out.push({ id: p.id, rowKey: 'pcp' + r.id + '-' + p.id, date: p.date, customerName: r.customerName + ' — Pending cash paid', cashIn: 0, cashOut: pcRound(p.amount), location: loc, pending: true, pcNote: note, pcRec: r.id, pcPay: p.id })); }); return out; };
-const pcPayable = list => pcRound(bkArr(list).reduce((s, r) => s + Math.max(0, pcRemaining(r)), 0));
+const pcPayable = list => pcRound(bkArr(list).filter(r => !pcIsDep(r)).reduce((s, r) => s + Math.max(0, pcRemaining(r)), 0));
 // Self Transfer can use Savings or any Saving-category account (same list as Online Transaction charge).
 function selfSavOpts(simpleAccounts, walletInfo) {
   const sn = ((walletInfo || {}).savings || {}).name || 'Savings Account';
@@ -3557,11 +3641,12 @@ function bkCalcBalances(d, selectedDate) {
   // Branch Deposit: My Cash + Outside Cash both go INTO the Account Balance.
   const allTimeBranchDeposit = branchDepositList.reduce((s, b) => s + (Number(b.myCash) || 0) + (Number(b.outsideCash) || 0), 0);
   // Pending Cash: the bank already paid out, so the FULL withdrawal amount goes into Account Balance at once.
-  const allTimePendingTotal = pendingCashList.filter(r => saLocId(r.location) === null).reduce((s, r) => s + (Number(r.total) || 0), 0);
-  const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore + allTimeBranchDeposit + allTimePendingTotal - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
+  const allTimePendingDepDone = pendingCashList.filter(r => pcIsDep(r) && saLocId(r.location) === null).reduce((s, r) => s + dpCreditEvents(r).reduce((a, ev) => a + ev.amount, 0), 0);   // Deposit Pending: only the part really credited reduces the Account Balance
+  const allTimePendingTotal = pendingCashList.filter(r => !pcIsDep(r) && saLocId(r.location) === null).reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const autoAccountBalance = allTimeWithdrawal - allTimeDeposit - allTimeAddMore + allTimeBranchDeposit + allTimePendingTotal - allTimePendingDepDone - allAccExpenses + safeArchivedOffset - selfDepTotal + selfWithTotal;
   const safeOverrides = (d.accountBalanceOverrides && typeof d.accountBalanceOverrides === 'object') ? d.accountBalanceOverrides : {};
   const accountBalance = safeOverrides[selectedDate] !== undefined ? safeOverrides[selectedDate] : autoAccountBalance;
-  return { mtNetSav: mtNet('sav'), mtNetCsc: mtNet('csc'), cscOnlineNet, payoutTotal, accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimeDeposit, allTimeWithdrawal, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived, savingsOnlineTransfer, selfDepTotal, selfWithTotal, selfSavNet, totalPortalCostAllTime };
+  return { mtNetSav: mtNet('sav'), mtNetCsc: mtNet('csc'), cscOnlineNet, payoutTotal, accountBalance, autoAccountBalance, safeOverrides, safeArchivedOffset, allAccExpenses, allTimeAddMore, allTimeBranchDeposit, allTimePendingTotal, allTimePendingDepDone, allTimeDeposit, allTimeWithdrawal, cscExpenseTotal, cscTopupTotal, cscWalletBalance, digipayWithdrawalTotal, savingsBalance, savingsExpenseTotal, savingsOnlineReceived, savingsOnlineTransfer, selfDepTotal, selfWithTotal, selfSavNet, totalPortalCostAllTime };
 }
 // ════════ END BALANCE CORE ════════
 // ════════ SIMPLE ACCOUNTS CORE (pure) ════════
@@ -4020,7 +4105,7 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
   const admin = currentUser.role === 'admin', list = bkArr(pendingCash);
   const [filter, setFilter] = useState('open'), [q, setQ] = useState(''), [openId, setOpenId] = useState(null), [payId, setPayId] = useState(null);
   const [pay, setPay] = useState({ amount: '', date: todayStr, note: '' });
-  const rows = list.map(r => ({ ...r, paid: pcPaidSoFar(r), rem: pcRemaining(r) }));
+  const rows = list.filter(r => !pcIsDep(r)).map(r => ({ ...r, paid: pcPaidSoFar(r), rem: pcRemaining(r) }));
   const openRows = rows.filter(r => r.rem > 0), payable = pcRound(openRows.reduce((s, r) => s + r.rem, 0));
   const daysSince = d => Math.max(0, Math.floor((new Date(todayStr) - new Date(d)) / 86400000));
   const needle = q.trim().toLowerCase();
@@ -4029,34 +4114,30 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
     .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
   const oldest = openRows.length ? Math.max(...openRows.map(r => daysSince(r.date))) : 0;
   const payRec = payId ? rows.find(r => r.id === payId) : null;
-  const wa = r => {
-    const biz = (businessProfile && businessProfile.name) || '', ph = String(r.phone || '').replace(/\D/g, '').slice(-10);
-    const t = 'নমস্কার ' + r.customerName + ', আপনার ' + r.date + ' তারিখের উইথড্রয়ালের ₹' + r.rem + ' ক্যাশ আমাদের কাছে বাকি আছে। অনুগ্রহ করে এসে নিয়ে যাবেন।' + (biz ? '\n— ' + biz : '');
-    return 'https://wa.me/91' + ph + '?text=' + encodeURIComponent(t);
-  };
+  const [waRec, setWaRec] = useState(null), biz = (businessProfile && businessProfile.name) || '';
   const openPay = r => { setPayId(r.id); setPay({ amount: '', date: todayStr, note: '' }); };
   const doPay = () => {
     const r = payRec; if (!r) return;
     const amt = pcRound(Number(pay.amount) || 0);
-    if (amt <= 0) return showMessage('Koto taka dilen likhun.', 'error');
-    if (amt > r.rem) return showMessage('Baki ₹' + r.rem + ' er beshi dewa jabe na.', 'error');
-    if (!pay.date) return showMessage('Date din.', 'error');
-    if (pay.date < r.date) return showMessage('Payment date (' + pay.date + ') entry date (' + r.date + ') er age hote pare na.', 'error');
+    if (amt <= 0) return showMessage('Enter the amount paid.', 'error');
+    if (amt > r.rem) return showMessage('Amount cannot exceed the pending ₹' + r.rem + '.', 'error');
+    if (!pay.date) return showMessage('Select a date.', 'error');
+    if (pay.date < r.date) return showMessage('Payment date (' + pay.date + ') cannot be before the entry date (' + r.date + ').', 'error');
     const bal = cbOn(pay.date);
-    if (amt > bal && !window.confirm(pay.date + ' er Current Balance ₹' + bal + '. ₹' + amt + ' dile negative hobe. Continue?')) return;
+    if (amt > bal && !window.confirm('On ' + pay.date + ' the Current Balance is ₹' + bal + '. Paying ₹' + amt + ' would make it negative. Continue?')) return;
     setPendingCash(list.map(x => x.id === r.id ? { ...x, payments: [...bkArr(x.payments), { id: Date.now(), date: pay.date, amount: amt, note: pay.note.trim(), staffId: currentUser.id, staffName: currentUser.name }] } : x));
-    drvAudit(currentUser, 'Pending Cash Paid', r.customerName + ' — ₹' + amt + ' (baki ₹' + pcRound(r.rem - amt) + ')');
-    showMessage('₹' + amt + ' dewa holo — ' + r.customerName + (r.rem - amt <= 0 ? ' (sob shodh, Paid)' : ', baki ₹' + pcRound(r.rem - amt)));
+    drvAudit(currentUser, 'Pending Cash Paid', r.customerName + ' — ₹' + amt + ' (pending ₹' + pcRound(r.rem - amt) + ')');
+    showMessage('₹' + amt + ' paid — ' + r.customerName + (r.rem - amt <= 0 ? ' (fully paid, Paid)' : ', pending ₹' + pcRound(r.rem - amt)));
     setPayId(null);
   };
   const delEntry = r => {
-    if (!window.confirm('"' + r.customerName + '" er Pending entry delete korben?\n\n' + (r.location && r.location !== 'Bank' ? locLabel(r.location) + ' balance' : 'Account Balance') + ' ₹' + r.total + ' kome jabe ar ja cash dewa hoyeche (₹' + r.paid + ') Current Balance e ferot ashbe.')) return;
+    if (!window.confirm('"' + r.customerName + '" — delete this Pending Cash entry?\n\n' + (r.location && r.location !== 'Bank' ? locLabel(r.location) + ' balance' : 'Account Balance') + ' will decrease by ₹' + r.total + ' and the ₹' + r.paid + ' already paid will be added back to Current Balance.')) return;
     setPendingCash(list.filter(x => x.id !== r.id));
     drvAudit(currentUser, 'Pending Cash Deleted', r.customerName + ' — ₹' + r.total);
     showMessage('Pending entry deleted', 'error');
   };
   const delPay = (r, pm) => {
-    if (!window.confirm('₹' + pm.amount + ' er ei payment ta remove korben? Baki abar barbe ar Current Balance e ₹' + pm.amount + ' ferot ashbe.')) return;
+    if (!window.confirm('Remove this ₹' + pm.amount + ' payment? The pending amount will increase again and ₹' + pm.amount + ' will be added back to Current Balance.')) return;
     setPendingCash(list.map(x => x.id === r.id ? { ...x, payments: bkArr(x.payments).filter(y => y.id !== pm.id) } : x));
     drvAudit(currentUser, 'Pending Cash Payment Removed', r.customerName + ' — ₹' + pm.amount);
     showMessage('Payment removed', 'error');
@@ -4065,22 +4146,22 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
   const tab = (k, label) => e('button', { key: k, onClick: () => setFilter(k), className: 'px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ' + (filter === k ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-amber-50') }, label);
   const payBal = payRec ? cbOn(pay.date || todayStr) : 0, payAmt = pcRound(Number(pay.amount) || 0);
   return e('div', { className: 'space-y-5' },
-    e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Pending Cash'), e('p', { className: 'text-sm text-gray-500' }, 'Customer withdraw korechilo kintu cash dite parini — ei taka customer ke dite hobe. oi account er balance e ager-i add hoye geche; dile sudhu Current Balance kombe.')),
+    e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Pending Cash'), e('p', { className: 'text-sm text-gray-500' }, 'The customer withdrew from the bank but we could not hand over all the cash. This amount is still owed to the customer. It was already added to that account balance, so paying it out only reduces Current Balance.')),
     e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4' },
-      e(StatCard, { title: 'Total Payable (customer ke dite hobe)', value: '₹' + payable.toLocaleString('en-IN'), icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-amber-50 text-amber-600' }),
-      e(StatCard, { title: 'Customers baki', value: openRows.length, icon: e(Icon, { name: 'Users', size: 22 }), color: 'bg-gray-50 text-gray-600' }),
-      e(StatCard, { title: 'Sobcheye purono baki', value: oldest + ' din', icon: e(Icon, { name: 'AlertCircle', size: 22 }), color: oldest >= 3 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-600' })),
+      e(StatCard, { title: 'Total Payable (owed to customers)', value: '₹' + payable.toLocaleString('en-IN'), icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-amber-50 text-amber-600' }),
+      e(StatCard, { title: 'Customers pending', value: openRows.length, icon: e(Icon, { name: 'Users', size: 22 }), color: 'bg-gray-50 text-gray-600' }),
+      e(StatCard, { title: 'Oldest pending', value: oldest + (oldest === 1 ? ' day' : ' days'), icon: e(Icon, { name: 'AlertCircle', size: 22 }), color: oldest >= 3 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-600' })),
     e('div', { className: 'flex flex-wrap items-center gap-2' },
-      tab('open', 'Baki (' + openRows.length + ')'), tab('paid', 'Paid (' + (rows.length - openRows.length) + ')'), tab('all', 'All (' + rows.length + ')'),
-      e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Name ba mobile search...', className: 'ml-auto border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-500 w-56' })),
+      tab('open', 'Pending (' + openRows.length + ')'), tab('paid', 'Paid (' + (rows.length - openRows.length) + ')'), tab('all', 'All (' + rows.length + ')'),
+      e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search name or mobile...', className: 'ml-auto border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-500 w-56' })),
     e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto' },
       e('table', { className: 'w-full text-sm text-left' },
-        e('thead', { className: 'bg-gray-50 text-gray-500 border-b' }, e('tr', null, ['Date', 'Customer', 'Account', 'Total', 'Dewa hoyeche', 'Baki', 'Status', 'Action'].map((h, i) => e('th', { key: h, className: 'p-3 font-medium' + (i >= 3 && i <= 5 ? ' text-right' : '') }, h)))),
+        e('thead', { className: 'bg-gray-50 text-gray-500 border-b' }, e('tr', null, ['Date', 'Customer', 'Account', 'Total', 'Paid', 'Pending', 'Status', 'Action'].map((h, i) => e('th', { key: h, className: 'p-3 font-medium' + (i >= 3 && i <= 5 ? ' text-right' : '') }, h)))),
         e('tbody', { className: 'divide-y divide-gray-100' },
-          shown.length === 0 ? [e('tr', { key: 'none' }, e('td', { colSpan: 8, className: 'p-8 text-center text-gray-400' }, filter === 'open' ? 'Kono customer er cash baki nei.' : 'Kichu paoya jayni.'))] :
+          shown.length === 0 ? [e('tr', { key: 'none' }, e('td', { colSpan: 8, className: 'p-8 text-center text-gray-400' }, filter === 'open' ? 'No customer cash pending.' : 'Nothing found.'))] :
           shown.flatMap(r => {
             const d = daysSince(r.date), main = e('tr', { key: r.id, className: 'hover:bg-amber-50/40' },
-              e('td', { className: 'p-3 text-gray-500 whitespace-nowrap' }, r.date, r.rem > 0 && e('div', { className: 'text-[11px] ' + (d >= 3 ? 'text-red-500 font-semibold' : 'text-gray-400') }, d + ' din dhore baki')),
+              e('td', { className: 'p-3 text-gray-500 whitespace-nowrap' }, r.date, r.rem > 0 && e('div', { className: 'text-[11px] ' + (d >= 3 ? 'text-red-500 font-semibold' : 'text-gray-400') }, d + (d === 1 ? ' day' : ' days') + ' pending')),
               e('td', { className: 'p-3' }, e('button', { onClick: () => setOpenId(openId === r.id ? null : r.id), className: 'font-medium text-gray-800 hover:underline text-left' }, r.customerName), r.phone && e('div', { className: 'text-xs text-gray-400' }, r.phone)),
               e('td', { className: 'p-3 text-gray-600 text-xs' }, locLabel(r.location || 'Bank')),
               e('td', { className: 'p-3 text-right' }, '₹' + r.total),
@@ -4089,14 +4170,14 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
               e('td', { className: 'p-3' }, badge(r)),
               e('td', { className: 'p-3' }, e('div', { className: 'flex flex-wrap gap-1.5 items-center' },
                 r.rem > 0 && e('button', { onClick: () => openPay(r), className: 'px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700' }, 'Pay'),
-                r.rem > 0 && String(r.phone || '').length >= 10 && e('a', { href: wa(r), target: '_blank', rel: 'noopener noreferrer', className: 'px-3 py-1.5 rounded-lg text-xs font-medium border border-green-300 text-green-700 hover:bg-green-50' }, 'WhatsApp'),
+                r.rem > 0 && e('button', { onClick: () => setWaRec(r), className: 'px-3 py-1.5 rounded-lg text-xs font-medium border border-green-300 text-green-700 hover:bg-green-50' }, 'WhatsApp'),
                 admin && e('button', { onClick: () => delEntry(r), title: 'Delete', className: 'text-red-400 hover:text-red-600 p-1' }, e(Icon, { name: 'Trash2', size: 15 })))));
             if (openId !== r.id) return [main];
             return [main, e('tr', { key: r.id + 'h', className: 'bg-gray-50' }, e('td', { colSpan: 8, className: 'p-3' },
               e('p', { className: 'text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide' }, 'History'),
               e('div', { className: 'text-sm space-y-1' },
-                e('div', { className: 'flex gap-3' }, e('span', { className: 'w-24 text-gray-500' }, r.date), e('span', { className: 'flex-1 text-gray-700' }, 'Withdrawal ₹' + r.total + ' — entry r somoy cash dilam'), e('span', { className: 'font-semibold text-green-700' }, '₹' + (Number(r.paidNow) || 0))),
-                bkArr(r.payments).map(pm => e('div', { key: pm.id, className: 'flex gap-3 items-center' }, e('span', { className: 'w-24 text-gray-500' }, pm.date), e('span', { className: 'flex-1 text-gray-700' }, 'Pore dilam' + (pm.note ? ' — ' + pm.note : '') + (pm.staffName ? ' (' + pm.staffName + ')' : '')), e('span', { className: 'font-semibold text-green-700' }, '₹' + pm.amount), admin && e('button', { onClick: () => delPay(r, pm), title: 'Remove payment', className: 'text-red-400 hover:text-red-600 p-1' }, e(Icon, { name: 'X', size: 14 })))))))];
+                e('div', { className: 'flex gap-3' }, e('span', { className: 'w-24 text-gray-500' }, r.date), e('span', { className: 'flex-1 text-gray-700' }, 'Withdrawal ₹' + r.total + ' — cash handed over at entry'), e('span', { className: 'font-semibold text-green-700' }, '₹' + (Number(r.paidNow) || 0))),
+                bkArr(r.payments).map(pm => e('div', { key: pm.id, className: 'flex gap-3 items-center' }, e('span', { className: 'w-24 text-gray-500' }, pm.date), e('span', { className: 'flex-1 text-gray-700' }, 'Paid later' + (pm.note ? ' — ' + pm.note : '') + (pm.staffName ? ' (' + pm.staffName + ')' : '')), e('span', { className: 'font-semibold text-green-700' }, '₹' + pm.amount), admin && e('button', { onClick: () => delPay(r, pm), title: 'Remove payment', className: 'text-red-400 hover:text-red-600 p-1' }, e(Icon, { name: 'X', size: 14 })))))))];
           })))),
     payRec && e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4', onClick: ev => { if (ev.target === ev.currentTarget) setPayId(null); } },
       e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto' },
@@ -4106,24 +4187,199 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
         e('div', { className: 'p-5 space-y-4' },
           e('div', { className: 'grid grid-cols-3 gap-2 text-center text-sm' },
             e('div', { className: 'bg-gray-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-gray-500' }, 'Total'), e('p', { className: 'font-bold' }, '₹' + payRec.total)),
-            e('div', { className: 'bg-green-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-green-600' }, 'Dewa hoyeche'), e('p', { className: 'font-bold text-green-700' }, '₹' + payRec.paid)),
-            e('div', { className: 'bg-amber-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-amber-600' }, 'Baki'), e('p', { className: 'font-bold text-amber-700' }, '₹' + payRec.rem))),
+            e('div', { className: 'bg-green-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-green-600' }, 'Paid'), e('p', { className: 'font-bold text-green-700' }, '₹' + payRec.paid)),
+            e('div', { className: 'bg-amber-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-amber-600' }, 'Pending'), e('p', { className: 'font-bold text-amber-700' }, '₹' + payRec.rem))),
           e('div', null,
-            e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Ekhon koto dilen (₹)'),
+            e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Amount paid now (₹)'),
             e('div', { className: 'flex gap-2' },
               e('input', { type: 'number', min: 0, autoFocus: true, value: pay.amount, onChange: ev => setPay(p => ({ ...p, amount: ev.target.value })), onKeyDown: ev => ev.key === 'Enter' && doPay(), className: 'flex-1 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: '0' }),
-              e('button', { onClick: () => setPay(p => ({ ...p, amount: String(payRec.rem) })), className: 'px-3 py-2 rounded-lg text-sm border border-gray-300 hover:bg-gray-50 whitespace-nowrap' }, 'Pura baki'))),
+              e('button', { onClick: () => setPay(p => ({ ...p, amount: String(payRec.rem) })), className: 'px-3 py-2 rounded-lg text-sm border border-gray-300 hover:bg-gray-50 whitespace-nowrap' }, 'Full amount'))),
           e('div', { className: 'grid grid-cols-2 gap-3' },
             e('div', null, e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Date'), e('input', { type: 'date', value: pay.date, min: payRec.date, max: todayStr, onChange: ev => ev.target.value && setPay(p => ({ ...p, date: ev.target.value })), className: 'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm' })),
-            e('div', null, e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Note (optional)'), e('input', { value: pay.note, onChange: ev => setPay(p => ({ ...p, note: ev.target.value })), className: 'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: 'e.g. nije eslo' }))),
+            e('div', null, e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Note (optional)'), e('input', { value: pay.note, onChange: ev => setPay(p => ({ ...p, note: ev.target.value })), className: 'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: 'e.g. customer collected it' }))),
           e('div', { className: 'bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm space-y-1.5' },
-            e('div', { className: 'flex justify-between text-gray-600' }, e('span', null, pay.date + ' er Current Balance'), e('span', { className: 'font-semibold' }, '₹' + payBal)),
-            e('div', { className: 'flex justify-between text-red-500' }, e('span', null, '− Dilen'), e('span', { className: 'font-semibold' }, '₹' + payAmt)),
-            e('div', { className: 'flex justify-between border-t border-amber-200 pt-1.5 font-bold ' + (payBal - payAmt < 0 ? 'text-red-600' : 'text-gray-800') }, e('span', null, '= Notun Current Balance'), e('span', null, '₹' + pcRound(payBal - payAmt))),
-            e('p', { className: 'text-xs text-amber-700 pt-1' }, 'Account balance change hobe na (ager-i add hoye geche).'))),
+            e('div', { className: 'flex justify-between text-gray-600' }, e('span', null, 'Current Balance on ' + pay.date), e('span', { className: 'font-semibold' }, '₹' + payBal)),
+            e('div', { className: 'flex justify-between text-red-500' }, e('span', null, '− Paid now'), e('span', { className: 'font-semibold' }, '₹' + payAmt)),
+            e('div', { className: 'flex justify-between border-t border-amber-200 pt-1.5 font-bold ' + (payBal - payAmt < 0 ? 'text-red-600' : 'text-gray-800') }, e('span', null, '= New Current Balance'), e('span', null, '₹' + pcRound(payBal - payAmt))),
+            e('p', { className: 'text-xs text-amber-700 pt-1' }, 'The account balance does not change (it was already added at entry).'))),
         e('div', { className: 'flex gap-2 justify-end px-5 py-4 border-t border-gray-100' },
           e('button', { onClick: () => setPayId(null), className: 'text-gray-600 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel'),
-          e('button', { onClick: doPay, className: 'bg-amber-600 text-white px-5 py-2 rounded-lg hover:bg-amber-700 text-sm font-medium' }, 'Confirm Payment'))))
+          e('button', { onClick: doPay, className: 'bg-amber-600 text-white px-5 py-2 rounded-lg hover:bg-amber-700 text-sm font-medium' }, 'Confirm Payment')))),
+    waRec && e(WaTemplateModal, { title: waRec.customerName, phone: waRec.phone, templates: pcWaTemplates(waRec, biz), onClose: () => setWaRec(null) })
+  );
+}
+
+// ════════ WhatsApp template picker: every template has an English and a Bengali (বাংলা) version, editable before sending ════════
+function WaTemplateModal({ title, phone, templates, onClose }) {
+  const pick = (tp, l) => l === 'both' ? waBoth(tp.bn, tp.en) : tp[l];   // 'both' = Bangla first, then English (shop signature once)
+  const [lang, setLang] = useState(waLangPref()), [tid, setTid] = useState(templates[0].id), [text, setText] = useState(pick(templates[0], waLangPref())), [num, setNum] = useState(String(phone || '').replace(/\D/g, '').slice(-10));
+  const choose = (l, id) => { const tp = templates.find(x => x.id === id) || templates[0]; setLang(l); waSaveLang(l); setTid(tp.id); setText(pick(tp, l)); };
+  const ph = num;
+  const send = () => { if (ph.length < 10) return; window.open('https://wa.me/91' + ph + '?text=' + encodeURIComponent(text), '_blank', 'noopener'); onClose(); };
+  const chip = (on, label, fn, key) => e('button', { key, onClick: fn, className: 'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ' + (on ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-green-50') }, label);
+  return e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4', onClick: ev => { if (ev.target === ev.currentTarget) onClose(); } },
+    e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto' },
+      e('div', { className: 'flex items-center justify-between px-5 py-4 bg-green-600 text-white rounded-t-2xl' },
+        e('div', null, e('h3', { className: 'font-bold text-lg' }, 'Send WhatsApp Message'), e('p', { className: 'text-xs opacity-80' }, title + (ph ? ' · +91 ' + ph : ''))),
+        e('button', { onClick: onClose, className: 'p-1.5 rounded-lg hover:bg-green-700', title: 'Close' }, e(Icon, { name: 'X', size: 20 }))),
+      e('div', { className: 'p-5 space-y-4' },
+        e('div', null, e('p', { className: 'text-xs font-medium text-gray-500 mb-1.5' }, 'WhatsApp number (10 digits)'), e('input', { type: 'tel', maxLength: 10, value: num, onChange: ev => setNum(ev.target.value.replace(/\D/g, '')), className: 'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 text-sm', placeholder: 'Enter the customer mobile number' })),
+        e('div', null, e('p', { className: 'text-xs font-medium text-gray-500 mb-1.5' }, 'Message language / ভাষা'),
+          e('div', { className: 'flex flex-wrap gap-2' }, chip(lang === 'both', 'বাংলা + English', () => choose('both', tid), 'both'), chip(lang === 'bn', 'বাংলা (Bengali)', () => choose('bn', tid), 'bn'), chip(lang === 'en', 'English', () => choose('en', tid), 'en'))),
+        e('div', null, e('p', { className: 'text-xs font-medium text-gray-500 mb-1.5' }, 'Message template'),
+          e('div', { className: 'flex flex-wrap gap-2' }, templates.map(tp => chip(tid === tp.id, tp.label, () => choose(lang, tp.id), tp.id)))),
+        e('div', null, e('p', { className: 'text-xs font-medium text-gray-500 mb-1.5' }, 'Message (you can edit it before sending)'),
+          e('textarea', { value: text, onChange: ev => setText(ev.target.value), rows: 7, className: 'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 text-sm' }))),
+      e('div', { className: 'flex gap-2 justify-end px-5 py-4 border-t border-gray-100' },
+        e('button', { onClick: onClose, className: 'text-gray-600 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel'),
+        e('button', { onClick: send, disabled: ph.length < 10, className: 'text-white px-5 py-2 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50' }, 'Open WhatsApp'))));
+}
+// Templates for a Pending Cash (withdrawal) row: r.total = withdrawn, r.paid = handed over so far, r.rem = still owed to the customer
+function pcWaTemplates(r, biz) {
+  const sg = biz ? '\n— ' + biz : '', n = r.customerName, paid = pcRound(r.paid), rem = pcRound(r.rem), tot = pcRound(r.total);
+  return [
+    { id: 'reminder', label: 'Reminder', en: 'Hello ' + n + ', ₹' + rem + ' of the ₹' + tot + ' you withdrew on ' + r.date + ' is still pending with us. Please visit us to collect it.' + sg,
+      bn: 'নমস্কার ' + n + ', আপনার ' + r.date + ' তারিখের উইথড্রয়ালের ₹' + rem + ' ক্যাশ আমাদের কাছে বাকি আছে। অনুগ্রহ করে এসে নিয়ে যাবেন।' + sg },
+    { id: 'ready', label: 'Cash is ready', en: 'Hello ' + n + ', your pending cash of ₹' + rem + ' is ready. You can collect it anytime during our opening hours.' + sg,
+      bn: 'নমস্কার ' + n + ', আপনার বাকি ₹' + rem + ' ক্যাশ প্রস্তুত আছে। আমাদের খোলা থাকার সময়ে যেকোনো সময় এসে নিয়ে যেতে পারেন।' + sg },
+    { id: 'partial', label: 'Partly paid', en: 'Hello ' + n + ', we have handed you ₹' + paid + ' so far. ₹' + rem + ' is still pending. Please collect it soon.' + sg,
+      bn: 'নমস্কার ' + n + ', এখন পর্যন্ত আপনাকে ₹' + paid + ' দেওয়া হয়েছে। বাকি ₹' + rem + ' এখনো আপনার পাওনা আছে। অনুগ্রহ করে শীঘ্রই এসে নিয়ে যাবেন।' + sg }
+  ];
+}
+// Templates for a Deposit Pending row: r.total = cash given by the customer, r.credited = deposited so far, r.rem = still to be deposited
+function dpWaTemplates(r, biz) {
+  const sg = biz ? '\n— ' + biz : '', n = r.customerName, ac = r.accountNo ? ' (A/C ' + r.accountNo + ')' : '', cr = pcRound(r.credited), rem = pcRound(Math.max(0, r.rem)), tot = pcRound(r.total);
+  return [
+    { id: 'pending', label: 'Deposit pending', en: 'Hello ' + n + ', ₹' + rem + ' of the ₹' + tot + ' you gave us on ' + r.date + ' has not been credited to your account' + ac + ' yet. We will let you know once it is deposited.' + sg,
+      bn: 'নমস্কার ' + n + ', আপনার ' + r.date + ' তারিখে দেওয়া ₹' + tot + '-এর মধ্যে ₹' + rem + ' এখনো আপনার অ্যাকাউন্টে' + ac + ' জমা হয়নি। জমা হলে আপনাকে জানানো হবে।' + sg },
+    { id: 'credited', label: 'Deposit done', en: 'Hello ' + n + ', ₹' + cr + ' has been credited to your account' + ac + '.' + (rem > 0 ? ' ₹' + rem + ' is still pending and will be deposited soon.' : ' Your deposit is now complete. Thank you!') + sg,
+      bn: 'নমস্কার ' + n + ', আপনার অ্যাকাউন্টে' + ac + ' ₹' + cr + ' জমা করা হয়েছে।' + (rem > 0 ? ' বাকি ₹' + rem + ' শীঘ্রই জমা করা হবে।' : ' আপনার জমা সম্পূর্ণ হয়েছে। ধন্যবাদ!') + sg },
+    { id: 'issue', label: 'Technical issue', en: 'Hello ' + n + ', we could not deposit ₹' + rem + ' to your account' + ac + ' because of a technical problem (account link / ID). Please contact us, or you can collect your cash back.' + sg,
+      bn: 'নমস্কার ' + n + ', প্রযুক্তিগত সমস্যার (অ্যাকাউন্ট লিঙ্ক / আইডি) কারণে আপনার অ্যাকাউন্টে' + ac + ' ₹' + rem + ' জমা করা সম্ভব হয়নি। অনুগ্রহ করে আমাদের সাথে যোগাযোগ করুন, অথবা আপনি আপনার ক্যাশ ফেরত নিতে পারেন।' + sg }
+  ];
+}
+
+// ════════ DEPOSIT PENDING tab ════════
+// Customer handed over cash to deposit, but the ID / link did not work so we could not credit it (fully). The cash stays in the drawer,
+// but the part not credited yet is the CUSTOMER'S money, never yours. Credit it later in parts, or give the cash back.
+function DepositPendingTab({ pendingCash, setPendingCash, currentUser, showMessage, cbOn, businessProfile, locLabel = l => l || 'Bank' }) {
+  const admin = currentUser.role === 'admin', list = bkArr(pendingCash);
+  const [filter, setFilter] = useState('open'), [q, setQ] = useState(''), [openId, setOpenId] = useState(null), [payId, setPayId] = useState(null), [mode, setMode] = useState('credit');
+  const [pay, setPay] = useState({ amount: '', date: todayStr, note: '' });
+  const sumP = (r, f) => pcRound(bkArr(r.payments).filter(f).reduce((a, p) => a + (Number(p.amount) || 0), 0));
+  const rows = list.filter(pcIsDep).map(r => ({ ...r, credited: pcRound((Number(r.paidNow) || 0) + sumP(r, p => !dpIsRefund(p))), refunded: sumP(r, dpIsRefund), rem: pcRemaining(r) }));
+  const openRows = rows.filter(r => r.rem > 0), held = pcRound(openRows.reduce((s, r) => s + r.rem, 0));
+  const daysSince = d => Math.max(0, Math.floor((new Date(todayStr) - new Date(d)) / 86400000));
+  const needle = q.trim().toLowerCase();
+  const shown = rows.filter(r => filter === 'all' ? true : filter === 'done' ? r.rem <= 0 : r.rem > 0)
+    .filter(r => !needle || String(r.customerName || '').toLowerCase().includes(needle) || String(r.phone || '').includes(needle) || String(r.accountNo || '').includes(needle))
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id);
+  const oldest = openRows.length ? Math.max(...openRows.map(r => daysSince(r.date))) : 0;
+  const payRec = payId ? rows.find(r => r.id === payId) : null;
+  const [waRec, setWaRec] = useState(null), biz = (businessProfile && businessProfile.name) || '';
+  const openPay = (r, m) => { setMode(m); setPayId(r.id); setPay({ amount: '', date: todayStr, note: '' }); };
+  const doPay = () => {
+    const r = payRec; if (!r) return;
+    const amt = pcRound(Number(pay.amount) || 0);
+    if (amt <= 0) return showMessage('Enter an amount.', 'error');
+    if (amt > r.rem) return showMessage('Amount cannot exceed the pending ₹' + r.rem + '.', 'error');
+    if (!pay.date) return showMessage('Select a date.', 'error');
+    if (pay.date < r.date) return showMessage('Date (' + pay.date + ') cannot be before the entry date (' + r.date + ').', 'error');
+    if (mode === 'refund') {
+      const bal = cbOn(pay.date);
+      if (amt > bal && !window.confirm('On ' + pay.date + ' the Current Balance is ₹' + bal + '. Returning ₹' + amt + ' would make it negative. Continue?')) return;
+    }
+    setPendingCash(list.map(x => x.id === r.id ? { ...x, payments: [...bkArr(x.payments), { id: Date.now(), type: mode, date: pay.date, amount: amt, note: pay.note.trim(), staffId: currentUser.id, staffName: currentUser.name }] } : x));
+    drvAudit(currentUser, mode === 'refund' ? 'Pending Deposit Refunded' : 'Pending Deposit Credited', r.customerName + ' — ₹' + amt + ' (pending ₹' + pcRound(r.rem - amt) + ')');
+    showMessage(mode === 'refund' ? '₹' + amt + ' cash returned — ' + r.customerName : '₹' + amt + ' credited to account — ' + r.customerName + (r.rem - amt <= 0 ? ' (fully credited, Done)' : ', pending ₹' + pcRound(r.rem - amt)));
+    setPayId(null);
+  };
+  const delEntry = r => {
+    if (!window.confirm('"' + r.customerName + '" — delete this Pending Deposit entry?\n\nThis removes the entry and all its payments. Current Balance will decrease by ₹' + r.total + ' and the ₹' + r.credited + ' already credited will be added back to ' + (r.location && r.location !== 'Bank' ? locLabel(r.location) + ' balance' : 'Account Balance') + '.')) return;
+    setPendingCash(list.filter(x => x.id !== r.id));
+    drvAudit(currentUser, 'Pending Deposit Deleted', r.customerName + ' — ₹' + r.total);
+    showMessage('Pending deposit entry deleted', 'error');
+  };
+  const delPay = (r, pm) => {
+    if (!window.confirm('Remove this ' + (dpIsRefund(pm) ? 'cash return' : 'account credit') + ' of ₹' + pm.amount + '? The pending amount will increase again' + (dpIsRefund(pm) ? '.' : ' and the amount will be added back to the account balance.'))) return;
+    setPendingCash(list.map(x => x.id === r.id ? { ...x, payments: bkArr(x.payments).filter(y => y.id !== pm.id) } : x));
+    drvAudit(currentUser, 'Pending Deposit Payment Removed', r.customerName + ' — ₹' + pm.amount);
+    showMessage('Payment removed', 'error');
+  };
+  const badge = r => r.rem <= 0 ? e('span', { className: 'px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700' }, 'Done') : (r.credited > 0 || r.refunded > 0) ? e('span', { className: 'px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700' }, 'Partial') : e('span', { className: 'px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600' }, 'Pending');
+  const tabBtn = (k, label) => e('button', { key: k, onClick: () => setFilter(k), className: 'px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ' + (filter === k ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-sky-50') }, label);
+  const payAmt = pcRound(Number(pay.amount) || 0), payBal = payRec && mode === 'refund' ? cbOn(pay.date || todayStr) : 0;
+  const locName = payRec ? (payRec.location && payRec.location !== 'Bank' ? locLabel(payRec.location) + ' balance' : 'Account Balance') : '';
+  const fld = 'w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500 text-sm';
+  return e('div', { className: 'space-y-5' },
+    e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Deposit Pending'), e('p', { className: 'text-sm text-gray-500' }, 'The customer handed over cash to deposit, but it could not be credited to the account (ID or link not available). The cash is in your drawer and counted in Current Balance, but it belongs to the customer, not you. Until it is credited it does not appear in the transaction list, transaction count, account balance or Reports. Credit it later in one go or in parts, or return the cash to the customer.')),
+    e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4' },
+      e(StatCard, { title: 'Customer cash held (not yours)', value: '₹' + held.toLocaleString('en-IN'), icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-sky-50 text-sky-600' }),
+      e(StatCard, { title: 'Customers pending', value: openRows.length, icon: e(Icon, { name: 'Users', size: 22 }), color: 'bg-gray-50 text-gray-600' }),
+      e(StatCard, { title: 'Oldest pending', value: oldest + (oldest === 1 ? ' day' : ' days'), icon: e(Icon, { name: 'AlertCircle', size: 22 }), color: oldest >= 3 ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-600' })),
+    e('div', { className: 'flex flex-wrap items-center gap-2' },
+      tabBtn('open', 'Pending (' + openRows.length + ')'), tabBtn('done', 'Done (' + (rows.length - openRows.length) + ')'), tabBtn('all', 'All (' + rows.length + ')'),
+      e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search name, mobile or account no...', className: 'ml-auto border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-sky-500 w-56' })),
+    e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto' },
+      e('table', { className: 'w-full text-sm text-left' },
+        e('thead', { className: 'bg-gray-50 text-gray-500 border-b' }, e('tr', null, ['Date', 'Customer', 'Account', 'Customer Gave', 'Credited', 'Returned', 'Pending', 'Status', 'Action'].map((h, i) => e('th', { key: h, className: 'p-3 font-medium' + (i >= 3 && i <= 6 ? ' text-right' : '') }, h)))),
+        e('tbody', { className: 'divide-y divide-gray-100' },
+          shown.length === 0 ? [e('tr', { key: 'none' }, e('td', { colSpan: 9, className: 'p-8 text-center text-gray-400' }, filter === 'open' ? 'No pending customer deposits.' : 'Nothing found.'))] :
+          shown.flatMap(r => {
+            const d = daysSince(r.date), main = e('tr', { key: r.id, className: 'hover:bg-sky-50/40' },
+              e('td', { className: 'p-3 text-gray-500 whitespace-nowrap' }, r.date, r.rem > 0 && e('div', { className: 'text-[11px] ' + (d >= 3 ? 'text-red-500 font-semibold' : 'text-gray-400') }, d + (d === 1 ? ' day' : ' days') + ' pending')),
+              e('td', { className: 'p-3' }, e('button', { onClick: () => setOpenId(openId === r.id ? null : r.id), className: 'font-medium text-gray-800 hover:underline text-left' }, r.customerName), (r.phone || r.accountNo) && e('div', { className: 'text-xs text-gray-400' }, [r.phone, r.accountNo ? 'A/C ' + r.accountNo : ''].filter(Boolean).join(' · '))),
+              e('td', { className: 'p-3 text-gray-600 text-xs' }, locLabel(r.location || 'Bank')),
+              e('td', { className: 'p-3 text-right' }, '₹' + r.total),
+              e('td', { className: 'p-3 text-right text-green-700' }, '₹' + r.credited),
+              e('td', { className: 'p-3 text-right text-gray-500' }, r.refunded ? '₹' + r.refunded : '—'),
+              e('td', { className: 'p-3 text-right font-bold ' + (r.rem > 0 ? 'text-sky-700' : 'text-gray-400') }, '₹' + Math.max(0, r.rem)),
+              e('td', { className: 'p-3' }, badge(r)),
+              e('td', { className: 'p-3' }, e('div', { className: 'flex flex-wrap gap-1.5 items-center' },
+                r.rem > 0 && e('button', { onClick: () => openPay(r, 'credit'), className: 'px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700' }, 'Credit to Account'),
+                r.rem > 0 && e('button', { onClick: () => openPay(r, 'refund'), className: 'px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50' }, 'Return Cash'),
+                e('button', { onClick: () => setWaRec(r), className: 'px-3 py-1.5 rounded-lg text-xs font-medium border border-green-300 text-green-700 hover:bg-green-50' }, 'WhatsApp'),
+                admin && e('button', { onClick: () => delEntry(r), title: 'Delete', className: 'text-red-400 hover:text-red-600 p-1' }, e(Icon, { name: 'Trash2', size: 15 })))));
+            if (openId !== r.id) return [main];
+            return [main, e('tr', { key: r.id + 'h', className: 'bg-gray-50' }, e('td', { colSpan: 9, className: 'p-3' },
+              e('p', { className: 'text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide' }, 'History'),
+              e('div', { className: 'text-sm space-y-1' },
+                e('div', { className: 'flex gap-3' }, e('span', { className: 'w-24 text-gray-500' }, r.date), e('span', { className: 'flex-1 text-gray-700' }, 'Customer gave ₹' + r.total + ' — credited to account at entry: ₹' + (Number(r.paidNow) || 0)), e('span', { className: 'font-semibold text-green-700' }, '₹' + (Number(r.paidNow) || 0))),
+                bkArr(r.payments).map(pm => e('div', { key: pm.id, className: 'flex gap-3 items-center' }, e('span', { className: 'w-24 text-gray-500' }, pm.date), e('span', { className: 'flex-1 text-gray-700' }, (dpIsRefund(pm) ? 'Cash returned to customer' : 'Credited to account later') + (pm.note ? ' — ' + pm.note : '') + (pm.staffName ? ' (' + pm.staffName + ')' : '')), e('span', { className: 'font-semibold ' + (dpIsRefund(pm) ? 'text-gray-600' : 'text-green-700') }, '₹' + pm.amount), admin && e('button', { onClick: () => delPay(r, pm), title: 'Remove', className: 'text-red-400 hover:text-red-600 p-1' }, e(Icon, { name: 'X', size: 14 })))))))];
+          })))),
+    payRec && e('div', { className: 'fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4', onClick: ev => { if (ev.target === ev.currentTarget) setPayId(null); } },
+      e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto' },
+        e('div', { className: 'flex items-center justify-between px-5 py-4 text-white rounded-t-2xl ' + (mode === 'refund' ? 'bg-gray-700' : 'bg-sky-600') },
+          e('div', null, e('h3', { className: 'font-bold text-lg' }, mode === 'refund' ? 'Return Cash to Customer' : 'Credit to Account'), e('p', { className: 'text-xs opacity-80' }, payRec.customerName + (payRec.phone ? ' · ' + payRec.phone : '') + (payRec.accountNo ? ' · A/C ' + payRec.accountNo : ''))),
+          e('button', { onClick: () => setPayId(null), className: 'p-1.5 rounded-lg hover:bg-black hover:bg-opacity-20', title: 'Close' }, e(Icon, { name: 'X', size: 20 }))),
+        e('div', { className: 'p-5 space-y-4' },
+          e('div', { className: 'grid grid-cols-3 gap-2 text-center text-sm' },
+            e('div', { className: 'bg-gray-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-gray-500' }, 'Customer gave'), e('p', { className: 'font-bold' }, '₹' + payRec.total)),
+            e('div', { className: 'bg-green-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-green-600' }, 'Credited'), e('p', { className: 'font-bold text-green-700' }, '₹' + payRec.credited)),
+            e('div', { className: 'bg-sky-50 rounded-lg p-2' }, e('p', { className: 'text-xs text-sky-600' }, 'Pending'), e('p', { className: 'font-bold text-sky-700' }, '₹' + payRec.rem))),
+          e('div', null,
+            e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, mode === 'refund' ? 'Cash returned (₹)' : 'Amount credited now (₹)'),
+            e('div', { className: 'flex gap-2' },
+              e('input', { type: 'number', min: 0, autoFocus: true, value: pay.amount, onChange: ev => setPay(p => ({ ...p, amount: ev.target.value })), onKeyDown: ev => ev.key === 'Enter' && doPay(), className: 'flex-1 ' + fld, placeholder: '0' }),
+              e('button', { onClick: () => setPay(p => ({ ...p, amount: String(payRec.rem) })), className: 'px-3 py-2 rounded-lg text-sm border border-gray-300 hover:bg-gray-50 whitespace-nowrap' }, 'Full amount'))),
+          e('div', { className: 'grid grid-cols-2 gap-3' },
+            e('div', null, e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Date'), e('input', { type: 'date', value: pay.date, min: payRec.date, max: todayStr, onChange: ev => ev.target.value && setPay(p => ({ ...p, date: ev.target.value })), className: fld })),
+            e('div', null, e('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Note (optional)'), e('input', { value: pay.note, onChange: ev => setPay(p => ({ ...p, note: ev.target.value })), className: fld, placeholder: mode === 'refund' ? 'e.g. customer collected it' : 'e.g. link is working now' }))),
+          mode === 'refund'
+            ? e('div', { className: 'bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm space-y-1.5' },
+                e('div', { className: 'flex justify-between text-gray-600' }, e('span', null, 'Customer cash held now'), e('span', { className: 'font-semibold' }, '₹' + payRec.rem)),
+                e('div', { className: 'flex justify-between text-red-500' }, e('span', null, '− Cash returned'), e('span', { className: 'font-semibold' }, '₹' + payAmt)),
+                e('div', { className: 'flex justify-between border-t border-gray-200 pt-1.5 font-bold text-gray-800' }, e('span', null, '= Still pending'), e('span', null, '₹' + pcRound(Math.max(0, payRec.rem - payAmt)))),
+                e('p', { className: 'text-xs text-gray-500 pt-1' }, 'Current Balance will decrease by ₹' + payAmt + ' (Current Balance on ' + pay.date + ' is ₹' + payBal + '). The account balance does not change, since the money never reached the account.'))
+            : e('div', { className: 'bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm space-y-1.5' },
+                e('div', { className: 'flex justify-between text-gray-600' }, e('span', null, 'Customer cash held now'), e('span', { className: 'font-semibold' }, '₹' + payRec.rem)),
+                e('div', { className: 'flex justify-between text-green-700' }, e('span', null, '− Credited now'), e('span', { className: 'font-semibold' }, '₹' + payAmt)),
+                e('div', { className: 'flex justify-between border-t border-sky-200 pt-1.5 font-bold text-gray-800' }, e('span', null, '= Still pending'), e('span', null, '₹' + pcRound(Math.max(0, payRec.rem - payAmt)))),
+                e('p', { className: 'text-xs text-sky-700 pt-1' }, locName + ' will decrease by ₹' + payAmt + ' and this will be added to Reports as a Cash IN transaction. Current Balance does not change (the cash was already counted), and this ₹' + payAmt + ' now counts as your own cash.'))),
+        e('div', { className: 'flex gap-2 justify-end px-5 py-4 border-t border-gray-100' },
+          e('button', { onClick: () => setPayId(null), className: 'text-gray-600 bg-white border border-gray-200 px-4 py-2 rounded-lg text-sm hover:bg-gray-50' }, 'Cancel'),
+          e('button', { onClick: doPay, className: 'text-white px-5 py-2 rounded-lg text-sm font-medium ' + (mode === 'refund' ? 'bg-gray-700 hover:bg-gray-800' : 'bg-sky-600 hover:bg-sky-700') }, mode === 'refund' ? 'Confirm Return' : 'Confirm Credit')))),
+    waRec && e(WaTemplateModal, { title: waRec.customerName, phone: waRec.phone, templates: dpWaTemplates(waRec, biz), onClose: () => setWaRec(null) })
   );
 }
 
@@ -4131,7 +4387,7 @@ function PendingCashTab({ pendingCash, setPendingCash, currentUser, showMessage,
 // A scratch pad for the start of the day. Count the notes to add up the cash, and check or fix the balance of every wallet and account in one place.
 // Nothing about the notes is saved: only the cash total (the day's Opening Balance) and any balance that was changed.
 const DB_NOTES = [500, 200, 100, 50, 20, 10];
-function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose }) {
+function DayBookModal({ date, openingCash, rows, pendingPayable, heldCash = 0, onSave, onClose }) {
   const [counts, setCounts] = useState({}), [coins, setCoins] = useState(''), [manual, setManual] = useState(String(openingCash || 0));
   const [vals, setVals] = useState(() => Object.fromEntries(rows.map(r => [r.key, String(r.bal / 100)])));
   const [touched, setTouched] = useState({});   // values you typed in (even the same number) are kept as this day's opening
@@ -4193,7 +4449,8 @@ function DayBookModal({ date, openingCash, rows, pendingPayable, onSave, onClose
             e('button', { onClick: onClose, className: 'px-4 py-2 rounded-lg text-sm border border-gray-300 bg-white hover:bg-gray-50' }, 'Cancel'),
             e('button', { onClick: save, disabled: !changed && !touchedKeys.length, className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40' }, 'Save Day Book'))),
         e('p', { className: 'text-[11px] text-indigo-600 mt-1' }, 'The values you type here become this day\'s opening in the Day Book menu — they are not replaced by the previous day\'s closing.'),
-        pendingPayable > 0 && e('p', { className: 'text-[11px] text-amber-700 mt-1' }, 'Pending Cash: customer ke dite hobe ₹' + pendingPayable + ' (not taken off the total above).'))));
+        pendingPayable > 0 && e('p', { className: 'text-[11px] text-amber-700 mt-1' }, 'Pending Cash: owed to customers ₹' + pendingPayable + ' (not taken off the total above).'),
+        heldCash > 0 && e('p', { className: 'text-[11px] text-sky-700 mt-1' }, 'Deposit Pending: ₹' + heldCash + ' of this cash belongs to customers (not yet credited to their accounts), not to you.'))));
 }
 // ════════ END DAY BOOK ════════
 
@@ -4235,6 +4492,12 @@ function dbAllEvents(d, nm) {
   });
   bkArr(d.branchDeposits).forEach(b => ev(b.date, b.id, 'Branch Deposit', b.branchName || '', [{ a: 'cash', p: -dbP(b.myCash) }, { a: 'acb', p: dbP(b.myCash) + dbP(b.outsideCash) }]));
   bkArr(d.pendingCash).forEach(r => {
+    if (pcIsDep(r)) {
+      const la = saLocId(r.location) || 'acb';
+      ev(r.date, r.id, 'Pending Deposit', r.customerName + ' · customer gave ' + saFmt(dbP(r.total)) + ', credited to account ' + saFmt(dbP(r.paidNow)), [{ a: 'cash', p: dbP(r.total) }, { a: la, p: -dbP(r.paidNow) }]);
+      bkArr(r.payments).forEach(p => dpIsRefund(p) ? ev(p.date, p.id, 'Pending deposit: cash returned', r.customerName, [{ a: 'cash', p: -dbP(p.amount) }]) : ev(p.date, p.id, 'Pending deposit: credited to account', r.customerName, [{ a: la, p: -dbP(p.amount) }]));
+      return;
+    }
     ev(r.date, r.id, 'Pending Cash', r.customerName + ' · total ' + saFmt(dbP(r.total)) + ', given ' + saFmt(dbP(r.paidNow)), [{ a: saLocId(r.location) || 'acb', p: dbP(r.total) }, { a: 'cash', p: -dbP(r.paidNow) }]);
     bkArr(r.payments).forEach(p => ev(p.date, p.id, 'Pending cash paid', r.customerName, [{ a: 'cash', p: -dbP(p.amount) }]));
   });
@@ -4423,6 +4686,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreInput, setAddMoreInput] = useState('');
   const [showDayBook, setShowDayBook] = useState(false);
+  const [pdOn, setPdOn] = useState(false), [pdPaid, setPdPaid] = useState(''), [pdAcct, setPdAcct] = useState('');   // Deposit Pending toggle on the ledger form
   const [pcOn, setPcOn] = useState(false), [pcPhone, setPcPhone] = useState(''), [pcPaid, setPcPaid] = useState('');   // Pending Cash toggle on the ledger form
   const [showBranch, setShowBranch] = useState(false);
   const [branchForm, setBranchForm] = useState({ name: '', myCash: '', outsideCash: '' });
@@ -4459,20 +4723,21 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   const branchOutsideToday = branchTodays.reduce((s, b) => s + (Number(b.outsideCash) || 0), 0);
   // Pending Cash: only cash really handed over (given on the entry day + later payments) leaves the Current Balance.
   const pcPaidToday = pcCashOutOn(pendingCash, selectedDate);
-  const pcPayableAll = pcPayable(pendingCash), pcOpenCount = bkArr(pendingCash).filter(r => pcRemaining(r) > 0).length;
-  const currentBalance  = openingBalance + totalDeposit - totalWithdrawal - branchMyCashToday - pcPaidToday;
+  const pcInToday = pcCashInOn(pendingCash, selectedDate), dpHeldToday = dpHeldAsOf(pendingCash, selectedDate), dpHeldAll = dpHeldAsOf(pendingCash), dpOpenCount = bkArr(pendingCash).filter(r => pcIsDep(r) && pcRemaining(r) > 0).length;   // Deposit Pending: cash taken today / customer's money still held
+  const pcPayableAll = pcPayable(pendingCash), pcOpenCount = bkArr(pendingCash).filter(r => !pcIsDep(r) && pcRemaining(r) > 0).length;
+  const currentBalance  = openingBalance + totalDeposit - totalWithdrawal - branchMyCashToday - pcPaidToday + pcInToday;
   // Current Balance for any date (used to warn before paying a pending customer).
   const cbOn = d => {
     const tx = bankTransactions.filter(t => t.date === d), on = safeOnline.filter(t => t.date === d);
     const dep = tx.reduce((a, t) => a + (t.cashIn || 0), 0) + on.filter(t => t.type === 'transfer').reduce((a, t) => a + (t.amount || 0), 0);
     const wd = tx.reduce((a, t) => a + (t.cashOut || 0), 0) + on.filter(t => t.type === 'received').reduce((a, t) => a + (t.amount || 0), 0);
     const bp = bkArr(branchDeposits).filter(b => b.date === d).reduce((a, b) => a + (Number(b.myCash) || 0), 0);
-    return (openingBalances[d] || 0) + dep - wd - bp - pcCashOutOn(pendingCash, d);
+    return (openingBalances[d] || 0) + dep - wd - bp - pcCashOutOn(pendingCash, d) + pcCashInOn(pendingCash, d);
   };
 
   let running = openingBalance;
   const passLedgerRows = (tasks || []).filter(t => t.passThrough && t.date === selectedDate).map(t => ({ id: t.id + 0.5, date: t.date, customerName: 'Pass-through: ' + (t.customerName || '') + (t.passMobile ? ' (' + t.passMobile + ')' : '') + (t.passAccNo ? ' A/c ' + t.passAccNo : ''), cashIn: 0, cashOut: Number(t.passThrough) || 0, location: (t.passFrom || 'account') === 'account' ? 'Bank' : 'acc:' + t.passFrom, passRow: true }));
-  const rows = [...todays, ...pcLedgerRows(pendingCash).filter(t => t.date === selectedDate), ...passLedgerRows].sort((a, b) => a.id - b.id).map(t => { running += (t.cashIn || 0) - (t.cashOut || 0); return { ...t, runningBalance: running }; });
+  const rows = [...todays, ...pcLedgerRows(pendingCash).filter(t => t.date === selectedDate), ...passLedgerRows].sort((a, b) => a.id - b.id).map(t => { if (!t.noCash) running += (t.cashIn || 0) - (t.cashOut || 0); return { ...t, runningBalance: running }; }).filter(t => !t.hidden);   // hidden = Deposit Pending cash received / handed back (cash only, not a transaction)
 
   // ── Account Balance, Savings and CSC Wallet: calculated by the shared bkCalcBalances (also used by Accounts) ──
   const {
@@ -4514,16 +4779,31 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     if (cashIn === 0 && cashOut === 0) return showMessage('Please enter a Cash IN or Cash OUT amount.', 'error');
     // ── Pending withdrawal: customer withdrew from the bank but we could not hand over all the cash ──
     if (pcOn) {   // Self Transfer returned above, so this covers Bank and every account
-      if (cashIn > 0) return showMessage('Pending withdrawal er jonno Cash IN faka rakhun.', 'error');
-      if (cashOut <= 0) return showMessage('Cash OUT te customer er total withdrawal amount likhun.', 'error');
+      if (cashIn > 0) return showMessage('Leave Cash IN empty for a pending withdrawal.', 'error');
+      if (cashOut <= 0) return showMessage('Enter the total withdrawal amount in Cash OUT.', 'error');
       const paidNow = pcRound(Number(pcPaid) || 0), phone = String(pcPhone || '').replace(/\D/g, '');
-      if (paidNow < 0) return showMessage('Amount negative hote pare na.', 'error');
-      if (paidNow >= cashOut) return showMessage('Pura cash dite parle "Pending" tick ta tule normal Add Transaction korun.', 'error');
-      if (phone && phone.length < 10) return showMessage('Mobile number 10 digit er hote hobe.', 'error');
-      if (paidNow > currentBalance && !window.confirm('Ekhon dewa ₹' + paidNow + ' Current Balance ₹' + currentBalance + ' er cheye beshi. Current Balance negative hobe. Continue?')) return;
+      if (paidNow < 0) return showMessage('Amount cannot be negative.', 'error');
+      if (paidNow >= cashOut) return showMessage('If you can hand over the full cash now, untick Pending and use a normal Add Transaction.', 'error');
+      if (phone && phone.length < 10) return showMessage('Mobile number must be 10 digits.', 'error');
+      if (paidNow > currentBalance && !window.confirm('The amount paid now (₹' + paidNow + ') exceeds the Current Balance (₹' + currentBalance + '). Current Balance will go negative. Continue?')) return;
       setPendingCash([...bkArr(pendingCash), { id: Date.now(), date: selectedDate, customerName: form.customerName.trim(), phone: phone.slice(-10), location: form.location, total: cashOut, paidNow, payments: [], staffId: currentUser.id, staffName: currentUser.name }]);
       setForm(f => ({ ...f, customerName: '', cashIn: '', cashOut: '' })); setPcOn(false); setPcPhone(''); setPcPaid('');
-      showMessage('Pending withdrawal saved — ' + (form.location === 'Bank' ? 'Account Balance' : locLabel(form.location) + ' balance') + ' +₹' + cashOut + ', Current Balance −₹' + paidNow + '. Customer ke baki ₹' + pcRound(cashOut - paidNow) + ' dite hobe.');
+      showMessage('Pending withdrawal saved — ' + (form.location === 'Bank' ? 'Account Balance' : locLabel(form.location) + ' balance') + ' +₹' + cashOut + ', Current Balance −₹' + paidNow + '. ₹' + pcRound(cashOut - paidNow) + ' is still owed to the customer.');
+      return;
+    }
+    // ── Pending deposit: customer handed over cash to deposit, but we could not (fully) credit it to the account ──
+    if (pdOn) {
+      if (cashOut > 0) return showMessage('Leave Cash OUT empty for a pending deposit.', 'error');
+      if (cashIn <= 0) return showMessage('Enter the total amount the customer handed over in Cash IN.', 'error');
+      const paidNow = pcRound(Number(pdPaid) || 0), phone = String(pcPhone || '').replace(/\D/g, ''), acct = String(pdAcct || '').replace(/\D/g, '');
+      if (paidNow < 0) return showMessage('Amount cannot be negative.', 'error');
+      if (paidNow >= cashIn) return showMessage('If the full amount can be credited now, untick Pending and use a normal Add Transaction.', 'error');
+      if (phone && phone.length < 10) return showMessage('Mobile number must be 10 digits.', 'error');
+      if (acct && acct.length < 9) return showMessage('Account number must be at least 9 digits.', 'error');
+      setPendingCash([...bkArr(pendingCash), { id: Date.now(), kind: 'deposit', date: selectedDate, customerName: form.customerName.trim(), phone: phone.slice(-10), accountNo: acct, location: form.location, total: cashIn, paidNow, payments: [], staffId: currentUser.id, staffName: currentUser.name }]);
+      drvAudit(currentUser, 'Pending Deposit Added', form.customerName.trim() + ' — ₹' + cashIn + ' (credited to account ₹' + paidNow + ')');
+      setForm(f => ({ ...f, customerName: '', cashIn: '', cashOut: '' })); setPdOn(false); setPcPhone(''); setPdPaid(''); setPdAcct('');
+      showMessage('Pending deposit saved — Current Balance +₹' + cashIn + ' (cash received), ' + (form.location === 'Bank' ? 'Account Balance' : locLabel(form.location) + ' balance') + ' −₹' + paidNow + ' (credited part only). The remaining ₹' + pcRound(cashIn - paidNow) + ' will not appear in transactions or reports until you credit it.');
       return;
     }
     setBankTransactions([...bankTransactions, { id: Date.now(), date: selectedDate, customerName: form.customerName, cashIn, cashOut, location: form.location, staffId: currentUser.id, staffName: currentUser.name }]);
@@ -4555,8 +4835,23 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
 
   const deletePc = r => {
     const rec = bkArr(pendingCash).find(x => x.id === r.pcRec); if (!rec) return showMessage('This Pending Cash entry no longer exists.', 'error');
+    if (pcIsDep(rec)) {
+      if (r.pcPay === undefined) {
+        if (!window.confirm('"' + rec.customerName + '" — delete this Pending Deposit entry?\n\nThis removes the entry and all its payments. Current Balance will decrease by ₹' + rec.total + ' and anything already credited will be added back to the account balance.')) return;
+        setPendingCash(bkArr(pendingCash).filter(x => x.id !== rec.id));
+        drvAudit(currentUser, 'Pending Deposit Deleted', rec.customerName + ' — ₹' + rec.total);
+        showMessage('Pending deposit entry deleted', 'error');
+      } else {
+        const pm = bkArr(rec.payments).find(y => y.id === r.pcPay); if (!pm) return;
+        if (!window.confirm('Remove this ' + (dpIsRefund(pm) ? 'cash return' : 'account credit') + ' of ₹' + pm.amount + '? The pending amount will increase again' + (dpIsRefund(pm) ? '.' : ' and the amount will be added back to the account balance.'))) return;
+        setPendingCash(bkArr(pendingCash).map(x => x.id === rec.id ? { ...x, payments: bkArr(x.payments).filter(y => y.id !== pm.id) } : x));
+        drvAudit(currentUser, 'Pending Deposit Payment Removed', rec.customerName + ' — ₹' + pm.amount);
+        showMessage('Payment removed', 'error');
+      }
+      return;
+    }
     if (r.pcPay === undefined) {
-      if (!window.confirm('\"' + rec.customerName + '\" er Pending entry delete korben?\n\nEi entry r sob payment muche jabe. ' + (rec.location && rec.location !== 'Bank' ? locLabel(rec.location) + ' balance' : 'Account Balance') + ' ₹' + rec.total + ' kome jabe ar ja cash dewa hoyeche (₹' + pcPaidSoFar(rec) + ') Current Balance e ferot ashbe.')) return;
+      if (!window.confirm('\"' + rec.customerName + '\" — delete this Pending Cash entry?\n\nThis removes the entry and all its payments. ' + (rec.location && rec.location !== 'Bank' ? locLabel(rec.location) + ' balance' : 'Account Balance') + ' will decrease by ₹' + rec.total + ' and the ₹' + pcPaidSoFar(rec) + ' already paid will be added back to Current Balance.')) return;
       setPendingCash(bkArr(pendingCash).filter(x => x.id !== rec.id));
       drvAudit(currentUser, 'Pending Cash Deleted', rec.customerName + ' — ₹' + rec.total);
       showMessage('Pending entry deleted', 'error');
@@ -4681,7 +4976,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
   };
 
   return e('div', { className: 'space-y-4' },
-    showDayBook && e(DayBookModal, { date: selectedDate, openingCash: openingBalance, rows: dbRows, pendingPayable: pcPayableAll, onSave: saveDayBook, onClose: () => setShowDayBook(false) }),
+    showDayBook && e(DayBookModal, { date: selectedDate, openingCash: openingBalance, rows: dbRows, pendingPayable: pcPayableAll, heldCash: dpHeldToday, onSave: saveDayBook, onClose: () => setShowDayBook(false) }),
     // ── Tab switcher: Ledger | Reports ──
     e('div', { className: 'flex gap-2 border-b border-gray-100 pb-3' },
       e('button', { onClick: () => setBankingTab('ledger'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='ledger' ? 'bg-green-700 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-green-50') }, 'Ledger'),
@@ -4690,9 +4985,11 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       e('button', { onClick: () => setBankingTab('cscwallet'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='cscwallet' ? 'bg-orange-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-orange-50') }, 'CSC Wallet'),
       e('button', { onClick: () => setBankingTab('savingsexpense'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='savingsexpense' ? 'bg-teal-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-teal-50') }, 'Savings Expense'),
       e('button', { onClick: () => setBankingTab('transfer'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='transfer' ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50') }, 'Money Transfer'),
-      e('button', { onClick: () => setBankingTab('pending'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='pending' ? 'bg-amber-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-amber-50') }, 'Pending Cash' + (pcOpenCount ? ' (' + pcOpenCount + ')' : ''))
+      e('button', { onClick: () => setBankingTab('pending'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='pending' ? 'bg-amber-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-amber-50') }, 'Pending Cash' + (pcOpenCount ? ' (' + pcOpenCount + ')' : '')),
+      e('button', { onClick: () => setBankingTab('depositpending'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='depositpending' ? 'bg-sky-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-sky-50') }, 'Deposit Pending' + (dpOpenCount ? ' (' + dpOpenCount + ')' : ''))
     ),
 
+    bankingTab === 'depositpending' && e(DepositPendingTab, { pendingCash, setPendingCash, currentUser, showMessage, cbOn, businessProfile, locLabel }),
     bankingTab === 'pending' && e(PendingCashTab, { pendingCash, setPendingCash, currentUser, showMessage, cbOn, businessProfile, locLabel }),
     bankingTab === 'transfer' && e(MoneyTransferTab, { tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }),
 
@@ -4807,9 +5104,12 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
     ),
 
     pcPayableAll > 0 && e('button', { onClick: () => setBankingTab('pending'), className: 'w-full text-left flex flex-wrap items-center justify-between gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl px-4 py-3 hover:bg-amber-100' },
-      e('span', { className: 'text-sm font-semibold' }, 'Customer der dite hobe: ₹' + pcPayableAll.toLocaleString('en-IN') + ' (' + pcOpenCount + ' jon)'),
-      e('span', { className: 'text-xs underline' }, 'Pending Cash dekhun →')),
-    e('div', { className: 'grid grid-cols-2 ' + ['md:grid-cols-4', 'md:grid-cols-5', 'md:grid-cols-6'][(branchMyCashToday > 0 ? 1 : 0) + (pcPaidToday > 0 ? 1 : 0)] + ' gap-4' },
+      e('span', { className: 'text-sm font-semibold' }, 'Owed to customers: ₹' + pcPayableAll.toLocaleString('en-IN') + ' (' + pcOpenCount + ' customers)'),
+      e('span', { className: 'text-xs underline' }, 'View Pending Cash →')),
+    dpHeldAll > 0 && e('button', { onClick: () => setBankingTab('depositpending'), className: 'w-full text-left flex flex-wrap items-center justify-between gap-2 bg-sky-50 border border-sky-300 text-sky-800 rounded-xl px-4 py-3 hover:bg-sky-100' },
+      e('span', { className: 'text-sm font-semibold' }, 'Customer cash held (not yours): ₹' + dpHeldAll.toLocaleString('en-IN') + ' (' + dpOpenCount + ' customers) — to be credited to their accounts'),
+      e('span', { className: 'text-xs underline' }, 'View Deposit Pending →')),
+    e('div', { className: 'grid grid-cols-2 ' + ['md:grid-cols-4', 'md:grid-cols-5', 'md:grid-cols-6', 'md:grid-cols-7', 'md:grid-cols-8'][(branchMyCashToday > 0 ? 1 : 0) + (pcPaidToday > 0 ? 1 : 0) + (pcInToday > 0 ? 1 : 0) + (dpHeldToday > 0 ? 1 : 0)] + ' gap-4' },
       e('div', { className: 'relative' },
         e(StatCard, { title: `Opening Balance (${selectedDate})`, value: `₹${openingBalance}`, icon: e(Icon, { name: 'Landmark', size: 22 }), color: 'bg-indigo-50 text-indigo-600' }),
         currentUser.role === 'admin' && e('div', { className: 'absolute top-1 right-1 flex gap-0.5' },
@@ -4828,8 +5128,10 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       e(StatCard, { title: 'Total Deposit (+)', value: `₹${totalDeposit}`, icon: e(Icon, { name: 'TrendingUp', size: 22 }), color: 'bg-green-50 text-green-600' }),
       e(StatCard, { title: 'Total Withdrawal (-)', value: `₹${totalWithdrawal}`, icon: e(Icon, { name: 'TrendingDown', size: 22 }), color: 'bg-red-50 text-red-500' }),
       branchMyCashToday > 0 && e(StatCard, { title: 'Branch Deposit — My Cash (-)', value: `₹${branchMyCashToday}`, icon: e(Icon, { name: 'Landmark', size: 22 }), color: 'bg-teal-50 text-teal-600' }),
-      pcPaidToday > 0 && e(StatCard, { title: 'Pending Cash Paid (-)', value: `₹${pcPaidToday}`, icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-amber-50 text-amber-600', sub: 'Customer ke dewa pending cash' }),
-      e(StatCard, { title: 'Current Balance', value: fmtR(currentBalance), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: 'bg-blue-50 text-blue-600' })
+      pcInToday > 0 && e(StatCard, { title: 'Pending Deposit — Customer Cash (+)', value: `₹${pcInToday}`, icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-sky-50 text-sky-600', sub: 'Cash is with you even if not yet credited' }),
+      pcPaidToday > 0 && e(StatCard, { title: 'Pending Cash Paid (-)', value: `₹${pcPaidToday}`, icon: e(Icon, { name: 'Clock', size: 22 }), color: 'bg-amber-50 text-amber-600', sub: 'Pending cash paid to customers' }),
+      e(StatCard, { title: 'Current Balance', value: fmtR(currentBalance), sub: dpHeldToday > 0 ? 'Includes customer money: ₹' + dpHeldToday + ' (not yours)' : undefined, icon: e(Icon, { name: 'DollarSign', size: 22 }), color: 'bg-blue-50 text-blue-600' }),
+      dpHeldToday > 0 && e(StatCard, { title: 'My Own Cash', value: fmtR(currentBalance - dpHeldToday), icon: e(Icon, { name: 'DollarSign', size: 22 }), color: 'bg-emerald-50 text-emerald-700', sub: 'Excluding ₹' + dpHeldToday + ' of customer money' })
     ),
 
     editingBase && e(OpeningBalanceEditor, { selectedDate, baseInput, setBaseInput, saveBase, onCancel: () => setEditingBase(false) }),
@@ -5033,17 +5335,30 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       ),
       form.location !== 'Self Transfer' && e('div', { className: 'mt-3' },
         e('label', { className: 'inline-flex items-center gap-2 text-sm font-medium text-amber-800 cursor-pointer select-none' },
-          e('input', { type: 'checkbox', checked: pcOn, onChange: ev => setPcOn(ev.target.checked), className: 'w-4 h-4 accent-amber-600' }),
-          'Cash dite parlam na — Pending rakhbo (customer pore cash niye jabe)'),
+          e('input', { type: 'checkbox', checked: pcOn, onChange: ev => { setPcOn(ev.target.checked); if (ev.target.checked) setPdOn(false); }, className: 'w-4 h-4 accent-amber-600' }),
+          'Could not hand over all the cash — keep it Pending (customer will collect it later)'),
         pcOn && e('div', { className: 'mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 grid grid-cols-1 md:grid-cols-3 gap-3 items-end' },
-          e('p', { className: 'md:col-span-3 text-xs text-amber-700' }, 'Cash OUT e customer er total withdrawal likhun. Select kora account er balance e (Bank hole Account Balance e) pura amount add hobe; Current Balance theke sudhu ekhon ja dilen ta minus hobe.'),
-          e('div', null, e('label', { className: 'block text-xs font-medium text-amber-800 mb-1' }, 'Customer Mobile (optional)'), e('input', { type: 'tel', maxLength: 10, value: pcPhone, onChange: ev => setPcPhone(ev.target.value.replace(/\D/g, '')), className: 'w-full border border-amber-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: '10 digit' })),
-          e('div', null, e('label', { className: 'block text-xs font-medium text-amber-800 mb-1' }, 'Ekhon koto cash dilam (₹)'), e('input', { type: 'number', min: 0, value: pcPaid, onChange: ev => setPcPaid(ev.target.value), className: 'w-full border border-amber-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: '0' })),
+          e('p', { className: 'md:col-span-3 text-xs text-amber-700' }, 'Enter the total withdrawal in Cash OUT. The full amount is added to the selected account balance (Account Balance for Bank), and only the cash you hand over now is deducted from Current Balance.'),
+          e('div', null, e('label', { className: 'block text-xs font-medium text-amber-800 mb-1' }, 'Customer Mobile (optional)'), e('input', { type: 'tel', maxLength: 10, value: pcPhone, onChange: ev => setPcPhone(ev.target.value.replace(/\D/g, '')), className: 'w-full border border-amber-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: '10 digits' })),
+          e('div', null, e('label', { className: 'block text-xs font-medium text-amber-800 mb-1' }, 'Cash handed over now (₹)'), e('input', { type: 'number', min: 0, value: pcPaid, onChange: ev => setPcPaid(ev.target.value), className: 'w-full border border-amber-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500 text-sm', placeholder: '0' })),
           e('div', { className: 'text-sm bg-white border border-amber-200 rounded-lg px-3 py-2' },
             e('div', { className: 'flex justify-between text-gray-500' }, e('span', null, 'Total'), e('span', null, '₹' + (Number(form.cashOut) || 0))),
-            e('div', { className: 'flex justify-between font-bold text-amber-700' }, e('span', null, 'Baki (dite hobe)'), e('span', null, '₹' + pcRound((Number(form.cashOut) || 0) - (Number(pcPaid) || 0)))))
+            e('div', { className: 'flex justify-between font-bold text-amber-700' }, e('span', null, 'Remaining (to hand over)'), e('span', null, '₹' + pcRound((Number(form.cashOut) || 0) - (Number(pcPaid) || 0)))))
         )),
-      form.location !== 'Self Transfer' && e('button', { onClick: handleAdd, className: 'mt-3 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 ' + (pcOn ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700') }, e(Icon, { name: 'Plus', size: 17 }), pcOn ? ' Save Pending Withdrawal' : ' Add Transaction')
+      form.location !== 'Self Transfer' && e('div', { className: 'mt-3' },
+        e('label', { className: 'inline-flex items-center gap-2 text-sm font-medium text-sky-800 cursor-pointer select-none' },
+          e('input', { type: 'checkbox', checked: pdOn, onChange: ev => { setPdOn(ev.target.checked); if (ev.target.checked) setPcOn(false); }, className: 'w-4 h-4 accent-sky-600' }),
+          'Customer handed over cash but I could not credit it to the account — keep it Pending (I will credit it later)'),
+        pdOn && e('div', { className: 'mt-2 p-3 rounded-xl bg-sky-50 border border-sky-200 grid grid-cols-1 md:grid-cols-4 gap-3 items-end' },
+          e('p', { className: 'md:col-span-4 text-xs text-sky-700' }, 'Enter the total amount the customer handed over in Cash IN. The cash is with you, so the full amount is added to Current Balance (the part not yet credited is shown separately as customer money, not your own cash). Transactions, the transaction count, the account balance and Reports include only the amount you credit now. When you credit the rest later from the Deposit Pending tab, it is added as a transaction at that point.'),
+          e('div', null, e('label', { className: 'block text-xs font-medium text-sky-800 mb-1' }, 'Customer Mobile (optional)'), e('input', { type: 'tel', maxLength: 10, value: pcPhone, onChange: ev => setPcPhone(ev.target.value.replace(/\D/g, '')), className: 'w-full border border-sky-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500 text-sm', placeholder: '10 digits' })),
+          e('div', null, e('label', { className: 'block text-xs font-medium text-sky-800 mb-1' }, 'Account Number (optional)'), e('input', { type: 'text', inputMode: 'numeric', maxLength: 18, value: pdAcct, onChange: ev => setPdAcct(ev.target.value.replace(/\D/g, '')), className: 'w-full border border-sky-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500 text-sm', placeholder: 'Customer account no.' })),
+          e('div', null, e('label', { className: 'block text-xs font-medium text-sky-800 mb-1' }, 'Amount credited to the account now (₹)'), e('input', { type: 'number', min: 0, value: pdPaid, onChange: ev => setPdPaid(ev.target.value), className: 'w-full border border-sky-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500 text-sm', placeholder: '0 (nothing credited yet)' })),
+          e('div', { className: 'text-sm bg-white border border-sky-200 rounded-lg px-3 py-2' },
+            e('div', { className: 'flex justify-between text-gray-500' }, e('span', null, 'Customer gave'), e('span', null, '₹' + (Number(form.cashIn) || 0))),
+            e('div', { className: 'flex justify-between font-bold text-sky-700' }, e('span', null, 'Remaining (to be credited)'), e('span', null, '₹' + pcRound((Number(form.cashIn) || 0) - (Number(pdPaid) || 0)))))
+        )),
+      form.location !== 'Self Transfer' && e('button', { onClick: handleAdd, className: 'mt-3 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 ' + (pcOn ? 'bg-amber-600 hover:bg-amber-700' : pdOn ? 'bg-sky-600 hover:bg-sky-700' : 'bg-indigo-600 hover:bg-indigo-700') }, e(Icon, { name: 'Plus', size: 17 }), pcOn ? ' Save Pending Withdrawal' : pdOn ? ' Save Pending Deposit' : ' Add Transaction')
     ),
 
     e('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-auto' },
@@ -5082,7 +5397,7 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
 
     // ══ REPORTS TAB ══
     bankingTab === 'reports' && (() => {
-      const rptRange = [...bankTransactions, ...pcLedgerRows(pendingCash)].filter(t => t.date >= rptFrom && t.date <= rptTo);   // includes Pending Cash given / paid
+      const rptRange = [...bankTransactions, ...pcLedgerRows(pendingCash, true)].filter(t => t.date >= rptFrom && t.date <= rptTo);   // includes Pending Cash given / paid
       // Account filter: only accounts that actually have cash IN/OUT entries in this date range get a chip.
       const locKey = t => t.location || 'Bank';
       const accCounts = {};
@@ -5821,7 +6136,8 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
   const bankingOpening = bankingOpeningBalances[selectedDate] || 0;
   const branchMyCashClosing = bkArr(branchDeposits).filter(b => b.date === selectedDate).reduce((s, b) => s + (Number(b.myCash) || 0), 0);   // Branch Deposit: only My Cash leaves the Current Balance
   const pcPaidClosing = pcCashOutOn(pendingCash, selectedDate);   // Pending Cash: cash really handed over that day
-  const bankingCurrentBalance = bankingOpening + bankDeposit - bankWithdraw - branchMyCashClosing - pcPaidClosing;
+  const bankingCurrentBalance = bankingOpening + bankDeposit - bankWithdraw - branchMyCashClosing - pcPaidClosing + pcCashInOn(pendingCash, selectedDate);
+  const dpHeldClosing = dpHeldAsOf(pendingCash, selectedDate);   // customer's money held (Deposit Pending): inside the drawer cash, but not mine
 
   // Expected Closing Cash:
   // If Banking Current Balance is negative → Expected Closing Cash = Banking Current Balance (same value)
@@ -5851,7 +6167,7 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
     const actualCash = Number(actualInput) || 0;
     const entry = {
       id: savedLog ? savedLog.id : Date.now(), date: selectedDate,
-      totalIncome, expenseTotal, netProfit, cashProfitToday, bankingCurrentBalance, bankingOpeningBalance: bankingOpening, pendingAmount,
+      totalIncome, expenseTotal, netProfit, cashProfitToday, bankingCurrentBalance, bankingOpeningBalance: bankingOpening, heldCustomerCash: dpHeldClosing, pendingAmount,
       expectedClosing, actualCash, difference: actualCash - expectedClosing,
       note: noteInput, closedBy: currentUser.name,
       serviceGroups: todaysServiceGroups,
@@ -5949,9 +6265,12 @@ function DailyCashClosing({ tasks, expenses, bankTransactions, bankingOpeningBal
       e(StatCard, { title: 'Pending Tasks', value: pendingTasksCount, icon: e(Icon, { name: 'Clock', size: 20 }), color: 'bg-orange-50 text-orange-600' }),
       e(StatCard, { title: 'Successful Tasks', value: successfulTasksCount, icon: e(Icon, { name: 'CheckCircle', size: 20 }), color: 'bg-emerald-50 text-emerald-600' }),
       e(StatCard, { title: 'Pending Dues (overall)', value: `₹${pendingAmount}`, icon: e(Icon, { name: 'AlertCircle', size: 20 }), color: 'bg-yellow-50 text-yellow-600', sub: 'Reference only — not in formula' }),
-      e(StatCard, { title: 'Customer ke dite hobe', value: `₹${pcPayable(pendingCash)}`, icon: e(Icon, { name: 'Clock', size: 20 }), color: 'bg-amber-50 text-amber-600', sub: 'Pending Cash — already in Account Balance' })
+      e(StatCard, { title: 'Owed to Customers', value: `₹${pcPayable(pendingCash)}`, icon: e(Icon, { name: 'Clock', size: 20 }), color: 'bg-amber-50 text-amber-600', sub: 'Pending Cash — already in Account Balance' })
     ),
 
+    dpHeldClosing > 0 && e('div', { className: 'bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-900 space-y-1' },
+      e('p', { className: 'font-semibold' }, 'Customer cash held (Deposit Pending): ₹' + dpHeldClosing),
+      e('p', null, 'The drawer should hold ₹' + pcRound(expectedClosing) + ', which includes ₹' + dpHeldClosing + ' of customer money (not yours). Your own cash = ₹' + pcRound(expectedClosing - dpHeldClosing) + '. Include the customer money when counting the actual cash.')),
     e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-3' },
       e('h4', { className: 'font-bold text-gray-800' }, 'Cash Count & Reconciliation'),
       e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 items-end' },
