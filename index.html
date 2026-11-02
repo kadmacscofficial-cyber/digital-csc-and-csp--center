@@ -290,6 +290,13 @@
   html[data-theme="dark"] .hover\:bg-pink-50:hover,html[data-theme="dark"] .hover\:bg-pink-100:hover{background-color:rgba(236,72,153,.24)}
   html[data-theme="dark"] .text-pink-500,html[data-theme="dark"] .text-pink-600,html[data-theme="dark"] .text-pink-700,html[data-theme="dark"] .text-pink-800,html[data-theme="dark"] .text-pink-900{color:#f9a8d4}
   html[data-theme="dark"] .border-pink-100,html[data-theme="dark"] .border-pink-200,html[data-theme="dark"] .border-pink-300{border-color:rgba(236,72,153,.4)}
+
+  /* dark: inline dark-navy text colours (set in JS style props) → light */
+  html[data-theme="dark"] [style*="rgb(15, 34, 64)"],html[data-theme="dark"] [style*="rgb(10, 42, 107)"],html[data-theme="dark"] [style*="#0f2240"],html[data-theme="dark"] [style*="#0a2a6b"]{color:#e6ebf1!important}
+  html[data-theme="dark"] [style*="rgb(21, 101, 192)"],html[data-theme="dark"] [style*="#1565c0"]{color:#6cb0ff!important}
+  html[data-theme="dark"] [style*="rgb(107, 122, 150)"],html[data-theme="dark"] [style*="rgb(91, 107, 136)"]{color:#a3afbf!important}
+  html[data-theme="dark"] .sl-input{color:#e6ebf1}
+  html[data-theme="dark"] .text-aic-900,html[data-theme="dark"] .text-aic-800{color:#e6ebf1}
   }
 </style>
 </head>
@@ -1012,7 +1019,7 @@ const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5) + 
 
 function ChartBox({ type, data, options, height = 240 }) {
   const ref = React.useRef(null), inst = React.useRef(null);
-  const key = JSON.stringify(data) + type;
+  const key = JSON.stringify(data) + type + (document.documentElement.getAttribute('data-theme') || '');
   React.useEffect(() => {
     if (!window.Chart || !ref.current) return;
     if (inst.current) inst.current.destroy();
@@ -1023,10 +1030,21 @@ function ChartBox({ type, data, options, height = 240 }) {
 }
 const Card = ({ title, sub, children, className = '' }) => e('div', { className: 'aic-card ' + className },
   e('h4', { className: 'aic-card-title' }, title), sub && e('p', { className: 'text-xs text-gray-400 -mt-2 mb-3' }, sub), children);
-const donut = (labels, values) => ({ data: { labels, datasets: [{ data: values, backgroundColor: PAL, borderWidth: 2, borderColor: '#fff' }] },
+const donut = (labels, values) => ({ data: { labels, datasets: [{ data: values, backgroundColor: PAL, borderWidth: 2, borderColor: chartEdge() }] },
   options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } }, tooltip: { callbacks: { label: c => ` ${c.label}: ${inr(c.parsed)}` } } } } });
 const axis = { grid: { color: '#eef1f5' }, ticks: { callback: v => inrK(v), font: { size: 10 } }, border: { display: false } };
 const xaxis = { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 60 } };
+const PAL_LIGHT = PAL.slice();
+const PAL_DARK = ['#4f9dff', '#22c1e6', '#10b45f', '#f5a524', '#a78bfa', '#f472b6', '#5eead4'];
+const isDarkTheme = () => document.documentElement.getAttribute('data-theme') === 'dark';
+const chartInk = () => isDarkTheme() ? '#4f9dff' : '#0a1f44';
+const chartEdge = () => isDarkTheme() ? '#171d26' : '#fff';
+function applyChartTheme() {
+  const dark = isDarkTheme();
+  PAL.splice(0, PAL.length, ...(dark ? PAL_DARK : PAL_LIGHT));
+  axis.grid.color = dark ? 'rgba(255,255,255,.07)' : '#eef1f5';
+  if (window.Chart) { Chart.defaults.color = dark ? '#a3afbf' : '#666'; Chart.defaults.borderColor = dark ? 'rgba(255,255,255,.1)' : 'rgba(0,0,0,0.1)'; }
+}
 const Kpi = ({ icon, title, value, delta, color }) => e('div', { className: 'aic-kpi' },
   e('div', { className: 'flex items-center gap-2 text-xs text-gray-500 font-medium' }, e(Icon, { name: icon, size: 14 }), title),
   e('div', { className: 'text-xl font-semibold mt-2', style: { color: color || '#0f2240' } }, e(CountUp, { value })),
@@ -1120,7 +1138,7 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
     none && e('div', { className: 'aic-card text-center text-gray-500' }, 'No data in this period. Choose a longer range.'),
     e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
       e(Card, { title: 'Sales Trend', sub: monthly ? 'Monthly' : 'Daily', className: 'xl:col-span-2' },
-        e(ChartBox, { type: 'line', height: 260, data: { labels: tkeys, datasets: [{ label: 'Sales', data: tkeys.map(k => tk[k].s), borderColor: '#0a1f44', backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: .35, pointRadius: 3 }, ...(admin ? [{ label: 'Expense', data: tkeys.map(k => tk[k].x), borderColor: '#1fa5c9', tension: .35, pointRadius: 2, fill: false }] : [])] },
+        e(ChartBox, { type: 'line', height: 260, data: { labels: tkeys, datasets: [{ label: 'Sales', data: tkeys.map(k => tk[k].s), borderColor: chartInk(), backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: .35, pointRadius: 3 }, ...(admin ? [{ label: 'Expense', data: tkeys.map(k => tk[k].x), borderColor: '#1fa5c9', tension: .35, pointRadius: 2, fill: false }] : [])] },
           options: { scales: { y: axis, x: xaxis }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
       e(Card, { title: 'Top 10 Customers', sub: 'By sales' }, byCust.length ? e('div', { className: 'space-y-2' }, byCust.map(([n, v], i) =>
         e('div', { key: n + i, className: 'flex items-center gap-2 text-xs' }, e('span', { className: 'w-24 truncate text-gray-600' }, n),
@@ -1129,9 +1147,9 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
       e(Card, { title: 'Sales By Service' }, e(ChartBox, { type: 'doughnut', ...donut(bySvc.slice(0, 7).map(x => x[0]), bySvc.slice(0, 7).map(x => x[1])) })),
       admin && e(Card, { title: 'Payment Mode', sub: 'Cash vs Online collected' }, e(ChartBox, { type: 'doughnut', ...donut(mode.map(x => x[0]), mode.map(x => x[1])) })),
       e(Card, { title: 'Sales By Staff' }, e(ChartBox, { type: 'bar', data: { labels: byStaff.map(x => x[0]), datasets: [{ data: byStaff.map(x => x[1]), backgroundColor: '#1565c0', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: axis, x: xaxis } } })),
-      e(Card, { title: 'Task Status' }, e(ChartBox, { type: 'doughnut', data: { labels: status.map(x => x[0]), datasets: [{ data: status.map(x => x[1]), backgroundColor: ['#10b45f', '#1565c0', '#f59e0b'], borderWidth: 2, borderColor: '#fff' }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } } } } }))),
+      e(Card, { title: 'Task Status' }, e(ChartBox, { type: 'doughnut', data: { labels: status.map(x => x[0]), datasets: [{ data: status.map(x => x[1]), backgroundColor: ['#10b45f', '#1565c0', '#f59e0b'], borderWidth: 2, borderColor: chartEdge() }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } } } } }))),
     e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
-      admin && e(Card, { title: 'Last 12 Months', sub: 'Sales vs Expense', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', data: { labels: m12, datasets: [{ label: 'Sales', data: m12d.map(x => x.s), backgroundColor: '#0a1f44', borderRadius: 4 }, { label: 'Expense', data: m12d.map(x => x.x), backgroundColor: '#1fa5c9', borderRadius: 4 }, { label: 'Profit (Sales - Expense)', data: m12d.map(x => x.s - x.x), backgroundColor: '#5b8fd0', borderRadius: 4 }] }, options: { scales: { y: axis, x: xaxis }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
+      admin && e(Card, { title: 'Last 12 Months', sub: 'Sales vs Expense', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', data: { labels: m12, datasets: [{ label: 'Sales', data: m12d.map(x => x.s), backgroundColor: chartInk(), borderRadius: 4 }, { label: 'Expense', data: m12d.map(x => x.x), backgroundColor: '#1fa5c9', borderRadius: 4 }, { label: 'Profit (Sales - Expense)', data: m12d.map(x => x.s - x.x), backgroundColor: '#5b8fd0', borderRadius: 4 }] }, options: { scales: { y: axis, x: xaxis }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
       e(Card, { title: 'Busiest Weekdays', sub: 'Sales by day of week', className: admin ? '' : 'xl:col-span-2' }, e(ChartBox, { type: 'bar', data: { labels: wd, datasets: [{ data: wdv, backgroundColor: wdv.map((v, i) => i === bestWd ? '#10b45f' : '#1565c0'), borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: axis, x: xaxis } } })),
       e(Card, { title: 'Services Map', sub: 'Bigger tile = more sales', className: 'xl:col-span-2' }, e('div', { className: 'flex flex-wrap gap-1', style: { minHeight: 180 } }, bySvc.slice(0, 10).map(([n, v], i) =>
         e('div', { key: n, className: 'aic-tile', style: { flexGrow: Math.max(1, Math.round(v / (bySvc[0][1] || 1) * 10)), flexBasis: Math.max(70, v / (bySvc[0][1] || 1) * 160) + 'px', background: ['#0a1f44', '#0d47a1', '#1565c0', '#2979d0', '#1fa5c9'][Math.min(i, 4)] } }, e('b', null, n), e('span', null, inrK(v)))))),
@@ -3444,7 +3462,7 @@ function InquiryPage({ appData, currentUser, showMessage, services, customers, u
           e('td', { className: 'py-2.5', onClick: ev => ev.stopPropagation() }, e('div', { className: 'flex gap-1' }, i.phone && e('a', { href: 'tel:' + i.phone, className: 'text-gray-600 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded text-xs' }, 'Call'), i.phone && e('a', { href: wa(i), target: '_blank', rel: 'noopener', className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2 py-1 rounded text-xs' }, 'WhatsApp'), inqOpen(i) && e('button', { onClick: () => convert(i), className: 'text-white px-2 py-1 rounded text-xs font-medium', style: { background: '#0f9d8a' } }, 'Convert'))))))))),
     admin && all.length > 0 && e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
       e(Card, { title: 'Most Asked Services' }, e(ChartBox, { type: 'bar', height: 220, data: { labels: bySvc.map(x => x[0]), datasets: [{ data: bySvc.map(x => x[1]), backgroundColor: '#1565c0', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#eef1f5' }, ticks: { precision: 0, font: { size: 10 } }, border: { display: false } }, x: xaxis } } })),
-      e(Card, { title: 'Where Inquiries Come From' }, e(ChartBox, { type: 'doughnut', height: 220, data: { labels: bySrc.map(x => x[0]), datasets: [{ data: bySrc.map(x => x[1]), backgroundColor: PAL, borderWidth: 2, borderColor: '#fff' }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } } } } })),
+      e(Card, { title: 'Where Inquiries Come From' }, e(ChartBox, { type: 'doughnut', height: 220, data: { labels: bySrc.map(x => x[0]), datasets: [{ data: bySrc.map(x => x[1]), backgroundColor: PAL, borderWidth: 2, borderColor: chartEdge() }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } } } } })),
       e(Card, { title: 'Why We Lost Them' }, byLost.length ? e('div', { className: 'space-y-2' }, byLost.map(([n, v]) => e('div', { key: n, className: 'flex items-center gap-2 text-xs' }, e('span', { className: 'w-40 truncate text-gray-600' }, n), e('div', { className: 'flex-1' }, e('div', { className: 'aic-bar', style: { width: Math.max(14, v / byLost[0][1] * 100) + '%', background: '#dc2626' } }, v))))) : e('p', { className: 'text-sm text-gray-400' }, 'No lost inquiries yet.'))),
     form && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setForm(null) },
       e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto', onClick: ev => ev.stopPropagation() },
@@ -7634,6 +7652,8 @@ function App() {
   const [syncOk, setSyncOk] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [theme, setTheme] = useState(() => { try { return (t => (t === 'glass' || t === 'dark') ? t : 'default')(localStorage.getItem('sc-theme')); } catch (err) { return 'default'; } });
+  if (theme === 'default') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', theme);
+  applyChartTheme();
   useEffect(() => {
     if (theme === 'default') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('sc-theme', theme); } catch (err) {}
