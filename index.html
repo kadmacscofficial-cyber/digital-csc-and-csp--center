@@ -3368,7 +3368,7 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
         e('div', { className: 'flex-1 min-h-0 bg-gray-100 flex items-center justify-center overflow-auto' }, /^image\//.test(view.mime) ? e('img', { src: view.url, alt: view.name, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } }) : /pdf/.test(view.mime) ? e('iframe', { src: view.url, title: view.name, style: { width: '100%', height: '100%', border: 0 } }) : e('p', { className: 'text-gray-500 text-sm p-6' }, 'No preview for this file type — use Download.')))));
 }
 
-// ═══════════ TOOLS MENU → PVC Card Tool (everything runs in this browser; no file is uploaded or stored; only crop boxes are kept in localStorage) ═══════════
+// ═══════════ TOOLS MENU → PVC Card Tool (the PDF / image is processed on this device only and is never uploaded or stored; only the small crop-box settings are saved, in the software database) ═══════════
 let __pdfjsPromise = null;
 function loadPdfJs() {
   if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
@@ -3385,13 +3385,41 @@ const PVC_RATIO = 54 / 85.6;
 const PVC_WHOLE = { page: 1, x: 0, y: 0, w: 1, h: 1, mode: 'extend' };
 const PVC_MODES = { crop: 'Crop to card ratio', extend: 'Fit whole & extend edges', stretch: 'Stretch to PVC size' };
 const pvcDefCfg = () => ({ seedAyu: 2, types: { 'Aadhaar': {}, 'PAN': {}, 'Voter ID': {}, 'Driving Licence': {}, 'Ayushman': { front: { ...PVC_WHOLE }, back: { ...PVC_WHOLE, page: 2 } }, 'Ration Card': {} } });
-const pvcLoadCfg = () => {
-  let c = null; try { c = JSON.parse(localStorage.getItem('pvc_cfg')); } catch (err) {}
-  if (!c || !c.types || !Object.keys(c.types).length) c = pvcDefCfg();
+// Crop settings are kept in the software database (Firebase node 'csc-pvc-settings'), NOT in the browser, so every browser and device shows the same ones.
+// Only this small JSON of crop boxes is stored: never the PDF or the image.
+const PVC_DB_PATH = 'csc-pvc-settings';
+// Starting settings (from the uploaded Aadhaar / PAN / Voter / Ayushman / Ration / ABHA files). Used once, only while the database has nothing saved yet.
+const PVC_SEED_CFG = {"seedAyu":2,"types":{"Aadhaar":{"front":{"page":1,"x":0.08048278779560694,"y":0.7236997453399521,"w":0.4117078495515552,"h":0.20069445937145694,"mode":"crop"},"back":{"page":1,"x":0.5076053952498398,"y":0.7236997453399521,"w":0.41560851263332904,"h":0.20259590834611094,"mode":"crop"}},"PAN":{"front":{"page":1,"x":0.12071154260186787,"y":0.776055271448181,"w":0.3832621302230651,"h":0.17079485055970253,"mode":"crop"},"back":{"page":1,"x":0.5274112146339476,"y":0.7760553078183217,"w":0.3766720003820186,"h":0.16785806095120281,"mode":"crop"}},"Voter ID":{"front":{"page":1,"x":0.0556327181388611,"y":0.11295277887903474,"w":0.41126543627772216,"h":0.18327431738894467,"mode":"crop"},"back":{"page":1,"x":0.5494598553758855,"y":0.11295277887903474,"w":0.41126543627772216,"h":0.18327431738894467,"mode":"crop"}},"Driving Licence":{},"Ayushman":{"front":{"page":1,"x":0,"y":0,"w":1,"h":1,"mode":"extend"},"back":{"page":2,"x":0,"y":0,"w":1,"h":1,"mode":"extend"}},"Ration Card":{"front":{"page":1,"x":0.07081555828439064,"y":0.7785135400870988,"w":0.4303338834456268,"h":0.1917716505700543,"mode":"crop"},"back":{"page":1,"x":0.5038753380226667,"y":0.7798443962743982,"w":0.4246852154268008,"h":0.1892544088859483,"mode":"crop"}},"ABHA":{"front":{"page":1,"x":0.02230932144078275,"y":0.017382485299752615,"w":0.9565523052983315,"h":0.4869365269085841,"mode":"crop"},"back":{"page":1,"x":0.02326854522915524,"y":0.5082646335420858,"w":0.9565523052983315,"h":0.4869365269085841,"mode":"crop"}}}};
+const pvcNormalize = c => {
+  c = JSON.parse(JSON.stringify(c || {}));
+  if (!c.types || typeof c.types !== 'object' || !Object.keys(c.types).length) return pvcDefCfg();
   if ((c.seedAyu || 0) < 2) { c.seedAyu = 2; const a = c.types['Ayushman']; if (a) { if (!a.front) a.front = { ...PVC_WHOLE }; if (!a.back) a.back = { ...PVC_WHOLE, page: 2 }; } }
   return c;
 };
-const pvcSaveCfg = c => { try { localStorage.setItem('pvc_cfg', JSON.stringify(c)); return true; } catch (err) { return false; } };
+// Firebase silently drops empty objects ({}), which would lose a document type that has no crop yet, so the settings are stored as one JSON string.
+const pvcParse = v => { try { const c = JSON.parse(v && v.json); return c && c.types && Object.keys(c.types).length ? pvcNormalize(c) : null; } catch (err) { return null; } };
+const pvcDbSave = (cfg, by) => db.ref(PVC_DB_PATH).set({ json: JSON.stringify(cfg), updatedAt: new Date().toISOString(), updatedBy: by || '' });
+function usePvcCfg(user) {
+  const [cfg, setCfgState] = useState(null), [err, setErr] = useState(''), [tick, setTick] = useState(0);
+  useEffect(() => {
+    let dead = false; setErr('');
+    const ref = db.ref(PVC_DB_PATH);
+    const cb = ref.on('value', snap => {
+      if (dead) return;
+      const c = pvcParse(snap.val());
+      if (c) { setCfgState(c); return; }
+      // Nothing saved yet: save the starting settings once (a transaction, so two devices opening at the same time cannot overwrite each other).
+      setCfgState(pvcNormalize(PVC_SEED_CFG));
+      ref.transaction(cur => (cur && cur.json) ? undefined : { json: JSON.stringify(pvcNormalize(PVC_SEED_CFG)), updatedAt: new Date().toISOString(), updatedBy: 'starting settings' }).catch(() => {});
+    }, e2 => { if (!dead) setErr((e2 && e2.message) || 'Could not read the settings'); });
+    return () => { dead = true; ref.off('value', cb); };
+  }, [tick]);
+  const setCfg = next => {
+    const clean = pvcNormalize(next); setCfgState(clean);
+    pvcDbSave(clean, user && user.name).catch(e2 => alert('Could not save the crop settings to the software database: ' + ((e2 && e2.message) || e2)));
+  };
+  return { cfg, err, retry: () => setTick(x => x + 1), setCfg };
+}
 async function pvcOpenSource(f) {
   if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
     const lib = await loadPdfJs();
@@ -3547,14 +3575,19 @@ function PvcSettings({ cfg, setCfg, showMessage }) {
       e('h4', { className: 'aic-card-title mt-5' }, 'Backup'),
       e('div', { className: 'flex flex-wrap gap-2' },
         e('button', { onClick: exportCfg, className: PVC_BTN2 }, 'Export settings'),
-        e('button', { onClick: () => impRef.current && impRef.current.click(), className: PVC_BTN2 }, 'Import settings')),
+        e('button', { onClick: () => impRef.current && impRef.current.click(), className: PVC_BTN2 }, 'Import settings'),
+        e('button', { onClick: () => { if (confirm('Replace ALL crop settings with the starting settings (Aadhaar, PAN, Voter ID, Ayushman, Ration Card, ABHA)? Your current crops will be lost.')) { setCfg(JSON.parse(JSON.stringify(PVC_SEED_CFG))); setSType(Object.keys(PVC_SEED_CFG.types)[0]); showMessage('Starting settings restored'); } }, className: PVC_BTN2 }, 'Reset to starting settings')),
       e('input', { type: 'file', accept: 'application/json', hidden: true, ref: impRef, onChange: ev => { importCfg(ev.target.files[0]); ev.target.value = ''; } }),
-      e('p', { className: 'text-xs text-gray-500 mt-3' }, 'Crop boxes are stored in this browser only. Export a backup so you do not lose them if browser data is cleared.')));
+      e('p', { className: 'text-xs text-gray-500 mt-3' }, 'Crop settings are saved in the software database, so they are the same on every browser and device. Only the crop boxes are saved, never the PDF or image. Export is optional, as an extra backup.')));
 }
 
-function PvcCardTool({ showMessage }) {
-  const [cfg, setCfgState] = useState(pvcLoadCfg);
-  const setCfg = next => { setCfgState(next); if (!pvcSaveCfg(next)) alert('Could not save settings in this browser'); };
+function PvcCardTool({ showMessage, currentUser }) {
+  const { cfg, err, retry, setCfg } = usePvcCfg(currentUser);
+  if (!cfg) return e('div', { className: 'rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500' },
+    err ? [e('p', { key: 'm', className: 'text-red-600 mb-3' }, 'Could not load the crop settings from the software database: ' + err), e('button', { key: 'b', onClick: retry, className: PVC_BTN2 }, 'Retry')] : 'Loading crop settings from the software database…');
+  return e(PvcCardToolInner, { showMessage, cfg, setCfg });
+}
+function PvcCardToolInner({ showMessage, cfg, setCfg }) {
   const [view, setView] = useState('print');
   const names = Object.keys(cfg.types);
   const [mType, setMType] = useState(names[0] || '');
@@ -3619,13 +3652,13 @@ function PvcCardTool({ showMessage }) {
         e('p', { className: 'text-xs text-gray-500 mt-3' }, 'Front and back are saved as JPG at the chosen resolution. The A4 PDF places each card at exactly 85.6 × 54 mm. In the printer dialog, turn off "Fit to page", set scale to 100% and margins to none. Files are processed on this device only — nothing is uploaded.'))));
 }
 
-function ToolsPage({ showMessage }) {
+function ToolsPage({ showMessage, currentUser }) {
   const [tool, setTool] = useState('pvc');
   const TOOLS = [{ id: 'pvc', name: 'PVC Card Tool' }];
   return e('div', { className: 'space-y-4' },
-    e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Tools'), e('p', { className: 'text-sm text-gray-500' }, 'Handy utilities. Everything runs on this device — no file is uploaded anywhere.')),
+    e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Tools'), e('p', { className: 'text-sm text-gray-500' }, 'Handy utilities. Your files are processed on this device only and are never uploaded. PVC crop settings are saved in the software database and shared by all devices.')),
     e('div', { className: 'flex flex-wrap gap-2' }, TOOLS.map(t => e('button', { key: t.id, onClick: () => setTool(t.id), className: 'aic-pill' + (tool === t.id ? ' on' : '') }, t.name))),
-    tool === 'pvc' && e(PvcCardTool, { showMessage }));
+    tool === 'pvc' && e(PvcCardTool, { showMessage, currentUser }));
 }
 
 function DocumentsPage({ appData, currentUser, showMessage, customers }) {
@@ -8268,7 +8301,7 @@ function App() {
         activeTab === 'queue' && e(TokenQueue, { appData, customers, currentUser, showMessage, goNewCustomer, goAddService }),
         activeTab === 'inquiry' && e(InquiryPage, { appData, currentUser, showMessage, services, customers, users, goNewCustomer }),
         activeTab === 'documents' && e(DocumentsPage, { appData, currentUser, showMessage, customers }),
-        activeTab === 'tools' && e(ToolsPage, { showMessage }),
+        activeTab === 'tools' && e(ToolsPage, { showMessage, currentUser }),
         activeTab === 'approvals' && e(ApprovalsPage, { appData, persist, currentUser, showMessage, addAuditLog }),
         activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
