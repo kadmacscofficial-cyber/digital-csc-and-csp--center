@@ -858,6 +858,7 @@ function Icon({ name, size = 20, className = '' }) {
     FileText: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
     Settings: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
     Palette: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
+    Wrench: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
     LogOut: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
     Plus: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
     Minus: `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${c}"><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
@@ -3365,6 +3366,266 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
         e('div', { className: 'flex items-center justify-between px-4 py-3 border-b' }, e('p', { className: 'font-semibold text-gray-800 truncate' }, view.doc.name),
           e('div', { className: 'flex gap-2' }, e('a', { href: view.url, download: view.name, className: 'text-xs px-3 py-1.5 rounded-lg border text-blue-700 border-blue-200' }, 'Download'), e('button', { onClick: closeView, className: 'text-xs px-3 py-1.5 rounded-lg border' }, 'Close'))),
         e('div', { className: 'flex-1 min-h-0 bg-gray-100 flex items-center justify-center overflow-auto' }, /^image\//.test(view.mime) ? e('img', { src: view.url, alt: view.name, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' } }) : /pdf/.test(view.mime) ? e('iframe', { src: view.url, title: view.name, style: { width: '100%', height: '100%', border: 0 } }) : e('p', { className: 'text-gray-500 text-sm p-6' }, 'No preview for this file type — use Download.')))));
+}
+
+// ═══════════ TOOLS MENU → PVC Card Tool (everything runs in this browser; no file is uploaded or stored; only crop boxes are kept in localStorage) ═══════════
+let __pdfjsPromise = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (!__pdfjsPromise) __pdfjsPromise = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    sc.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(window.pdfjsLib); };
+    sc.onerror = () => { __pdfjsPromise = null; rej(new Error('pdf.js failed to load')); };
+    document.head.appendChild(sc);
+  });
+  return __pdfjsPromise;
+}
+const PVC_RATIO = 54 / 85.6;
+const PVC_WHOLE = { page: 1, x: 0, y: 0, w: 1, h: 1, mode: 'extend' };
+const PVC_MODES = { crop: 'Crop to card ratio', extend: 'Fit whole & extend edges', stretch: 'Stretch to PVC size' };
+const pvcDefCfg = () => ({ seedAyu: 2, types: { 'Aadhaar': {}, 'PAN': {}, 'Voter ID': {}, 'Driving Licence': {}, 'Ayushman': { front: { ...PVC_WHOLE }, back: { ...PVC_WHOLE, page: 2 } }, 'Ration Card': {} } });
+const pvcLoadCfg = () => {
+  let c = null; try { c = JSON.parse(localStorage.getItem('pvc_cfg')); } catch (err) {}
+  if (!c || !c.types || !Object.keys(c.types).length) c = pvcDefCfg();
+  if ((c.seedAyu || 0) < 2) { c.seedAyu = 2; const a = c.types['Ayushman']; if (a) { if (!a.front) a.front = { ...PVC_WHOLE }; if (!a.back) a.back = { ...PVC_WHOLE, page: 2 }; } }
+  return c;
+};
+const pvcSaveCfg = c => { try { localStorage.setItem('pvc_cfg', JSON.stringify(c)); return true; } catch (err) { return false; } };
+async function pvcOpenSource(f) {
+  if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+    const lib = await loadPdfJs();
+    const task = lib.getDocument({ data: await f.arrayBuffer() });
+    task.onPassword = (upd, reason) => {
+      const p = prompt(reason === 2 ? 'Wrong password, try again' : 'Enter PDF password (Aadhaar: first 4 letters of name in CAPITALS + birth year)');
+      p ? upd(p) : task.destroy();
+    };
+    return { pdf: await task.promise };
+  }
+  return new Promise((res, rej) => { const img = new Image(); img.onload = () => res({ img }); img.onerror = rej; img.src = URL.createObjectURL(f); });
+}
+// Makes one PVC-size (W×H px = 85.6×54 mm) image from the saved region. Modes: crop (ratio-locked box), stretch (free box → fills the card), extend (free box → keeps proportions, leftover space is filled by stretching the edge pixels)
+async function pvcCropSide(src, c, W, H) {
+  const o = document.createElement('canvas'); o.width = W; o.height = H;
+  const x = o.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.imageSmoothingQuality = 'high';
+  const mode = c.mode || 'crop';
+  if (mode === 'crop') {
+    if (src.pdf) {
+      const page = await src.pdf.getPage(Math.min(c.page, src.pdf.numPages));
+      const sc = W / (c.w * page.getViewport({ scale: 1 }).width), vp = page.getViewport({ scale: sc });
+      await page.render({ canvasContext: x, viewport: vp, transform: [1, 0, 0, 1, -c.x * vp.width, -c.y * vp.height] }).promise;
+    } else {
+      const iw = src.img.naturalWidth, ih = src.img.naturalHeight, w = c.w * iw;
+      x.drawImage(src.img, c.x * iw, c.y * ih, w, w * PVC_RATIO, 0, 0, W, H);
+    }
+    return o;
+  }
+  const ch = c.h || c.w * PVC_RATIO;
+  let bmp, iw, ih;
+  if (src.pdf) {
+    const page = await src.pdf.getPage(Math.min(c.page, src.pdf.numPages)), v1 = page.getViewport({ scale: 1 });
+    let sc = Math.max(W / (c.w * v1.width), H / (ch * v1.height)); sc = Math.max(.5, Math.min(sc, 6000 / Math.max(v1.width, v1.height)));
+    const vp = page.getViewport({ scale: sc }); bmp = document.createElement('canvas'); bmp.width = Math.ceil(vp.width); bmp.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: bmp.getContext('2d'), viewport: vp }).promise; iw = bmp.width; ih = bmp.height;
+  } else { bmp = src.img; iw = bmp.naturalWidth; ih = bmp.naturalHeight; }
+  const sx = Math.max(1, Math.round(c.x * iw)), sy = Math.max(1, Math.round(c.y * ih));
+  const sw = Math.max(4, Math.min(Math.round((c.x + c.w) * iw), iw - 1) - sx), sh = Math.max(4, Math.min(Math.round((c.y + ch) * ih), ih - 1) - sy);
+  if (mode === 'stretch') { x.drawImage(bmp, sx, sy, sw, sh, 0, 0, W, H); return o; }
+  const k = Math.min(W / sw, H / sh), dw = sw * k, dh = sh * k, dx = (W - dw) / 2, dy = (H - dh) / 2;
+  x.drawImage(bmp, sx, sy, sw, sh, dx, dy, dw, dh);
+  if (dy > .5) {
+    x.drawImage(bmp, sx, sy, sw, 1, dx, 0, dw, dy + 1);
+    x.drawImage(bmp, sx, sy + sh - 1, sw, 1, dx, dy + dh - 1, dw, H - (dy + dh) + 1);
+  }
+  if (dx > .5) {
+    x.drawImage(bmp, sx, sy, 1, sh, 0, dy, dx + 1, dh);
+    x.drawImage(bmp, sx + sw - 1, sy, 1, sh, dx + dw - 1, dy, W - (dx + dw) + 1, dh);
+  }
+  return o;
+}
+const PVC_IN = 'border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-800';
+const PVC_BTN = 'px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50';
+const PVC_BTN2 = 'px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 bg-white hover:bg-gray-50';
+const PVC_DROP = 'border-2 border-dashed border-gray-300 rounded-xl p-8 text-center text-sm text-gray-500 cursor-pointer hover:bg-gray-50 transition-colors';
+
+function PvcSettings({ cfg, setCfg, showMessage }) {
+  const names = Object.keys(cfg.types);
+  const [sType, setSType] = useState(names[0] || '');
+  const curType = cfg.types[sType] ? sType : names[0];
+  const [side, setSide] = useState('front'), [page, setPage] = useState(1), [numPages, setNumPages] = useState(1), [loaded, setLoaded] = useState(false);
+  const [box, setBox] = useState({ x: .1, y: .1, w: .5, h: .3 }), [mode, setModeState] = useState('crop');
+  const modeRef = React.useRef('crop'), setMode = m => { modeRef.current = m; setModeState(m); };
+  const srcRef = React.useRef(null), cvRef = React.useRef(null), fileRef = React.useRef(null), impRef = React.useRef(null), drag = React.useRef(null);
+  const tcfg = cfg.types[curType] || {};
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const place = b => {
+    const cv = cvRef.current, free = modeRef.current !== 'crop';
+    let w = clamp(b.w, free ? .05 : .1, 1), h;
+    if (free) h = clamp(b.h || .3, .05, 1);
+    else h = cv && cv.height ? Math.min(w * cv.width * PVC_RATIO / cv.height, 1) : (b.h || .3);
+    return { x: clamp(b.x, 0, 1 - w), y: clamp(b.y, 0, Math.max(0, 1 - h)), w, h };
+  };
+  const draw = async pg => {
+    const src = srcRef.current, cv = cvRef.current; if (!src || !cv) return;
+    const ctx = cv.getContext('2d');
+    if (src.pdf) {
+      const n = Math.min(Math.max(pg || 1, 1), src.pdf.numPages); setNumPages(src.pdf.numPages); if (n !== pg) setPage(n);
+      const p = await src.pdf.getPage(n), vp = p.getViewport({ scale: 2.5 });
+      cv.width = vp.width; cv.height = vp.height; await p.render({ canvasContext: ctx, viewport: vp }).promise;
+    } else { cv.width = src.img.naturalWidth; cv.height = src.img.naturalHeight; setNumPages(1); ctx.drawImage(src.img, 0, 0); }
+    setLoaded(true); setBox(b => place(b));
+  };
+  const applySaved = async (type, sd) => {
+    const c = cfg.types[type] && cfg.types[type][sd]; let pg = page;
+    if (c) { setMode(c.mode || 'crop'); setBox({ x: c.x, y: c.y, w: c.w, h: c.h || c.w * .63 }); setPage(c.page); pg = c.page; }
+    await draw(pg);
+  };
+  const openSample = async f => {
+    if (!f) return;
+    try { srcRef.current = await pvcOpenSource(f); await applySaved(curType, side); } catch (err) { alert('Could not open the file. Check the password and the file.'); }
+  };
+  const changeMode = m => { setMode(m); setBox(b => place(b)); };
+  const whole = () => { if (modeRef.current === 'crop') setMode('extend'); setBox({ x: 0, y: 0, w: 1, h: 1 }); };
+  const saveSide = () => {
+    if (!srcRef.current) return alert('Add a sample file first');
+    const t = { ...cfg.types }; t[curType] = { ...t[curType], [side]: { page: +page || 1, x: box.x, y: box.y, w: box.w, h: box.h, mode } };
+    setCfg({ ...cfg, types: t }); showMessage(curType + ' ' + side + ' saved');
+  };
+  const clearSide = () => { const t = { ...cfg.types }, c = { ...t[curType] }; delete c[side]; t[curType] = c; setCfg({ ...cfg, types: t }); };
+  const addType = () => {
+    const n = (prompt('New document type name') || '').trim(); if (!n) return;
+    if (cfg.types[n]) return alert('That type already exists');
+    setCfg({ ...cfg, types: { ...cfg.types, [n]: {} } }); setSType(n);
+  };
+  const delType = () => {
+    if (!confirm('Delete "' + curType + '" and its saved crops?')) return;
+    const t = { ...cfg.types }; delete t[curType];
+    const next = Object.keys(t).length ? { ...cfg, types: t } : pvcDefCfg();
+    setCfg(next); setSType(Object.keys(next.types)[0]);
+  };
+  const exportCfg = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(cfg)], { type: 'application/json' })); a.download = 'pvc-settings.json'; a.click(); };
+  const importCfg = async f => {
+    if (!f) return;
+    try { const j = JSON.parse(await f.text()); if (!j.types) throw 0; setCfg({ ...j, seedAyu: 2 }); setSType(Object.keys(j.types)[0]); showMessage('Settings imported'); } catch (err) { alert('Not a valid settings file'); }
+  };
+  const st = sd => tcfg[sd] ? 'saved (page ' + tcfg[sd].page + ', ' + (PVC_MODES[tcfg[sd].mode || 'crop']) + ')' : 'not set';
+  return e('div', { className: 'grid grid-cols-1 lg:grid-cols-3 gap-4' },
+    e(Card, { title: 'Set the crop for each document', className: 'lg:col-span-2' },
+      e('div', { className: 'flex flex-wrap gap-2 mb-3' },
+        e('select', { value: curType, onChange: ev => { setSType(ev.target.value); applySaved(ev.target.value, side); }, className: PVC_IN }, names.map(n => e('option', { key: n, value: n }, n))),
+        e('button', { onClick: addType, className: PVC_BTN2 }, 'Add type'),
+        e('button', { onClick: delType, className: PVC_BTN2 }, 'Delete type')),
+      e('div', { className: PVC_DROP, onClick: () => fileRef.current && fileRef.current.click() }, 'Tap to choose a sample PDF or image'),
+      e('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, ref: fileRef, onChange: ev => { openSample(ev.target.files[0]); ev.target.value = ''; } }),
+      e('div', { className: 'flex flex-wrap items-center gap-3 my-3 text-sm text-gray-600' },
+        e('label', { className: 'flex items-center gap-2' }, 'Side',
+          e('select', { value: side, onChange: ev => { setSide(ev.target.value); applySaved(curType, ev.target.value); }, className: PVC_IN }, e('option', { value: 'front' }, 'Front'), e('option', { value: 'back' }, 'Back'))),
+        e('label', { className: 'flex items-center gap-2' }, 'Page',
+          e('input', { type: 'number', min: 1, max: numPages, value: page, onChange: ev => { const n = +ev.target.value || 1; setPage(n); draw(n); }, className: PVC_IN + ' w-20' })),
+        e('label', { className: 'flex items-center gap-2' }, 'Mode',
+          e('select', { value: mode, onChange: ev => changeMode(ev.target.value), className: PVC_IN }, Object.keys(PVC_MODES).map(k => e('option', { key: k, value: k }, PVC_MODES[k])))),
+        e('button', { onClick: whole, className: PVC_BTN2 }, 'Select whole image')),
+      e('div', { style: { display: loaded ? 'inline-block' : 'none', position: 'relative', maxWidth: '100%', touchAction: 'none', userSelect: 'none', overflow: 'hidden', borderRadius: 8 } },
+        e('canvas', { ref: cvRef, style: { width: '100%', height: 'auto', display: 'block', border: '1px solid rgba(128,128,128,.35)' } }),
+        e('div', {
+          style: { position: 'absolute', left: box.x * 100 + '%', top: box.y * 100 + '%', width: box.w * 100 + '%', height: box.h * 100 + '%', border: '2px solid #10b45f', background: 'rgba(16,180,95,.12)', boxShadow: '0 0 0 9999px rgba(0,0,0,.35)', cursor: 'move', boxSizing: 'border-box' },
+          onPointerDown: ev => { drag.current = { mode: ev.target.dataset.h ? 'r' : 'm', sx: ev.clientX, sy: ev.clientY, sb: box }; ev.currentTarget.setPointerCapture(ev.pointerId); ev.preventDefault(); },
+          onPointerMove: ev => {
+            const d = drag.current; if (!d) return; const r = cvRef.current.getBoundingClientRect(), dx = (ev.clientX - d.sx) / r.width, dy = (ev.clientY - d.sy) / r.height;
+            setBox(place(d.mode === 'm' ? { ...d.sb, x: d.sb.x + dx, y: d.sb.y + dy } : { ...d.sb, w: d.sb.w + dx, h: d.sb.h + dy }));
+          },
+          onPointerUp: () => { drag.current = null; }
+        }, e('div', { 'data-h': '1', style: { position: 'absolute', right: 4, bottom: 4, width: 22, height: 22, borderRadius: '50%', background: '#10b45f', border: '2px solid #fff', cursor: 'nwse-resize' } }))),
+      e('div', { className: 'flex flex-wrap gap-2 mt-3' },
+        e('button', { onClick: saveSide, className: PVC_BTN }, 'Save this side'),
+        e('button', { onClick: clearSide, className: PVC_BTN2 }, 'Clear this side')),
+      e('p', { className: 'text-xs text-gray-500 mt-3' }, 'Pick a document type, add a sample file, choose Front or Back and its page, then drag the box over the card (round handle = resize) and press "Save this side". Modes: "Crop to card ratio" keeps the box at the PVC ratio. If the card image is not PVC-shaped (for example the Ayushman card downloaded from the official site), use "Select whole image" with "Fit whole & extend edges" (nothing is distorted, the edge colour is extended to fill the PVC size) or "Stretch to PVC size" (fills the card, slightly stretched).')),
+    e(Card, { title: 'Status' },
+      e('p', { className: 'text-sm text-gray-700' }, e('b', null, curType)),
+      e('p', { className: 'text-sm text-gray-600 mt-1' }, 'Front: ' + st('front')),
+      e('p', { className: 'text-sm text-gray-600' }, 'Back: ' + st('back')),
+      e('h4', { className: 'aic-card-title mt-5' }, 'Backup'),
+      e('div', { className: 'flex flex-wrap gap-2' },
+        e('button', { onClick: exportCfg, className: PVC_BTN2 }, 'Export settings'),
+        e('button', { onClick: () => impRef.current && impRef.current.click(), className: PVC_BTN2 }, 'Import settings')),
+      e('input', { type: 'file', accept: 'application/json', hidden: true, ref: impRef, onChange: ev => { importCfg(ev.target.files[0]); ev.target.value = ''; } }),
+      e('p', { className: 'text-xs text-gray-500 mt-3' }, 'Crop boxes are stored in this browser only. Export a backup so you do not lose them if browser data is cleared.')));
+}
+
+function PvcCardTool({ showMessage }) {
+  const [cfg, setCfgState] = useState(pvcLoadCfg);
+  const setCfg = next => { setCfgState(next); if (!pvcSaveCfg(next)) alert('Could not save settings in this browser'); };
+  const [view, setView] = useState('print');
+  const names = Object.keys(cfg.types);
+  const [mType, setMType] = useState(names[0] || '');
+  const curType = cfg.types[mType] ? mType : names[0];
+  const [dpi, setDpi] = useState('300'), [layout, setLayout] = useState('saved'), [guide, setGuide] = useState(true), [msg, setMsg] = useState(''), [prev, setPrev] = useState({ front: '', back: '' }), [srcVer, setSrcVer] = useState(0);
+  const srcRef = React.useRef(null), outRef = React.useRef({ front: null, back: null }), fileRef = React.useRef(null), runId = React.useRef(0);
+  const runProcess = async () => {
+    const src = srcRef.current; if (!src) return;
+    const id = ++runId.current, t = cfg.types[curType] || {}, d = +dpi, W = Math.round(85.6 / 25.4 * d), H = Math.round(54 / 25.4 * d), miss = [], pv = { front: '', back: '' };
+    setMsg('Processing...'); outRef.current = { front: null, back: null };
+    for (const sd of ['front', 'back']) {
+      if (!t[sd]) { miss.push(sd); continue; }
+      try { const tc = t[sd], c = await pvcCropSide(src, (layout !== 'saved' && tc.mode && tc.mode !== 'crop') ? { ...tc, mode: layout } : tc, W, H); if (id !== runId.current) return; outRef.current[sd] = c; pv[sd] = c.toDataURL('image/jpeg', .95); } catch (err) { miss.push(sd); }
+    }
+    if (id !== runId.current) return;
+    setPrev(pv); setMsg(miss.length ? 'Not set or failed: ' + miss.join(', ') + '. Set it in Crop Settings.' : 'Done at ' + dpi + ' DPI.');
+  };
+  useEffect(() => { runProcess(); }, [curType, dpi, cfg, srcVer, layout]);
+  const openMain = async f => {
+    if (!f) return;
+    try { srcRef.current = await pvcOpenSource(f); setSrcVer(v => v + 1); } catch (err) { alert('Could not open the file. Check the password and the file.'); }
+  };
+  const dl = sd => {
+    const c = outRef.current[sd]; if (!c) return alert('No ' + sd + ' image yet');
+    c.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = curType.replace(/\s+/g, '-') + '-' + sd + '-' + dpi + 'dpi.jpg'; a.click(); }, 'image/jpeg', .95);
+  };
+  const makePdf = () => {
+    const o = outRef.current; if (!o.front && !o.back) { alert('Upload a file first'); return null; }
+    const d = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' }), x = (210 - 85.6) / 2; let y = 20;
+    [o.front, o.back].forEach(c => {
+      if (!c) return; d.addImage(c.toDataURL('image/jpeg', .95), 'JPEG', x, y, 85.6, 54);
+      if (guide) { d.setDrawColor(150); d.setLineWidth(.1); d.rect(x, y, 85.6, 54); }
+      y += 64;
+    });
+    return d;
+  };
+  const slot = (label, src) => e('div', { className: 'border border-gray-200 rounded-xl p-3 text-center text-xs text-gray-500' }, label,
+    e('div', { className: 'mt-2 rounded-lg overflow-hidden bg-gray-100', style: { aspectRatio: '85.6 / 54' } }, src && e('img', { src, alt: label, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })));
+  return e('div', { className: 'space-y-4' },
+    e('div', { className: 'flex gap-2' },
+      e('button', { onClick: () => setView('print'), className: 'aic-pill' + (view === 'print' ? ' on' : '') }, 'Print Tool'),
+      e('button', { onClick: () => setView('settings'), className: 'aic-pill' + (view === 'settings' ? ' on' : '') }, 'Crop Settings')),
+    view === 'settings' ? e(PvcSettings, { cfg, setCfg, showMessage }) :
+    e('div', { className: 'grid grid-cols-1 lg:grid-cols-5 gap-4' },
+      e(Card, { title: 'Upload and auto-crop', className: 'lg:col-span-3' },
+        e('div', { className: 'flex flex-wrap gap-2 mb-3' },
+          e('select', { value: curType, onChange: ev => setMType(ev.target.value), className: PVC_IN, 'aria-label': 'Document type' }, names.map(n => e('option', { key: n, value: n }, n))),
+          e('select', { value: dpi, onChange: ev => setDpi(ev.target.value), className: PVC_IN, 'aria-label': 'Resolution' }, e('option', { value: '300' }, '300 DPI'), e('option', { value: '600' }, '600 DPI')),
+          e('select', { value: layout, onChange: ev => setLayout(ev.target.value), className: PVC_IN, 'aria-label': 'Fit mode', title: 'For cards that are not PVC-shaped (e.g. Ayushman)' }, e('option', { value: 'saved' }, 'Fit: as saved'), e('option', { value: 'extend' }, 'Fit & extend edges'), e('option', { value: 'stretch' }, 'Stretch to PVC size'))),
+        e('div', { className: PVC_DROP, onClick: () => fileRef.current && fileRef.current.click(), onDragOver: ev => ev.preventDefault(), onDrop: ev => { ev.preventDefault(); openMain(ev.dataTransfer.files[0]); } }, 'Tap to choose a PDF or image (or drop it here)'),
+        e('input', { type: 'file', accept: 'application/pdf,image/*', hidden: true, ref: fileRef, onChange: ev => { openMain(ev.target.files[0]); ev.target.value = ''; } }),
+        e('p', { className: 'text-sm text-gray-500 my-2', style: { minHeight: '1.3em' } }, msg),
+        e('div', { className: 'grid grid-cols-2 gap-3' }, slot('Front', prev.front), slot('Back', prev.back))),
+      e(Card, { title: 'Download and print', className: 'lg:col-span-2' },
+        e('div', { className: 'flex flex-wrap gap-2 mb-3' },
+          e('button', { onClick: () => dl('front'), className: PVC_BTN }, 'Download Front'),
+          e('button', { onClick: () => dl('back'), className: PVC_BTN }, 'Download Back')),
+        e('label', { className: 'flex items-center gap-2 text-sm text-gray-700 mb-3' }, e('input', { type: 'checkbox', checked: guide, onChange: ev => setGuide(ev.target.checked) }), 'Cut guide on A4'),
+        e('div', { className: 'flex flex-wrap gap-2' },
+          e('button', { onClick: () => { const d = makePdf(); if (d) d.save('pvc-card.pdf'); }, className: PVC_BTN }, 'Download A4 PDF'),
+          e('button', { onClick: () => { const d = makePdf(); if (d) window.open(d.output('bloburl')); }, className: PVC_BTN2 }, 'Print')),
+        e('p', { className: 'text-xs text-gray-500 mt-3' }, 'Front and back are saved as JPG at the chosen resolution. The A4 PDF places each card at exactly 85.6 × 54 mm. In the printer dialog, turn off "Fit to page", set scale to 100% and margins to none. Files are processed on this device only — nothing is uploaded.'))));
+}
+
+function ToolsPage({ showMessage }) {
+  const [tool, setTool] = useState('pvc');
+  const TOOLS = [{ id: 'pvc', name: 'PVC Card Tool' }];
+  return e('div', { className: 'space-y-4' },
+    e('div', null, e('h1', { className: 'text-2xl font-semibold', style: { color: '#0f2240' } }, 'Tools'), e('p', { className: 'text-sm text-gray-500' }, 'Handy utilities. Everything runs on this device — no file is uploaded anywhere.')),
+    e('div', { className: 'flex flex-wrap gap-2' }, TOOLS.map(t => e('button', { key: t.id, onClick: () => setTool(t.id), className: 'aic-pill' + (tool === t.id ? ' on' : '') }, t.name))),
+    tool === 'pvc' && e(PvcCardTool, { showMessage }));
 }
 
 function DocumentsPage({ appData, currentUser, showMessage, customers }) {
@@ -7933,6 +8194,7 @@ function App() {
     { id: 'banking', label: 'Banking', icon: 'Landmark' },
     { id: 'online', label: 'Online Transaction', icon: 'Smartphone' },
     { id: 'documents', label: 'Documents', icon: 'Briefcase' },
+    { id: 'tools', label: 'Tools', icon: 'Wrench' },
     { id: 'stock', label: 'Stock', icon: 'Package' },
     { id: 'expenses', label: 'Expenses', icon: 'ShoppingBag' },
     { id: 'cashclosing', label: 'Daily Cash Closing', icon: 'Calculator' },
@@ -7947,7 +8209,7 @@ function App() {
     { id: 'salary', label: 'Staff Salary', icon: 'BadgeIndianRupee' },
   ];
 
-  const headerTitle = { dashboard: 'Dashboard', accounts: 'Accounts', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', queue: 'Serial / Token', inquiry: 'Inquiries', documents: 'Documents', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', daybook: 'Day Book', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
+  const headerTitle = { dashboard: 'Dashboard', accounts: 'Accounts', tracking: 'Service Tracking', crm: 'Customer CRM', reports: 'Reports & Invoice', pending: 'Pending Amount', banking: 'Banking Ledger', online: 'Online Transaction', queue: 'Serial / Token', inquiry: 'Inquiries', documents: 'Documents', tools: 'Tools', approvals: 'Approvals', backup: 'Backup & Restore', stock: 'Stock Management', expenses: 'Expenses', cashclosing: 'Daily Cash Closing Report', daybook: 'Day Book', sss: 'SSS Reports', performance: 'Staff Performance', auditlog: 'Audit Log', salary: 'Staff Salary Management', settings: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' };
 
   return e('div', { className: 'flex h-screen overflow-hidden aic-main' },
     e('aside', { className: `aic-side w-64 text-white flex flex-col` },
@@ -8006,6 +8268,7 @@ function App() {
         activeTab === 'queue' && e(TokenQueue, { appData, customers, currentUser, showMessage, goNewCustomer, goAddService }),
         activeTab === 'inquiry' && e(InquiryPage, { appData, currentUser, showMessage, services, customers, users, goNewCustomer }),
         activeTab === 'documents' && e(DocumentsPage, { appData, currentUser, showMessage, customers }),
+        activeTab === 'tools' && e(ToolsPage, { showMessage }),
         activeTab === 'approvals' && e(ApprovalsPage, { appData, persist, currentUser, showMessage, addAuditLog }),
         activeTab === 'stock' && e(StockManager, { stockItems: gl('stockItems'), stockLog: gl('stockLog'), expenses, appData, currentUser, showMessage, addAuditLog }),
         activeTab === 'expenses' && e(Expenses, { expenses, setExpenses, appData, currentUser, showMessage, addAuditLog }),
