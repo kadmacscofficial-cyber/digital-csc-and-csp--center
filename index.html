@@ -3305,7 +3305,7 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
     const member = memberId !== 'self' ? family.find(m => String(m.id) === String(memberId)) : null;
     for (const f of files) {
       setBusy('Uploading ' + f.name + '...');
-      try { const pth = drvPath(scope, { customer, member, category: cat, date, byMonth: byMonthOf(cat) }); const up = await drvUpload(f, pth, note); await drvSaveRecord(currentUser, { ...up, scope, category: cat, path: pth, date, note, customer, member }); showMessage('Uploaded: ' + f.name); }
+      try { const pth = drvPath(scope, { customer, member, category: cat, date, byMonth: byMonthOf(cat) }); const up = await drvUpload(f, pth, note); await drvSaveRecord(currentUser, { ...up, scope, category: cat, path: pth, date, note, customer, member }); showMessage('Uploaded to "' + cat + '": ' + f.name); }
       catch (err) { showMessage(err.message, 'error'); }
     }
     setBusy(''); setNote('');
@@ -3324,6 +3324,13 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
   const removeFolder = async f => { if (!window.confirm('Remove "' + f.name + '" from this list? The files stay safe in Google Drive.')) return; await db.ref('csc-app-data/docFolders/' + f.id).remove(); drvAudit(currentUser, 'Banking Folder Removed', f.name); if (fcat === f.name) setFcat(''); };
   const open = async d => { setBusy('Opening...'); try { const b = await drvBlobUrl(d.driveId); setView({ ...b, doc: d }); } catch (err) { showMessage(err.message, 'error'); } setBusy(''); };
   const closeView = () => { if (view) URL.revokeObjectURL(view.url); setView(null); };
+  // Moves a document to another folder inside the software (the file itself stays where it is in Google Drive).
+  const moveDoc = async (d, to) => {
+    if (!to || to === d.category) return;
+    if (!window.confirm('Move "' + d.name + '" from "' + d.category + '" to "' + to + '"?\n\nIt will show under "' + to + '" in the software. The file itself stays in its current Google Drive folder.')) return;
+    try { await db.ref('csc-app-data/documents/' + d.id).update({ category: to }); drvAudit(currentUser, 'Document Moved', d.name + ': ' + d.category + ' → ' + to); showMessage('Moved to "' + to + '".'); }
+    catch (err) { showMessage(err.message, 'error'); }
+  };
   const del = async d => {
     if (!window.confirm('Delete "' + d.name + '"? It moves to the Google Drive Trash.')) return;
     setBusy('Deleting...');
@@ -3335,16 +3342,16 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
   return e('div', { className: 'space-y-3' },
     !ready && e('div', { className: 'rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs p-2' }, 'Google Drive is not connected yet. ' + (admin ? 'Open Documents → Drive Settings to connect it.' : 'Ask the Admin to connect it.')),
     e('div', { className: 'flex flex-wrap items-end gap-2 p-3 rounded-xl border border-blue-100 bg-blue-50/40' },
-      e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'Type'), e('select', { value: cat, onChange: ev => setCat(ev.target.value), className: inp }, cats.map(c => e('option', { key: c }, c)))),
+      e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, scope === 'banking' ? 'Save in folder' : 'Type'), e('select', { value: cat, onChange: ev => { setCat(ev.target.value); if (scope === 'banking') setFcat(ev.target.value); }, className: inp + (scope === 'banking' ? ' font-semibold' : '') }, cats.map(c => e('option', { key: c }, c)))),
       scope === 'customer' && family.length > 0 && e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'For'), e('select', { value: memberId, onChange: ev => setMemberId(ev.target.value), className: inp }, e('option', { value: 'self' }, 'Self'), family.map(m => e('option', { key: m.id, value: m.id }, m.name + ' (' + m.relation + ')')))),
       scope === 'banking' && e('div', null, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'Date'), e('input', { type: 'date', value: date, onChange: ev => setDate(ev.target.value), className: inp })),
       e('div', { className: 'flex-1 min-w-[140px]' }, e('p', { className: 'text-xs text-gray-500 mb-0.5' }, 'Note (optional)'), e('input', { value: note, onChange: ev => setNote(ev.target.value), className: inp + ' w-full' })),
       e('label', { className: 'text-white px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer ' + (ready && !busy ? '' : 'opacity-50 pointer-events-none'), style: { background: '#0f9d8a' } }, '⬆ Upload', e('input', { type: 'file', multiple: true, accept: 'image/*,application/pdf,.xlsx,.xls,.doc,.docx', onChange: pick, className: 'hidden' })),
       e('label', { className: 'px-3 py-1.5 rounded-lg text-sm font-medium border border-blue-200 text-blue-700 cursor-pointer bg-white ' + (ready && !busy ? '' : 'opacity-50 pointer-events-none') }, '📷 Camera', e('input', { type: 'file', accept: 'image/*', capture: 'environment', onChange: pick, className: 'hidden' })),
-      e('p', { className: 'w-full text-xs text-gray-400' }, 'Max 5 MB per file. Photos are shrunk automatically.')),
+      e('p', { className: 'w-full text-xs text-gray-400' }, (scope === 'banking' ? 'New files are saved in the folder "' + cat + '". ' : '') + 'Max 5 MB per file. Photos are shrunk automatically.')),
     scope === 'banking' && e('div', { className: 'space-y-2' },
       e('div', { className: 'flex flex-wrap items-center gap-1.5' },
-        [['', 'All (' + all.length + ')'], ...cats.map(c => [c, c + ' (' + all.filter(d => d.category === c).length + ')'])].map(([v, l]) => e('button', { key: v || 'all', onClick: () => setFcat(v), className: 'text-xs px-3 py-1 rounded-full border ' + (fcat === v ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'), style: fcat === v ? { background: '#0f9d8a' } : {} }, l)),
+        [['', 'All (' + all.length + ')'], ...cats.map(c => [c, c + ' (' + all.filter(d => d.category === c).length + ')'])].map(([v, l]) => e('button', { key: v || 'all', onClick: () => { setFcat(v); if (v) setCat(v); }, className: 'text-xs px-3 py-1 rounded-full border ' + (fcat === v ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'), style: fcat === v ? { background: '#0f9d8a' } : {} }, l)),
         e('button', { onClick: () => setNf(!nf), disabled: !ready, className: 'text-xs px-3 py-1 rounded-full border border-dashed border-blue-300 text-blue-700 hover:bg-blue-50 ' + (ready ? '' : 'opacity-50') }, '+ New Folder')),
       nf && e('div', { className: 'flex flex-wrap items-center gap-2 p-3 rounded-xl border border-blue-200 bg-blue-50/50' },
         e('input', { value: nfName, onChange: ev => setNfName(ev.target.value), placeholder: 'Folder name (e.g. SBI Forms)', className: inp + ' flex-1 min-w-[180px]' }),
@@ -3360,6 +3367,7 @@ function DocsPanel({ appData, currentUser, showMessage, scope, customer, categor
         e('span', { className: 'text-lg' }, icon(d.mime)),
         e('div', { className: 'flex-1 min-w-[160px]' }, e('p', { className: 'font-medium text-gray-800 break-all' }, d.name), e('p', { className: 'text-xs text-gray-400' }, [d.category, d.memberName && ('for ' + d.memberName), scope === 'banking' ? d.date : d.customerName, drvSize(d.size), d.by].filter(Boolean).join(' · '), d.note ? ' — ' + d.note : '')),
         e('button', { onClick: () => open(d), disabled: !!busy, className: 'text-blue-600 border border-blue-200 hover:bg-blue-50 px-2.5 py-1 rounded text-xs font-medium' }, 'View'),
+        scope === 'banking' && e('select', { value: '', onChange: ev => moveDoc(d, ev.target.value), disabled: !!busy, title: 'Move to another folder', className: 'text-xs border border-gray-200 rounded px-1.5 py-1 bg-white text-gray-500 max-w-[120px]' }, e('option', { value: '' }, 'Move to…'), cats.filter(c => c !== d.category).map(c => e('option', { key: c, value: c }, c))),
         admin && e('button', { onClick: () => del(d), disabled: !!busy, className: 'text-gray-400 hover:text-red-600 text-xs px-1' }, 'Delete')))),
     view && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.7)' }, onClick: closeView },
       e('div', { className: 'bg-white rounded-2xl shadow-2xl flex flex-col', style: { width: 'min(96vw, 1000px)', height: 'min(92vh, 900px)' }, onClick: ev => ev.stopPropagation() },
@@ -4513,7 +4521,7 @@ function mtAccounts(simpleAccounts, bal, savingsBalance, cscWalletBalance, walle
 // Every movement of one account, oldest first. Savings and CSC Wallet get their transfers only (their other figures live on the Banking dashboard); your own accounts get everything.
 function mtStatement(acc, simpleTx, bankTx, transfers, nameOf, online) {
   const rows = [], add = (date, ord, text, dr, cr) => rows.push({ date: date || '', ord: String(ord || ''), text, dr, cr });
-  const tail = t => (t.ref ? ' · Ref ' + t.ref : '') + (t.note ? ' · ' + t.note : '');
+  const tail = t => (t.fund && t.fund.customerName ? ' · ' + t.fund.customerName : '') + (t.ref ? ' · Ref ' + t.ref : '') + (t.note ? ' · ' + t.note : '');
   transfers.forEach(t => {
     if (t.from === acc.id) add(t.date, t.at || t.id, 'Transfer to ' + nameOf(t.to) + tail(t), t.amount, 0);
     if (t.to === acc.id) add(t.date, t.at || t.id, 'Transfer from ' + nameOf(t.from) + tail(t), 0, t.amount);
@@ -4545,12 +4553,107 @@ function mtPeriod(acc, rows, from, to) {
 }
 // ════════ END MONEY TRANSFER CORE ════════
 
+// ════════ FUND TRANSFER (Banking → Fund Transfer tab) ════════
+// A customer sends money from THEIR bank account to one of YOUR savings accounts (Savings, or any account set to the Saving category).
+//  • "I pay cash to the customer" ON: two linked ledger entries (same fundId) are saved together:
+//      1) Cash OUT at Bank (Current Balance goes down, Account Balance goes up)   2) Self Transfer Account → that savings account (Account Balance goes down, savings goes up).
+//    Net result: cash − amount, savings account + amount, Account Balance unchanged. Both rows appear in the Banking ledger, Day Book and Reports as usual.
+//  • OFF (no cash changes hands): one Money Transfer record from "ext" (outside) credits the savings account. Current Balance and Account Balance are not touched.
+function FundTransferTab({ tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, setBankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage, cbOn }) {
+  const admin = currentUser.role === 'admin', today = todayStr;
+  const sa = bkArr(simpleAccounts), stx = bkArr(simpleTx), bts = bkWithPending(bkArr(bankTransactions), pendingCash), mts = bkArr(moneyTransfers);
+  const accounts = mtAccounts(sa, saBalances(sa, stx, bts, mts, bkArr(onlineTransactions), bkArr(tasks)), savingsBalance, cscWalletBalance, walletInfo);
+  const dests = selfSavOpts(sa, walletInfo).map(o => ({ ...o, bal: (accounts.find(a => a.id === o.id) || {}).bal || 0 }));
+  const blank = { name: '', phone: '', acct: '', to: '', amount: '', date: today, ref: '', note: '', cash: true };
+  const [f, setF] = useState(blank), [q, setQ] = useState(''), [busy, setBusy] = useState(false), lock = React.useRef(false);
+  const run = async fn => { if (busy || lock.current) return; lock.current = true; setBusy(true); try { await fn(); } catch (x) { showMessage('Could not save: ' + ((x && x.message) || x), 'error'); } lock.current = false; setBusy(false); };
+  const newId = () => 'mt' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const amtP = saParse(f.amount), dest = dests.find(d => d.id === f.to);
+  const submit = () => run(async () => {
+    const name = f.name.trim(), phone = f.phone.replace(/\D/g, ''), acct = f.acct.replace(/\D/g, ''), ref = f.ref.trim().slice(0, 40), note = f.note.trim().slice(0, 200);
+    const err = !name ? 'Enter the customer name.' : (phone && phone.length !== 10) ? 'Mobile number must be 10 digits.' : (acct && acct.length < 9) ? 'Account number must be at least 9 digits.' : !dest ? 'Pick the savings account that receives the money.' : (amtP === null || amtP <= 0) ? 'Enter an amount greater than zero (at most 2 decimals).' : !/^\d{4}-\d{2}-\d{2}$/.test(f.date) ? 'Pick a valid date.' : f.date > today ? 'Future dates are not allowed.' : null;
+    if (err) return showMessage(err, 'error');
+    const rupees = amtP / 100, meta = { customerName: name, phone, accountNo: acct, ref, note, cash: !!f.cash };
+    if (f.cash) {
+      const bal = Number(cbOn(f.date)) || 0;
+      if (rupees > bal && !window.confirm('On ' + f.date + ' the Current Balance is ₹' + bal + '. Paying ₹' + rupees + ' in cash would make it negative. Save anyway?')) return;
+      const t = Date.now(), fundId = 'ft' + t.toString(36), who = { staffId: currentUser.id, staffName: currentUser.name };
+      await setBankTransactions([...bkArr(bankTransactions),
+        { id: t, date: f.date, customerName: name + ' (Fund Transfer → ' + dest.name + ')', cashIn: 0, cashOut: rupees, location: 'Bank', fundId, ...who },
+        { id: t + 1, date: f.date, customerName: 'Fund Transfer: ' + name, cashIn: 0, cashOut: 0, location: 'Self Transfer', selfTransferType: 'deposit', selfTransferAmount: rupees, selfAccId: dest.id, selfAccName: dest.name, fundId, fund: meta, ...who }]);
+    } else {
+      await setMoneyTransfers([...mts, { id: newId(), date: f.date, from: 'ext', to: dest.id, amount: amtP, ref, note, fund: meta, by: currentUser.name, at: new Date().toISOString() }]);
+    }
+    drvAudit(currentUser, 'Fund Transfer', name + ' → ' + dest.name + ': ' + saFmt(amtP) + (f.cash ? ' (cash paid)' : ' (no cash)'));
+    showMessage(saFmt(amtP) + ' transferred to ' + dest.name + (f.cash ? ' — cash paid to ' + name + '.' : '.'));
+    setF({ ...blank, date: f.date, cash: f.cash });
+  });
+  const reversed = new Set(mts.filter(t => t.reverses).map(t => t.reverses));
+  const rows = [
+    ...bkArr(bankTransactions).filter(t => t.fundId && t.location === 'Self Transfer').map(t => { const m = t.fund || {}; return { key: t.fundId, kind: 'cash', date: t.date, name: m.customerName || t.customerName, phone: m.phone, acct: m.accountNo, ref: m.ref, to: t.selfAccName || 'Savings', amount: Math.round((Number(t.selfTransferAmount) || 0) * 100), fundId: t.fundId }; }),
+    ...mts.filter(t => t.fund && t.from === 'ext').map(t => ({ key: t.id, kind: 'plain', date: t.date, name: t.fund.customerName, phone: t.fund.phone, acct: t.fund.accountNo, ref: t.ref, to: (accounts.find(a => a.id === t.to) || { name: 'Deleted account' }).name, amount: t.amount, id: t.id, reversed: reversed.has(t.id) }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.key).localeCompare(String(a.key)));
+  const needle = q.trim().toLowerCase();
+  const shown = rows.filter(r => !needle || [r.name, r.phone, r.acct, r.ref, r.to].some(v => String(v || '').toLowerCase().includes(needle))).slice(0, 100);
+  const todayRows = rows.filter(r => r.date === today && !r.reversed), todayTotal = todayRows.reduce((s, r) => s + r.amount, 0);
+  const delCash = r => run(async () => {
+    if (!window.confirm('Delete this fund transfer of ' + saFmt(r.amount) + ' for ' + r.name + '?\n\nThe cash payout and the credit to ' + r.to + ' are both removed together.')) return;
+    await setBankTransactions(bkArr(bankTransactions).filter(t => t.fundId !== r.fundId));
+    drvAudit(currentUser, 'Fund Transfer Deleted', r.name + ' → ' + r.to + ': ' + saFmt(r.amount));
+    showMessage('Fund transfer deleted.');
+  });
+  const reverse = r => run(async () => {
+    if (!window.confirm('Reverse this transfer of ' + saFmt(r.amount) + ' (' + r.name + ' → ' + r.to + ')? A new opposite entry is added; the original stays in the statements.')) return;
+    await setMoneyTransfers([...mts, { id: newId(), date: today, from: (mts.find(t => t.id === r.id) || {}).to, to: 'ext', amount: r.amount, ref: '', note: 'Reversal of ' + r.date + ' fund transfer', reverses: r.id, by: currentUser.name, at: new Date().toISOString() }]);
+    drvAudit(currentUser, 'Fund Transfer Reversed', r.name + ' → ' + r.to + ': ' + saFmt(r.amount));
+    showMessage('Transfer reversed.');
+  });
+  const field = (label, child) => e('div', null, e('label', { className: 'block text-xs font-semibold text-gray-600 mb-1' }, label), child);
+  const td = 'px-3 py-2 text-sm';
+  return e('div', { className: 'space-y-4' },
+    e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Fund Transfer'), e('p', { className: 'text-sm text-gray-500' }, 'The customer sends money from their bank account to one of your savings accounts. Optionally pay the same amount to the customer in cash.')),
+    e('div', { className: 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3' },
+      dests.map(d => e('div', { key: d.id, className: 'rounded-xl px-4 py-3 bg-white border border-gray-200 shadow-sm' }, e('p', { className: 'text-xs font-medium text-gray-500 truncate' }, d.name), e('p', { className: 'text-xl font-bold text-gray-800' }, saFmt(d.bal)))),
+      e('div', { className: 'rounded-xl px-4 py-3 bg-indigo-50 border border-indigo-100' }, e('p', { className: 'text-xs font-medium text-indigo-600' }, 'Today’s fund transfers'), e('p', { className: 'text-xl font-bold text-indigo-700' }, saFmt(todayTotal)), e('p', { className: 'text-[11px] text-indigo-500' }, todayRows.length + ' transfer' + (todayRows.length === 1 ? '' : 's')))),
+    e(Card, { title: 'New fund transfer', sub: 'Money arrives from the customer’s account into the savings account you choose.' },
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-3' },
+        field('Customer name *', e('input', { value: f.name, onChange: ev => set('name', ev.target.value), className: SA_INP, placeholder: 'Customer name' })),
+        field('Customer mobile (optional)', e('input', { value: f.phone, onChange: ev => set('phone', ev.target.value.replace(/\D/g, '').slice(0, 10)), inputMode: 'numeric', className: SA_INP, placeholder: '10 digits' })),
+        field('Customer account number (optional)', e('input', { value: f.acct, onChange: ev => set('acct', ev.target.value.replace(/\D/g, '').slice(0, 18)), inputMode: 'numeric', className: SA_INP, placeholder: 'Account number' })),
+        field('To my savings account *', e('select', { value: f.to, onChange: ev => set('to', ev.target.value), className: SA_INP }, e('option', { value: '' }, 'Pick…'), dests.map(d => e('option', { key: d.id, value: d.id }, d.name + ' · ' + saFmt(d.bal))))),
+        field('Amount (₹) *', e('input', { value: f.amount, onChange: ev => set('amount', ev.target.value), placeholder: '0.00', inputMode: 'decimal', className: SA_INP })),
+        field('Date', e('input', { type: 'date', value: f.date, max: today, onChange: ev => ev.target.value && set('date', ev.target.value), className: SA_INP })),
+        field('Reference / UTR (optional)', e('input', { value: f.ref, onChange: ev => set('ref', ev.target.value), maxLength: 40, className: SA_INP })),
+        field('Note (optional)', e('input', { value: f.note, onChange: ev => set('note', ev.target.value), maxLength: 200, className: SA_INP }))),
+      e('label', { className: 'flex items-start gap-2 mt-3 text-sm text-gray-700 cursor-pointer select-none' },
+        e('input', { type: 'checkbox', checked: f.cash, onChange: ev => set('cash', ev.target.checked), className: 'mt-0.5 w-4 h-4 accent-indigo-600' }),
+        e('span', null, e('b', null, 'I pay this amount in cash to the customer'), e('span', { className: 'block text-xs text-gray-500' }, 'Tick when the customer takes the money as cash from you. Leave it unticked when no cash changes hands.'))),
+      dest && amtP > 0 && e('div', { className: 'mt-3 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 space-y-0.5' },
+        e('p', null, dest.name + ': ' + saFmt(dest.bal) + ' → ' + saFmt(dest.bal + amtP)),
+        e('p', null, f.cash ? 'Cash in hand (Current Balance): −' + saFmt(amtP) + ' · Account Balance: unchanged' : 'Cash in hand and Account Balance: unchanged')),
+      e('div', { className: 'flex justify-end mt-3' }, e('button', { onClick: submit, disabled: busy, className: 'px-5 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50' }, '⇄ Transfer to savings'))),
+    e(Card, { title: 'Fund transfer history', sub: 'Latest 100. Search by customer, mobile, account number, UTR or savings account.' },
+      e('input', { value: q, onChange: ev => setQ(ev.target.value), placeholder: 'Search…', className: SA_INP + ' mb-3' }),
+      shown.length === 0 ? e('p', { className: 'text-sm text-gray-400 text-center py-4' }, 'No fund transfers yet.') :
+      e('div', { className: 'overflow-x-auto' }, e('table', { className: 'w-full text-left' },
+        e('thead', null, e('tr', { className: 'text-xs text-gray-500 border-b' }, ['Date', 'Customer', 'To savings account', 'Amount', 'Cash', 'Ref / UTR', ''].map((h, i) => e('th', { key: i, className: 'px-3 py-2 font-medium' + (i === 3 ? ' text-right' : '') }, h)))),
+        e('tbody', { className: 'divide-y divide-gray-100' }, shown.map(r => e('tr', { key: r.key, className: r.reversed ? 'opacity-50' : '' },
+          e('td', { className: td + ' whitespace-nowrap text-gray-500' }, r.date),
+          e('td', { className: td }, e('p', { className: 'font-medium text-gray-800' }, r.name), (r.phone || r.acct) && e('p', { className: 'text-xs text-gray-400' }, [r.phone, r.acct ? 'A/C ' + r.acct : ''].filter(Boolean).join(' · '))),
+          e('td', { className: td }, r.to),
+          e('td', { className: td + ' text-right font-semibold text-indigo-700' }, saFmt(r.amount)),
+          e('td', { className: td }, r.kind === 'cash' ? e('span', { className: 'px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700' }, 'Cash paid') : e('span', { className: 'px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600' }, r.reversed ? 'Reversed' : 'No cash')),
+          e('td', { className: td + ' text-gray-500' }, r.ref || '—'),
+          e('td', { className: td + ' text-right' }, admin && r.kind === 'cash' && e('button', { onClick: () => delCash(r), disabled: busy, className: 'text-xs text-red-500 hover:text-red-700' }, 'Delete'), admin && r.kind === 'plain' && !r.reversed && e('button', { onClick: () => reverse(r), disabled: busy, className: 'text-xs text-red-500 hover:text-red-700' }, 'Reverse')))))))));
+}
+
 // ════════ MONEY TRANSFER UI (Banking → Money Transfer tab) ════════
 function MoneyTransferTab({ tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }) {
   const admin = currentUser.role === 'admin', today = todayStr;
   const sa = bkArr(simpleAccounts), stx = bkArr(simpleTx), bts = bkWithPending(bkArr(bankTransactions), pendingCash), mts = bkArr(moneyTransfers);
   const accounts = mtAccounts(sa, saBalances(sa, stx, bts, mts, bkArr(onlineTransactions), bkArr(tasks)), savingsBalance, cscWalletBalance, walletInfo);
-  const by = id => accounts.find(a => a.id === id), nameOf = id => (by(id) || { name: 'Deleted account' }).name, live = accounts.filter(a => a.active);
+  const by = id => accounts.find(a => a.id === id), nameOf = id => id === 'ext' ? 'Customer account' : (by(id) || { name: 'Deleted account' }).name, live = accounts.filter(a => a.active);
   const blank = { from: '', to: '', amount: '', date: today, ref: '', note: '' };
   const [f, setF] = useState(blank), [sel, setSel] = useState('sav'), [stFrom, setStFrom] = useState(today.slice(0, 8) + '01'), [stTo, setStTo] = useState(today), [busy, setBusy] = useState(false), lock = React.useRef(false);
   const run = async fn => { if (busy || lock.current) return; lock.current = true; setBusy(true); try { await fn(); } catch (x) { showMessage('Could not save: ' + ((x && x.message) || x), 'error'); } lock.current = false; setBusy(false); };
@@ -5022,7 +5125,7 @@ function dbAllEvents(d, nm) {
     ev(r.date, r.id, 'Pending Cash', r.customerName + ' · total ' + saFmt(dbP(r.total)) + ', given ' + saFmt(dbP(r.paidNow)), [{ a: saLocId(r.location) || 'acb', p: dbP(r.total) }, { a: 'cash', p: -dbP(r.paidNow) }]);
     bkArr(r.payments).forEach(p => ev(p.date, p.id, 'Pending cash paid', r.customerName, [{ a: 'cash', p: -dbP(p.amount) }]));
   });
-  bkArr(d.moneyTransfers).forEach(t => ev(t.date, t.at ? Date.parse(t.at) : t.id, 'Money Transfer', nm(t.from) + ' → ' + nm(t.to) + (t.ref ? ' · Ref ' + t.ref : '') + (t.note ? ' · ' + t.note : ''), [{ a: t.from, p: -t.amount }, { a: t.to, p: t.amount }]));
+  bkArr(d.moneyTransfers).forEach(t => { const nx = k => k === 'ext' ? 'Customer account' : nm(k); ev(t.date, t.at ? Date.parse(t.at) : t.id, t.fund ? 'Fund Transfer' : 'Money Transfer', (t.fund && t.fund.customerName ? t.fund.customerName + ' · ' : '') + nx(t.from) + ' → ' + nx(t.to) + (t.ref ? ' · Ref ' + t.ref : '') + (t.note ? ' · ' + t.note : ''), t.from === 'ext' ? [{ a: t.to, p: t.amount }] : t.to === 'ext' ? [{ a: t.from, p: -t.amount }] : [{ a: t.from, p: -t.amount }, { a: t.to, p: t.amount }]); });
   bkArr(d.simpleTx).forEach(t => ev(t.date, t.at ? Date.parse(t.at) : t.id, 'Account entry', (t.kind === 'move' ? nm(t.from) + ' → ' + nm(t.to) : t.kind === 'in' ? 'Money in' : 'Money out') + (t.note ? ' · ' + t.note : ''), [{ a: t.from, p: -t.amount }, { a: t.to, p: t.amount }]));
   const am = d.addMoreHistory && typeof d.addMoreHistory === 'object' ? d.addMoreHistory : {};
   Object.keys(am).forEach(date => bkArr(am[date]).filter(x => typeof x === 'number').forEach(x => ev(date, DB_END, 'Add More Balance', 'Cash added to the day', [{ a: 'cash', p: dbP(x) }, { a: 'acb', p: -dbP(x) }])));
@@ -5507,9 +5610,11 @@ function BankingLedger({ bankTransactions, setBankTransactions, tasks, openingBa
       e('button', { onClick: () => setBankingTab('savingsexpense'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='savingsexpense' ? 'bg-teal-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-teal-50') }, 'Savings Expense'),
       e('button', { onClick: () => setBankingTab('transfer'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='transfer' ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50') }, 'Money Transfer'),
       e('button', { onClick: () => setBankingTab('pending'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='pending' ? 'bg-amber-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-amber-50') }, 'Pending Cash' + (pcOpenCount ? ' (' + pcOpenCount + ')' : '')),
+      e('button', { onClick: () => setBankingTab('fundtransfer'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='fundtransfer' ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50') }, 'Fund Transfer'),
       e('button', { onClick: () => setBankingTab('depositpending'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors ' + (bankingTab==='depositpending' ? 'bg-sky-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-sky-50') }, 'Deposit Pending' + (dpOpenCount ? ' (' + dpOpenCount + ')' : ''))
     ),
 
+    bankingTab === 'fundtransfer' && e(FundTransferTab, { tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, setBankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage, cbOn }),
     bankingTab === 'depositpending' && e(DepositPendingTab, { pendingCash, setPendingCash, currentUser, showMessage, cbOn, businessProfile, locLabel }),
     bankingTab === 'pending' && e(PendingCashTab, { pendingCash, setPendingCash, currentUser, showMessage, cbOn, businessProfile, locLabel }),
     bankingTab === 'transfer' && e(MoneyTransferTab, { tasks, onlineTransactions, simpleAccounts, simpleTx, bankTransactions, moneyTransfers, setMoneyTransfers, savingsBalance, cscWalletBalance, walletInfo, pendingCash, currentUser, showMessage }),
