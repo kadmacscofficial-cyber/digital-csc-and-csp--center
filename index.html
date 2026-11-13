@@ -1167,6 +1167,8 @@ function Dashboard({ tasks, customers, currentUser, setPrintingReceipt, expenses
 }
 
 // ── SERVICE TRACKING (simple) ──
+// Distinct service names (configured services + any custom names used in tasks) for the Service filter dropdowns
+function svcOptions(services, tasks) { return [...new Set([...(services || []).map(s => s.name), ...(tasks || []).map(t => t.service)].filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))); }
 function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }) {
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
@@ -1183,7 +1185,9 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
 
   // Service Tracking: use paymentDate for paid tasks so they appear on payment day
   const getEffDate = (t) => (t.paymentDate && t.status === 'Successful') ? t.paymentDate : t.date;
-  const filteredTasks = tasks.filter(t => getEffDate(t) >= fromDate && getEffDate(t) <= toDate);
+  const [svcFilter, setSvcFilter] = useState(''), [svcQ, setSvcQ] = useState('');
+  const svcQl = svcQ.trim().toLowerCase();
+  const filteredTasks = tasks.filter(t => getEffDate(t) >= fromDate && getEffDate(t) <= toDate).filter(t => (!svcFilter || t.service === svcFilter) && (!svcQl || [t.service, t.customerName].some(v => (v || '').toLowerCase().includes(svcQl))));
   const dateGroups = groupTasks(filteredTasks);
   // A customer entry (group) matches a work status when at least one of its services has that status.
   const statusCount = (st) => dateGroups.filter(g => g.items.some(i => i.status === st)).length;
@@ -1221,6 +1225,13 @@ function ServiceTracking({ tasks, setTasks, customers, setCustomers, appData, pe
     e('div', { className: 'flex justify-between items-center' },
       e('div', null, e('h3', { className: 'text-xl font-bold text-gray-800' }, 'Service Tracking'), e('p', { className: 'text-sm text-gray-500' }, 'Track application statuses'))
     ),
+    e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-3' },
+      e('select', { value: svcFilter, onChange: ev => setSvcFilter(ev.target.value), className: 'border rounded-lg px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500' }, e('option', { value: '' }, 'All Services'), ...svcOptions(services, tasks).map(n => e('option', { key: n, value: n }, n))),
+      e('div', { className: 'relative flex-1 max-w-md', style: { minWidth: 220 } },
+        e('div', { className: 'absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400' }, e(Icon, { name: 'Search', size: 16 })),
+        e('input', { type: 'text', value: svcQ, onChange: ev => setSvcQ(ev.target.value), placeholder: 'Search by service or customer name...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })),
+      (svcFilter || svcQl) && e('button', { onClick: () => { setSvcFilter(''); setSvcQ(''); }, className: 'text-xs text-red-500 hover:underline' }, 'Clear'),
+      (svcFilter || svcQl) && e('span', { className: 'text-xs text-gray-500' }, filteredTasks.length + ' service entries in this period')),
     e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(exportTasks.map(t => ({ Date: t.date, Customer: t.customerName, Service: t.service, Amount: t.price, Paid: t.paidAmount || 0, Due: Math.max(0, (t.price || 0) - (t.paidAmount || 0)), Status: t.status, Staff: t.staffName || '' })), `ServiceTracking_${allSelected ? '' : statusFilter.join('-') + '_'}${fromDate}_to_${toDate}`) }),
 
     // ── Work Status filter (multi-select) ──
@@ -1931,6 +1942,9 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   const [showWaTpl, setShowWaTpl] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   const [profileCustomer, setProfileCustomer] = useState(null);
+  // Service-only view: opened by "Add Service" (list button, customer profile, Pending / Token queue). The customer-details half of the form stays hidden; "Edit customer details" switches to the full Update form.
+  const [svcOnly, setSvcOnly] = useState(false);
+  useEffect(() => { if (!showAdd) setSvcOnly(false); }, [showAdd]);
   // Blank template for the Add/Edit Customer form. address/dob stay as plain fields for
   // backward compatibility with every existing table/search/export/receipt that reads
   // c.address and c.dob directly — the structured village/post/city/pin below are ALSO
@@ -1970,17 +1984,22 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   const [toDate, setToDate] = useState(todayStr);
   const allSvcs = [...services, { id: 'others', name: 'Others', price: 0 }];
   const searchQ = search.trim().toLowerCase();
-  const dateFilteredCustomers = customers.filter(c => c.lastVisit >= fromDate && c.lastVisit <= toDate);
+  const [svcFilter, setSvcFilter] = useState('');
+  const svcByCust = {}; tasks.forEach(t => { const k = String(t.customerId); (svcByCust[k] = svcByCust[k] || new Set()).add(t.service); });
+  const custSvcs = c => [...(svcByCust[String(c.id)] || [])];
+  const svcOk = c => !svcFilter || custSvcs(c).includes(svcFilter) || (custSvcs(c).length === 0 && (c.service || '').toLowerCase().includes(svcFilter.toLowerCase()));
+  const dateFilteredCustomers = customers.filter(c => c.lastVisit >= fromDate && c.lastVisit <= toDate && svcOk(c));
   // While actively searching, look across ALL customers regardless of the date range — a
   // returning customer from months ago must be findable without hunting for the right dates.
   // Customer ID is searchable too, so typing "12" finds CUS-0012.
-  const filtered = (searchQ ? customers : dateFilteredCustomers)
-    .filter(c => !searchQ || [c.name, c.phone, c.altPhone, c.address, c.dob, c.custCode, c.doc1Number, c.doc2Number, ...familyOf(c).flatMap(m => [m.name, m.phone, m.docNumber])].some(v => (v || '').toLowerCase().includes(searchQ)));
+  const filtered = (searchQ ? customers.filter(svcOk) : dateFilteredCustomers)
+    .filter(c => !searchQ || [c.name, c.phone, c.altPhone, c.address, c.dob, c.custCode, c.doc1Number, c.doc2Number, c.service, ...custSvcs(c), ...familyOf(c).flatMap(m => [m.name, m.phone, m.docNumber])].some(v => (v || '').toLowerCase().includes(searchQ)));
 
   const addServiceRow = () => setSelectedServices([...selectedServices, { id: Date.now(), serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
   // Opens the Update Customer form for a customer with one empty service row ready.
   // Used by the Edit button AND by "Add New Service" inside the customer profile.
   const openEditFor = (c, focusService) => {
+    setSvcOnly(!!focusService);
     setEditingCustomerId(c.id);
     setNewC({ name: c.name || '', phone: c.phone || '', altPhone: c.altPhone || '', village: c.village || '', post: c.post || '', city: c.city || '', pin: c.pin || '', address: c.address || '', doc1Type: c.doc1Type || '', doc1Number: c.doc1Number || '', doc1Other: c.doc1Other || '', doc2Type: c.doc2Type || '', doc2Number: c.doc2Number || '', doc2Other: c.doc2Other || '', gender: c.gender || '', dob: c.dob || '', notes: c.notes || '', family: familyOf(c).map(m => ({ ...m })) });
     setSelectedServices([{ id: 1, serviceId: '', customServiceName: '', customServicePrice: '', qty: '1', paid: '', discount: '', status: 'Pending', paymentMode: 'Cash', portalCost: '', utrNumber: '', screenshotFileName: '' }]);
@@ -2190,21 +2209,24 @@ showMessage((held ? 'Details sent to Admin for verification ⏳ (current details
       )
     ),
     e(ExportBar, { fromDate, setFromDate, toDate, setToDate, onExport: () => exportToExcel(filtered.map(c => ({ 'Customer ID': c.custCode || '', Name: c.name, Mobile: c.phone, 'Alt Mobile': c.altPhone || '', Gender: c.gender || '', Address: c.address || '', DOB: c.dob || '', 'Document 1': c.doc1Type ? ((c.doc1Type === 'Others' ? (c.doc1Other || 'Others') : c.doc1Type) + (c.doc1Number ? ': ' + c.doc1Number : '')) : '', 'Document 2': c.doc2Type ? ((c.doc2Type === 'Others' ? (c.doc2Other || 'Others') : c.doc2Type) + (c.doc2Number ? ': ' + c.doc2Number : '')) : '', Service: c.service, 'Last Visit': c.lastVisit, Notes: c.notes || '' })), `Customers_${fromDate}_to_${toDate}`) }),
-    e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100' },
-      e('div', { className: 'relative max-w-md' },
+    e('div', { className: 'bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-3' },
+      e('select', { value: svcFilter, onChange: ev => setSvcFilter(ev.target.value), className: 'border rounded-lg px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500' }, e('option', { value: '' }, 'All Services'), ...svcOptions(services, tasks).map(n => e('option', { key: n, value: n }, n))),
+      e('div', { className: 'relative flex-1 max-w-md', style: { minWidth: 220 } },
         e('div', { className: 'absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400' }, e(Icon, { name: 'Search', size: 16 })),
-        e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search by Customer ID, Name, Mobile, Address or DOB...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })
-      )
+        e('input', { type: 'text', value: search, onChange: ev => setSearch(ev.target.value), placeholder: 'Search by Customer ID, Name, Mobile, Address, DOB or Service...', className: 'w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500' })),
+      svcFilter && e('button', { onClick: () => setSvcFilter(''), className: 'text-xs text-red-500 hover:underline' }, 'Clear'),
+      svcFilter && e('span', { className: 'text-xs text-gray-500' }, filtered.length + ' customers' + (searchQ ? '' : ' in the date range above'))
     ),
     showAdd && e('div', { className: 'pm-overlay fixed inset-0 bg-black bg-opacity-60 flex items-start md:items-center justify-center z-50 p-2 md:p-4 overflow-y-auto' },
-      e('div', { className: 'pm-card bg-white rounded-2xl shadow-2xl w-full my-2 md:my-0 flex flex-col max-h-[95vh]', style: { width: 'min(98vw, 1500px)' } },
+      e('div', { className: 'pm-card bg-white rounded-2xl shadow-2xl w-full my-2 md:my-0 flex flex-col max-h-[95vh]', style: { width: (editingCustomerId && svcOnly) ? 'min(98vw, 950px)' : 'min(98vw, 1500px)' } },
         e('div', { className: 'flex items-center justify-between px-5 py-4 border-b bg-indigo-600 text-white rounded-t-2xl shrink-0' },
-          e('h3', { className: 'font-bold text-lg' }, editingCustomerId ? 'Update Customer' : 'Add New Customer'),
+          e('h3', { className: 'font-bold text-lg' }, editingCustomerId ? (svcOnly ? 'Add Service — ' + (newC.name || '') : 'Update Customer') : 'Add New Customer'),
+          editingCustomerId && svcOnly && e('button', { onClick: () => setSvcOnly(false), className: 'text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1.5 rounded-lg font-semibold ml-auto mr-3' }, 'Edit customer details'),
           e('button', { onClick: () => { setEditingCustomerId(null); setNewC(blankNewC); setShowAdd(false); }, className: 'text-white text-2xl leading-none px-2' }, '×')
         ),
         e('div', { className: 'p-5 md:p-6 overflow-y-auto' },
         e('div', { className: 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start' },
-          e('div', { className: 'pm-col lg:col-span-5 space-y-5' },
+          e('div', { className: 'pm-col lg:col-span-5 space-y-5', style: (editingCustomerId && svcOnly) ? { display: 'none' } : undefined },
       e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
         e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Name *'), e('input', { type: 'text', value: newC.name, onChange: ev => setNewC({...newC, name: ev.target.value}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500', placeholder: 'Full name' })),
         e('div', null, e('label', { className: 'block text-sm font-medium mb-1' }, 'Mobile * ', e('span', { className: 'text-xs font-normal text-gray-400' }, '(10 digit)')), e('input', { type: 'text', inputMode: 'numeric', maxLength: 10, value: newC.phone, onChange: ev => setNewC({...newC, phone: ev.target.value.replace(/\D/g, '').slice(0, 10)}), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 ' + (newC.phone && newC.phone.length !== 10 ? 'border-red-300 bg-red-50' : ''), placeholder: '10-digit mobile number' })),
@@ -2284,7 +2306,7 @@ showMessage((held ? 'Details sent to Admin for verification ⏳ (current details
               e('span', { className: 'text-gray-500 whitespace-nowrap' }, d.category + (d.memberId !== 'self' ? ' · ' + (((newC.family || []).find(m => String(m.id) === String(d.memberId)) || {}).name || '') : '')),
               e('button', { type: 'button', onClick: () => setPendingDocs(p => p.filter(x => x.id !== d.id)), className: 'text-red-500' }, '✕')))),
           ),
-          e('div', { className: 'pm-col lg:col-span-7 space-y-5' },
+          e('div', { className: 'pm-col ' + ((editingCustomerId && svcOnly) ? 'lg:col-span-12' : 'lg:col-span-7') + ' space-y-5' },
       // Edit mode only: show what this customer already has, so it is clear the rows below
       // are ADDITIONAL services that will be added when "Update Customer" is pressed.
       editingCustomerId && (() => {
@@ -2437,7 +2459,7 @@ showMessage((held ? 'Details sent to Admin for verification ⏳ (current details
         )
         ),
         e('div', { className: 'px-5 py-3 border-t bg-gray-50 rounded-b-2xl flex gap-3 items-center shrink-0' },
-          e('button', { onClick: editingCustomerId ? () => handleEditCustomer(customers.find(c => c.id === editingCustomerId)) : handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2' }, e(Icon, { name: editingCustomerId ? 'Save' : 'Plus', size: 18 }), editingCustomerId ? 'Update Customer' : 'Save Customer'),
+          e('button', { onClick: editingCustomerId ? () => handleEditCustomer(customers.find(c => c.id === editingCustomerId)) : handleAdd, className: 'bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center gap-2' }, e(Icon, { name: editingCustomerId ? 'Save' : 'Plus', size: 18 }), editingCustomerId ? (svcOnly ? 'Save Service' : 'Update Customer') : 'Save Customer'),
           e('button', { onClick: () => { setEditingCustomerId(null); setNewC(blankNewC); setShowAdd(false); }, className: 'bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 font-medium' }, 'Cancel')
         )
       )
@@ -2484,7 +2506,8 @@ showMessage((held ? 'Details sent to Admin for verification ⏳ (current details
                 e('div', { className: 'flex justify-end gap-2' },
                   e('button', { onClick: () => setWaCustomer(c), title: 'Send WhatsApp message', className: 'text-green-600 bg-green-50 p-1.5 rounded hover:bg-green-100' }, e(Icon, { name: 'MessageCircle', size: 17 })),
                   e('button', { onClick: () => setPrintingReceipt(getCustomerReceipt(c, tasks)), className: 'text-indigo-600 bg-indigo-50 p-1.5 rounded hover:bg-indigo-100' }, e(Icon, { name: 'Printer', size: 17 })),
-                  e('button', { onClick: () => openEditFor(c), title: 'Edit customer / add service', className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
+                  e('button', { onClick: () => openEditFor(c, true), title: 'Add Service (direct, no profile)', className: 'text-green-700 bg-green-50 p-1.5 rounded hover:bg-green-100' }, e(Icon, { name: 'Plus', size: 17 })),
+                  e('button', { onClick: () => openEditFor(c), title: 'Customer Update (edit details)', className: 'text-blue-600 bg-blue-50 p-1.5 rounded hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 17 })),
                   currentUser.role === 'admin' && e('button', {
                     onClick: () => {
                       const isRelated = (t) => {
@@ -7904,12 +7927,12 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate]     = useState(todayStr);
 
-  const filtered = safe.filter(t => t.type === tab && t.date >= fromDate && t.date <= toDate);
+  const filtered = safe.filter(t => (tab === 'withdraw' ? (t.type === 'transfer' && t.self) : tab === 'transfer' ? (t.type === 'transfer' && !t.self) : t.type === tab) && t.date >= fromDate && t.date <= toDate);
   const totalReceived = safe.filter(t => t.type === 'received' && t.date >= fromDate && t.date <= toDate).reduce((s, t) => s + (t.amount || 0), 0);
-  const totalTransfer = safe.filter(t => t.type === 'transfer' && t.date >= fromDate && t.date <= toDate).reduce((s, t) => s + (t.amount || 0), 0);
+  const totalTransfer = safe.filter(t => t.type === 'transfer' && !t.self && t.date >= fromDate && t.date <= toDate).reduce((s, t) => s + (t.amount || 0), 0);
 
   const handleAdd = () => {
-    if (!form.name.trim()) return showMessage('Please enter a name / details.', 'error');
+    if (!form.name.trim() && tab !== 'withdraw') return showMessage('Please enter a name / details.', 'error');
     const amt = Number(form.amount) || 0;
     if (amt <= 0) return showMessage('Please enter a valid amount.', 'error');
     const acc = accList.find(a => a.id === form.accId);
@@ -7922,12 +7945,12 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
     const chgIsCash = form.chargeMode !== 'online';
     const chgAcc = chgIsCash ? null : savList.find(a => a.id === form.chargeAccId);
     if (chg > 0 && !chgIsCash && !chgAcc) return showMessage('Please choose the Savings account for the online charge.', 'error');
-    const newTxn = { id: Date.now(), type: tab, name: form.name.trim(), amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true, accId: acc.id, accName: acc.name,
+    const newTxn = { id: Date.now(), type: tab === 'withdraw' ? 'transfer' : tab, self: tab === 'withdraw', name: form.name.trim() || 'Savings Withdrawal', amount: amt, date: todayStr, staffId: currentUser.id, staffName: currentUser.name, utrNumber: form.utrNumber.trim(), screenshotFileName: form.screenshotFileName.trim(), toSavings: true, accId: acc.id, accName: acc.name,
       senderName, senderMobile, senderAadhaar,
       chargeAmount: chg, chargeMode: chgIsCash ? 'cash' : 'online', chargeAccId: chg > 0 && chgAcc ? chgAcc.id : null, chargeAccName: chg > 0 && chgAcc ? chgAcc.name : '' };
-    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : 'Transfer') + ' - ' + form.name.trim(), '₹' + amt + ' | A/c: ' + acc.name + (form.utrNumber ? ' | UTR: ' + form.utrNumber : '') + (senderName ? ' | Sender: ' + senderName : '') + (senderMobile ? ' | Mob: ' + senderMobile : '') + (senderAadhaar ? ' | Aadhaar: ' + senderAadhaar : '') + (chg > 0 ? ' | Charge: ₹' + chg + (chgIsCash ? ' (Cash)' : ' → ' + chgAcc.name) : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
+    addAuditLog('Online Transaction Added', (tab === 'received' ? 'Money Received' : tab === 'withdraw' ? 'Savings Withdrawal' : 'Transfer') + ' - ' + (form.name.trim() || 'Savings Withdrawal'), '₹' + amt + ' | A/c: ' + acc.name + (form.utrNumber ? ' | UTR: ' + form.utrNumber : '') + (senderName ? ' | Sender: ' + senderName : '') + (senderMobile ? ' | Mob: ' + senderMobile : '') + (senderAadhaar ? ' | Aadhaar: ' + senderAadhaar : '') + (chg > 0 ? ' | Charge: ₹' + chg + (chgIsCash ? ' (Cash)' : ' → ' + chgAcc.name) : ''), { ...appData, onlineTransactions: [...safe, newTxn] });
     setForm({ name: '', amount: '', utrNumber: '', screenshotFileName: '', accId: form.accId, senderName: '', senderMobile: '', senderAadhaar: '', charge: '', chargeMode: form.chargeMode, chargeAccId: form.chargeAccId });
-    showMessage((tab === 'received' ? 'Money Received' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to ' + acc.name + ' and deducted from Cash.' : ' deducted from ' + acc.name + ' and added to Cash.') + (chg > 0 ? (chgIsCash ? ' Charge ₹' + chg + ' added to Cash.' : ' Charge ₹' + chg + ' added to ' + chgAcc.name + '.') : ''));
+    showMessage((tab === 'received' ? 'Money Received' : tab === 'withdraw' ? 'Savings Withdrawal' : 'Money Transfer') + ' entry added! ₹' + amt + (tab === 'received' ? ' added to ' + acc.name + ' and deducted from Cash.' : ' deducted from ' + acc.name + ' and added to Cash.') + (chg > 0 ? (chgIsCash ? ' Charge ₹' + chg + ' added to Cash.' : ' Charge ₹' + chg + ' added to ' + chgAcc.name + '.') : ''));
   };
 
   const deleteTxn = (id) => {
@@ -8007,24 +8030,27 @@ function OnlineTransaction({ onlineTransactions, setOnlineTransactions, appData,
       ),
       e('button', { onClick: () => setTab('transfer'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 ' + (tab === 'transfer' ? 'bg-red-500 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-red-50') },
         e(Icon, { name: 'TrendingDown', size: 15 }), 'Online Money Transfer'
+      ),
+      e('button', { onClick: () => setTab('withdraw'), className: 'px-5 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 ' + (tab === 'withdraw' ? 'bg-blue-600 text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:bg-blue-50') },
+        e(Icon, { name: 'Landmark', size: 15 }), 'Savings Withdrawal (Savings → Cash)'
       )
     ),
 
     // Add entry form
     e('div', { className: 'bg-white p-5 rounded-xl shadow-sm border border-gray-100' },
       e('h4', { className: 'text-sm font-semibold text-gray-700 mb-3' },
-        'Add ' + (tab === 'received' ? 'Money Received' : 'Money Transfer') + ' Entry'
+        (tab === 'withdraw' ? 'Add Savings Withdrawal Entry (ATM / withdrawn from someone: account goes down, Cash goes up)' : 'Add ' + (tab === 'received' ? 'Money Received' : 'Money Transfer') + ' Entry')
       ),
       e('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 items-end' },
         e('div', null,
-          e('label', { className: 'block text-sm font-medium mb-1' }, tab === 'received' ? 'Money goes into account *' : 'Money comes out of account *'),
+          e('label', { className: 'block text-sm font-medium mb-1' }, tab === 'received' ? 'Money goes into account *' : tab === 'withdraw' ? 'Withdraw from account (goes to Cash) *' : 'Money comes out of account *'),
           e('select', { value: form.accId, onChange: ev => setForm({ ...form, accId: ev.target.value }), className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm bg-white ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400') }, accList.map(a => e('option', { key: a.id, value: a.id }, a.name)))
         ),
         e('div', null,
           e('label', { className: 'block text-sm font-medium mb-1' }, 'Name / Details *'),
           e('input', { type: 'text', value: form.name, onChange: ev => setForm({ ...form, name: ev.target.value }),
             className: 'w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 text-sm ' + (tab === 'received' ? 'focus:ring-green-500' : 'focus:ring-red-400'),
-            placeholder: tab === 'received' ? 'e.g. NEFT' : 'e.g. Transfer'
+            placeholder: tab === 'received' ? 'e.g. NEFT' : tab === 'withdraw' ? 'e.g. ATM withdrawal (optional)' : 'e.g. Transfer'
           })
         ),
         e('div', null,
