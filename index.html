@@ -297,6 +297,20 @@
   html[data-theme="dark"] [style*="rgb(107, 122, 150)"],html[data-theme="dark"] [style*="rgb(91, 107, 136)"]{color:#a3afbf!important}
   html[data-theme="dark"] .sl-input{color:#e6ebf1}
   html[data-theme="dark"] .text-aic-900,html[data-theme="dark"] .text-aic-800{color:#e6ebf1}
+
+  /* dark: info boxes with see-through pastel backgrounds, indigo borders/text, yellow phone badge */
+  
+html[data-theme="dark"] [class~="bg-amber-50/40"]{background-color:rgba(245,158,11,.13)}  html[data-theme="dark"] [class~="bg-blue-50/40"]{background-color:rgba(59,130,246,.13)}  html[data-theme="dark"] [class~="bg-blue-50/50"]{background-color:rgba(59,130,246,.13)}  html[data-theme="dark"] [class~="bg-blue-50/60"]{background-color:rgba(59,130,246,.13)}  html[data-theme="dark"] [class~="bg-green-50/40"]{background-color:rgba(34,197,94,.13)}  html[data-theme="dark"] [class~="bg-green-50/50"]{background-color:rgba(34,197,94,.13)}  html[data-theme="dark"] [class~="bg-indigo-50/60"]{background-color:rgba(16,180,95,.13)}  html[data-theme="dark"] [class~="bg-red-50/40"]{background-color:rgba(239,68,68,.13)}  html[data-theme="dark"] [class~="bg-red-50/50"]{background-color:rgba(239,68,68,.13)}  html[data-theme="dark"] [class~="hover:bg-amber-50/40"]:hover{background-color:rgba(245,158,11,.2)}  html[data-theme="dark"] [class~="hover:bg-sky-50/40"]:hover{background-color:rgba(14,165,233,.2)}
+  html[data-theme="dark"] .border-indigo-100,html[data-theme="dark"] .border-indigo-200,html[data-theme="dark"] .border-indigo-300{border-color:rgba(16,180,95,.38)!important}
+  html[data-theme="dark"] .text-indigo-800,html[data-theme="dark"] .text-indigo-900,html[data-theme="dark"] .text-indigo-400,html[data-theme="dark"] .text-indigo-300{color:#86efac!important}
+  html[data-theme="dark"] .bg-yellow-300,html[data-theme="dark"] .bg-yellow-300 *{color:#111827!important}
+  html[data-theme="dark"] .sc-menu{background-color:#171d26!important;border-color:rgba(255,255,255,.12)}
+  html[data-theme="dark"] .fixed.inset-0[style*="9999"]>.bg-white{background-color:#171d26;border:1px solid rgba(255,255,255,.1)}
+  }
+  @media screen {
+  /* glass: solid-enough panels for the header Theme menu and the Quick Go / shortcut popups */
+  html[data-theme="glass"] .sc-menu{background-color:rgba(255,252,247,.94)!important;-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border-color:rgba(255,255,255,.85)}
+  html[data-theme="glass"] .fixed.inset-0[style*="9999"]>.bg-white{background-color:rgba(255,252,247,.92);-webkit-backdrop-filter:blur(28px) saturate(1.5);backdrop-filter:blur(28px) saturate(1.5);border:1px solid rgba(255,255,255,.85)}
   }
 </style>
 </head>
@@ -947,7 +961,7 @@ function ThemePicker({ theme, setTheme }) {
     e('button', { onClick: () => setOpen(!open), title: 'Change theme', className: 'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors' },
       e(Icon, { name: 'Palette', size: 18 }), e('span', { className: 'hidden sm:inline' }, 'Theme')),
     open && e('div', { className: 'fixed inset-0 z-40', onClick: () => setOpen(false) }),
-    open && e('div', { className: 'absolute right-0 top-full mt-2 w-64 rounded-2xl p-2 shadow-xl border border-gray-200', style: { zIndex: 45, background: 'rgba(255,255,255,.96)', WebkitBackdropFilter: 'blur(18px)', backdropFilter: 'blur(18px)' } },
+    open && e('div', { className: 'sc-menu bg-white absolute right-0 top-full mt-2 w-64 rounded-2xl p-2 shadow-xl border border-gray-200', style: { zIndex: 45 } },
       e('p', { className: 'px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400' }, 'Select theme'),
       SC_THEMES.map(t => e('button', { key: t.id, onClick: () => { setTheme(t.id); setOpen(false); },
         className: 'w-full flex items-center gap-3 p-2 rounded-xl text-left hover:bg-gray-100 ' + (theme === t.id ? 'bg-gray-100' : '') },
@@ -983,6 +997,49 @@ function ExportBar({ fromDate, setFromDate, toDate, setToDate, onExport, label, 
 }
 
 // ── LOGIN ──
+// ═══════════ AUTO CAPITAL LETTERS (typing) ═══════════
+// While typing in a text box the first letter becomes a capital and the rest small. Names, places and the like get a capital on every word;
+// notes and messages get one only at the start of each sentence. Codes, numbers, e-mails, search boxes, file names and passwords are left alone.
+// It works on every page through one listener, so new text boxes are covered automatically. Turn it off in the Shortcuts window (device setting).
+const CAP_KEY = 'csc_autocap';
+const capOn = () => { try { return localStorage.getItem(CAP_KEY) !== 'off'; } catch (e) { return true; } };
+const CAP_SKIP = /search|screenshot|file|utr|ifsc|url|http|link|e-?mail|pass|login|user\s?id|username|restore|otp|script|api|confirm|number|\bno\b|no\.|\bid\b|code|policy|aadha|\bpan\b|gst|voter|passport|digit|mobile|phone|\bpin\b|amount|₹|width|height|dd\/mm|folder|token|\bkey\b/i;
+const CAP_WORDS = /\b(name|village|area|post office|city|district|town|state\b|occupation|work\b|branch|staff|father|mother|husband|wife|holder|nominee|bank|relation|place|landmark|title)/i;
+function capText(v, mode) {
+  const s = String(v).toLocaleLowerCase();
+  if (mode === 'words') return s.replace(/(^|[\s\-\/(.])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase());
+  return s.replace(/(^\s*|[.!?]\s+|\n\s*)(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase());
+}
+function capHint(el) {
+  let lab = ''; try { const p = el.previousElementSibling; if (p && p.tagName === 'LABEL') lab = p.textContent; else if (el.closest && el.closest('label')) lab = el.closest('label').textContent; else if (el.parentElement) { const l = el.parentElement.querySelector('label'); if (l) lab = l.textContent; } } catch (e) { /* no label */ }
+  return [el.placeholder, el.name, el.id, el.getAttribute && el.getAttribute('aria-label'), el.title, lab].filter(Boolean).join(' ').toLowerCase();
+}
+// 'words' | 'sentence' | null (leave the text alone)
+function capMode(el, v) {
+  const tag = el.tagName; if (tag !== 'INPUT' && tag !== 'TEXTAREA') return null;
+  if (tag === 'INPUT' && el.type && el.type !== 'text') return null;
+  if (el.readOnly || el.disabled || (el.dataset && el.dataset.nocap !== undefined)) return null;
+  if (!v || /@|:\/\//.test(v) || (/^\S+$/.test(v) && /\d/.test(v) && /\p{L}/u.test(v))) return null;
+  const h = capHint(el); if (/\d{6,}/.test(h)) return null;   // an example like 1234567890 means an ID or number field
+  const nameLike = /name/.test(h) && !/file|screenshot|folder|user/.test(h);
+  if (!nameLike && CAP_SKIP.test(h)) return null;
+  if (nameLike && /search|e-?mail|url|login/.test(h)) return null;
+  return CAP_WORDS.test(h) && el.tagName === 'INPUT' ? 'words' : 'sentence';
+}
+if (typeof document !== 'undefined' && !window.__capInstalled) {
+  window.__capInstalled = true;
+  document.addEventListener('input', ev => {
+    const el = ev.target; if (!el || el.__capBusy || ev.isComposing || !capOn()) return;
+    const v = el.value, mode = capMode(el, v); if (!mode) return;
+    const out = capText(v, mode); if (out === v) return;
+    const a = el.selectionStart, b = el.selectionEnd, proto = el.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, out);   // the native setter, so React sees a real change
+    try { el.setSelectionRange(a, b); } catch (e) { /* the caret could not be restored */ }
+    el.__capBusy = true; el.dispatchEvent(new Event('input', { bubbles: true })); el.__capBusy = false;
+  }, true);
+}
+// ═══════════ END AUTO CAPITAL LETTERS ═══════════
+
 function LoginScreen({ onLogin, message }) {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
@@ -1039,6 +1096,7 @@ const PAL_LIGHT = PAL.slice();
 const PAL_DARK = ['#4f9dff', '#22c1e6', '#10b45f', '#f5a524', '#a78bfa', '#f472b6', '#5eead4'];
 const isDarkTheme = () => document.documentElement.getAttribute('data-theme') === 'dark';
 const chartInk = () => isDarkTheme() ? '#4f9dff' : '#0a1f44';
+const chartGrid = () => isDarkTheme() ? 'rgba(255,255,255,.07)' : '#eef1f5';
 const chartEdge = () => isDarkTheme() ? '#171d26' : '#fff';
 function applyChartTheme() {
   const dark = isDarkTheme();
@@ -1532,7 +1590,14 @@ const blankMember = () => ({ id: Date.now() + Math.floor(Math.random() * 100000)
 const cleanMember = m => ({ id: m.id, name: (m.name || '').trim(), relation: m.relation || 'Other', phone: _normPhone(m.phone), gender: m.gender || '', dob: m.dob || '', docType: m.docType || '', docNumber: (m.docNumber || '').trim(), work: (m.work || '').trim(), notes: (m.notes || '').trim() });
 const familyOf = c => Array.isArray(c && c.family) ? c.family : (c && c.family ? Object.values(c.family) : []);
 
-function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, appData, persist, showMessage, currentUser }) {
+// ── Customer profile look: helpers ──
+const pmPhone = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? d.slice(0, 5) + ' ' + d.slice(5) : String(p || ''); };
+const pmWa = p => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 10 ? 'https://wa.me/' + (d.length === 10 ? '91' + d : d) : ''; };
+const pmAge = dob => { const s = String(dob || '').trim(); let y, m, d; let x = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/); if (x) { d = +x[1]; m = +x[2]; y = +x[3]; } else { x = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (!x) return ''; y = +x[1]; m = +x[2]; d = +x[3]; } const t = new Date(); let a = t.getFullYear() - y; if (t.getMonth() + 1 < m || (t.getMonth() + 1 === m && t.getDate() < d)) a--; return a >= 0 && a < 130 ? a + ' yrs' : ''; };
+const pmField = (label, val, big) => e('div', null, e('p', { className: 'text-[11px] uppercase tracking-wide text-gray-400 font-semibold' }, label), e('p', { className: big ? 'text-lg font-extrabold text-gray-900 tracking-wide' : 'text-sm font-semibold text-gray-800' }, val || '—'));
+const pmDoc = (type, other, no) => type ? { t: type === 'Others' ? (other || 'Others') : type, n: no || '' } : null;
+
+function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, onAddService, onEdit, appData, persist, showMessage, currentUser }) {
   const mine = tasksOfCustomer(customer, tasks);
   // ── Clear pending dues right from the profile ──
   const [payMode, setPayMode] = useState('Cash');
@@ -1591,35 +1656,44 @@ function CustomerProfileModal({ customer, tasks, onClose, setPrintingReceipt, on
   const totalDue = Math.max(0, totalAmount - totalPaid);
   return e('div', { className: 'pm-overlay fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-2 md:p-4', onClick: ev => { if (ev.target === ev.currentTarget) onClose(); } },
     e('div', { className: 'pm-card bg-white rounded-2xl shadow-2xl w-full flex flex-col', style: { width: 'min(98vw, 1700px)', height: 'min(94vh, 1100px)' } },
-      e('div', { className: 'flex items-center justify-between px-5 py-4 border-b bg-indigo-600 text-white rounded-t-2xl' },
-        e('div', { className: 'flex items-center gap-3' },
-          e('div', { className: 'h-11 w-11 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg' }, (customer.name || '?').charAt(0).toUpperCase()),
-          e('div', null,
-            e('p', { className: 'font-bold leading-tight' }, customer.name),
-            e('p', { className: 'text-xs text-indigo-100 font-mono' }, customer.custCode || '—')
-          )
-        ),
-        e('button', { onClick: onClose, className: 'text-white text-2xl leading-none px-2' }, '×')
-      ),
+      e('div', { className: 'px-5 py-4 border-b text-white rounded-t-2xl', style: { background: 'linear-gradient(135deg,#312e81 0%,#6d28d9 100%)' } },
+        e('div', { className: 'flex items-start justify-between gap-3' },
+          e('div', { className: 'flex items-center gap-4 min-w-0' },
+            e('div', { className: 'h-16 w-16 shrink-0 rounded-full bg-white text-indigo-700 flex items-center justify-center font-extrabold text-3xl shadow-lg' }, (customer.name || '?').charAt(0).toUpperCase()),
+            e('div', { className: 'min-w-0' },
+              e('p', { className: 'text-2xl md:text-3xl font-extrabold leading-tight tracking-tight truncate' }, customer.name),
+              e('div', { className: 'flex flex-wrap items-center gap-2 mt-2' },
+                customer.phone && e('span', { className: 'inline-flex items-center gap-1.5 bg-yellow-300 text-gray-900 font-extrabold text-lg md:text-xl px-3 py-0.5 rounded-lg shadow tracking-wider' }, '📞 ' + pmPhone(customer.phone)),
+                customer.altPhone && e('span', { className: 'text-sm font-bold bg-white/20 px-2.5 py-1 rounded-lg' }, 'Alt ' + pmPhone(customer.altPhone)),
+                e('span', { className: 'text-xs font-mono bg-white/15 px-2 py-1 rounded' }, customer.custCode || '—')))),
+          e('button', { onClick: onClose, className: 'text-white text-3xl leading-none px-2' }, '×')),
+        e('div', { className: 'flex flex-wrap gap-2 mt-3 text-xs' },
+          e('span', { className: 'bg-white/15 rounded-full px-3 py-1' }, 'Visits: ', e('b', null, visits.length)),
+          e('span', { className: 'bg-white/15 rounded-full px-3 py-1' }, 'Last visit: ', e('b', null, customer.lastVisit || '—')),
+          familyOf(customer).length > 0 && e('span', { className: 'bg-white/15 rounded-full px-3 py-1' }, 'Family: ', e('b', null, familyOf(customer).length)),
+          totalDue > 0 ? e('span', { className: 'bg-red-500 rounded-full px-3 py-1 font-semibold' }, 'Due ₹' + totalDue) : e('span', { className: 'bg-green-500/80 rounded-full px-3 py-1 font-semibold' }, '✓ No dues'))),
       e('div', { className: 'p-5 overflow-y-auto flex-1 min-h-0' },
         e('div', { className: 'flex flex-wrap items-center gap-2' },
           onAddService && e('button', { onClick: onAddService, className: 'flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm', style: { background: '#10b45f' } }, e(Icon, { name: 'Plus', size: 16 }), 'Add New Service'),
-          customer.phone && e('a', { href: 'tel:' + customer.phone, className: 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50' }, e(Icon, { name: 'Phone', size: 16 }), 'Call ' + customer.phone),
+          onEdit && e('button', { onClick: onEdit, title: 'Edit this customer\'s details', className: 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100' }, e(Icon, { name: 'Edit2', size: 16 }), 'Edit Details'),
+          customer.phone && e('a', { href: 'tel:' + customer.phone, className: 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100' }, e(Icon, { name: 'Phone', size: 16 }), 'Call ' + pmPhone(customer.phone)),
+          pmWa(customer.phone) && e('a', { href: pmWa(customer.phone), target: '_blank', rel: 'noopener noreferrer', className: 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border border-green-300 text-green-700 bg-green-50 hover:bg-green-100' }, e(Icon, { name: 'MessageCircle', size: 16 }), 'WhatsApp'),
           totalDue > 0 && e('span', { className: 'ml-auto text-xs font-semibold px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200' }, 'Pending Due: ₹' + totalDue)
         ),
         e('div', { className: 'grid grid-cols-1 lg:grid-cols-5 gap-5 mt-4 items-start' },
           e('div', { className: 'pm-col lg:col-span-2 space-y-4' },
-        e('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 text-sm bg-gray-50 rounded-xl p-3 border border-gray-100' },
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Mobile'), e('p', { className: 'font-medium text-gray-800' }, customer.phone || '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Alt. Mobile'), e('p', { className: 'font-medium text-gray-800' }, customer.altPhone || '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Gender'), e('p', { className: 'font-medium text-gray-800' }, customer.gender || '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'DOB'), e('p', { className: 'font-medium text-gray-800' }, customer.dob || '—')),
-          e('div', { className: 'col-span-2 md:col-span-2' }, e('p', { className: 'text-xs text-gray-400' }, 'Address'), e('p', { className: 'font-medium text-gray-800' }, customer.address || '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Document 1'), e('p', { className: 'font-medium text-gray-800' }, customer.doc1Type ? ((customer.doc1Type === 'Others' ? (customer.doc1Other || 'Others') : customer.doc1Type) + (customer.doc1Number ? ': ' + customer.doc1Number : '')) : '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Document 2'), e('p', { className: 'font-medium text-gray-800' }, customer.doc2Type ? ((customer.doc2Type === 'Others' ? (customer.doc2Other || 'Others') : customer.doc2Type) + (customer.doc2Number ? ': ' + customer.doc2Number : '')) : '—')),
-          e('div', null, e('p', { className: 'text-xs text-gray-400' }, 'Last Visit'), e('p', { className: 'font-medium text-gray-800' }, customer.lastVisit || '—')),
-          customer.notes && e('div', { className: 'col-span-2 md:col-span-4' }, e('p', { className: 'text-xs text-gray-400' }, 'Notes'), e('p', { className: 'font-medium text-gray-800 whitespace-pre-wrap' }, customer.notes))
-        ),
+        e('div', { className: 'space-y-3' },
+          e('div', { className: 'rounded-xl border border-indigo-100 bg-indigo-50/60 p-3' },
+            e('p', { className: 'text-xs font-bold text-indigo-700 mb-2' }, '📞 CONTACT'),
+            e('div', { className: 'grid grid-cols-2 gap-3' }, pmField('Mobile', customer.phone ? pmPhone(customer.phone) : '', true), pmField('Alt. Mobile', customer.altPhone ? pmPhone(customer.altPhone) : '')),
+            e('div', { className: 'mt-3' }, pmField('Address', customer.address))),
+          e('div', { className: 'rounded-xl border border-gray-200 bg-white p-3' },
+            e('p', { className: 'text-xs font-bold text-gray-600 mb-2' }, '🧑 PERSONAL'),
+            e('div', { className: 'grid grid-cols-3 gap-3' }, pmField('Gender', customer.gender), pmField('Date of birth', customer.dob ? customer.dob + (pmAge(customer.dob) ? ' · ' + pmAge(customer.dob) : '') : ''), pmField('Last visit', customer.lastVisit))),
+          (() => { const ds = [pmDoc(customer.doc1Type, customer.doc1Other, customer.doc1Number), pmDoc(customer.doc2Type, customer.doc2Other, customer.doc2Number)].filter(Boolean); return e('div', { className: 'rounded-xl border border-gray-200 bg-white p-3' },
+            e('p', { className: 'text-xs font-bold text-gray-600 mb-2' }, '🪪 DOCUMENTS'),
+            ds.length === 0 ? e('p', { className: 'text-sm text-gray-400' }, '—') : e('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-2' }, ds.map((d, i) => e('div', { key: i, className: 'rounded-lg bg-gray-50 border border-gray-100 px-3 py-2' }, e('p', { className: 'text-[11px] uppercase tracking-wide text-gray-400 font-semibold' }, d.t), e('p', { className: 'text-base font-extrabold text-gray-900 tracking-wide break-all' }, d.n || '—'))))); })(),
+          customer.notes && e('div', { className: 'rounded-xl border border-amber-200 bg-amber-50 p-3' }, e('p', { className: 'text-xs font-bold text-amber-700 mb-1' }, '📝 NOTES'), e('p', { className: 'text-sm font-medium text-gray-800 whitespace-pre-wrap' }, customer.notes))),
         familyOf(customer).length > 0 && e('div', null,
           e('p', { className: 'text-sm font-semibold text-gray-700 mb-2' }, 'Family Members (' + familyOf(customer).length + ')'),
           e('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-2' }, familyOf(customer).map(m => e('div', { key: m.id, className: 'border border-blue-100 bg-blue-50/40 rounded-xl p-3 text-sm' },
@@ -1935,7 +2009,7 @@ function CustomerMergeModal({ customers, tasks, appData, persist, showMessage, a
   );
 }
 
-function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest, newCustomerRequest, clearNewRequest }) {
+function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, editRequestFull, clearEditRequest, newCustomerRequest, clearNewRequest }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [waCustomer, setWaCustomer] = useState(null);
@@ -2009,7 +2083,7 @@ function CustomerCRM({ customers, setCustomers, services, tasks, setTasks, appDa
   useEffect(() => {
     if (!editRequestId) return;
     const c = customers.find(x => x.id === editRequestId);
-    if (c) openEditFor(c, true);
+    if (c) openEditFor(c, !editRequestFull);
     clearEditRequest && clearEditRequest();
   }, [editRequestId]);
   const removeServiceRow = (rowId) => { if (selectedServices.length > 1) setSelectedServices(selectedServices.filter(s => s.id !== rowId)); };
@@ -2549,12 +2623,12 @@ showMessage((held ? 'Details sent to Admin for verification ⏳ (current details
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } }),
     showWaTpl && e(WhatsAppTemplatesModal, { appData, persist, addAuditLog, showMessage, onClose: () => setShowWaTpl(false) }),
     showMerge && e(CustomerMergeModal, { customers, tasks, appData, persist, showMessage, addAuditLog, onClose: () => setShowMerge(false) }),
-    profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt, appData, persist, showMessage, currentUser, onAddService: () => { const c = customers.find(x => x.id === profileCustomer.id) || profileCustomer; setProfileCustomer(null); openEditFor(c, true); } })
+    profileCustomer && e(CustomerProfileModal, { customer: profileCustomer, tasks, onClose: () => setProfileCustomer(null), setPrintingReceipt, appData, persist, showMessage, currentUser, onAddService: () => { const c = customers.find(x => x.id === profileCustomer.id) || profileCustomer; setProfileCustomer(null); openEditFor(c, true); }, onEdit: () => { const c = customers.find(x => x.id === profileCustomer.id) || profileCustomer; setProfileCustomer(null); openEditFor(c, false); } })
   );
 }
 
 // ── PENDING DUES ──
-function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, currentUser }) {
+function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, goEditCustomer, currentUser }) {
   const [waCustomer, setWaCustomer] = useState(null);
   const [fromDate, setFromDate] = useState('2020-01-01');
   const [toDate, setToDate] = useState(todayStr);
@@ -2821,7 +2895,7 @@ function PendingDues({ tasks, setTasks, customers, appData, persist, showMessage
             );
           })
         ),
-    profileC && e(CustomerProfileModal, { customer: profileC, tasks, onClose: () => setProfileC(null), setPrintingReceipt, appData, persist, showMessage, currentUser, onAddService: () => { const c = profileC; setProfileC(null); goAddService && goAddService(c); } }),
+    profileC && e(CustomerProfileModal, { customer: profileC, tasks, onClose: () => setProfileC(null), setPrintingReceipt, appData, persist, showMessage, currentUser, onAddService: () => { const c = profileC; setProfileC(null); goAddService && goAddService(c); }, onEdit: goEditCustomer ? () => { const c = profileC; setProfileC(null); goEditCustomer(c); } : undefined }),
     waCustomer && e(WhatsAppModal, { customer: waCustomer, tasks, appData, preferId: 'due', onClose: () => setWaCustomer(null), onSent: (label, p) => { addAuditLog && addAuditLog('WhatsApp Message Sent', waCustomer.name, 'Message: ' + label + ' | To: +' + p); setWaCustomer(null); showMessage('WhatsApp opened — press Send in WhatsApp.'); } })
   );
 }
@@ -2940,7 +3014,7 @@ function StockManager({ stockItems, stockLog, expenses, appData, currentUser, sh
       e('p', { className: 'text-sm text-gray-400 mt-1 mb-4' }, admin ? 'Start with a common item or add your own:' : 'Ask admin to add stock items.'),
       admin && e('div', { className: 'flex flex-wrap justify-center gap-2' }, STOCK_QUICK.map(x => e('button', { key: x[0], onClick: () => open('item', null, x), className: 'aic-pill' }, '+ ' + x[0])))) : [
     e('div', { key: 'chart', className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
-      e(Card, { title: 'Stock Level vs Alert Level', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', height: 240, data: { labels: items.slice(0, 14).map(i => i.name), datasets: [{ label: 'In stock', data: items.slice(0, 14).map(i => num(i.qty)), backgroundColor: items.slice(0, 14).map(i => ({ ok: '#1565c0', low: '#f59e0b', out: '#dc2626' })[stat(i)]), borderRadius: 6 }, { label: 'Alert level', data: items.slice(0, 14).map(i => num(i.minQty)), backgroundColor: '#cbd5e1', borderRadius: 6 }] }, options: { scales: { y: { grid: { color: '#eef1f5' }, ticks: { font: { size: 10 } }, border: { display: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
+      e(Card, { title: 'Stock Level vs Alert Level', className: 'xl:col-span-2' }, e(ChartBox, { type: 'bar', height: 240, data: { labels: items.slice(0, 14).map(i => i.name), datasets: [{ label: 'In stock', data: items.slice(0, 14).map(i => num(i.qty)), backgroundColor: items.slice(0, 14).map(i => ({ ok: '#1565c0', low: '#f59e0b', out: '#dc2626' })[stat(i)]), borderRadius: 6 }, { label: 'Alert level', data: items.slice(0, 14).map(i => num(i.minQty)), backgroundColor: '#cbd5e1', borderRadius: 6 }] }, options: { scales: { y: { grid: { color: chartGrid() }, ticks: { font: { size: 10 } }, border: { display: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }, plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } } } })),
       e(Card, { title: 'Recent Movements' }, recent.length ? e('div', { className: 'space-y-2' }, recent.map(l => e('div', { key: l.id, className: 'flex items-center justify-between text-xs' },
         e('div', null, e('p', { className: 'font-medium text-gray-700' }, l.itemName), e('p', { className: 'text-gray-400' }, l.date + ' · ' + (l.reason || '') + ' · ' + l.by)),
         e('span', { className: 'font-semibold ' + (l.type === 'in' ? 'text-green-600' : 'text-red-500') }, (l.type === 'in' ? '+' : '-') + l.qty)))) : e('p', { className: 'text-sm text-gray-400' }, 'No movements yet.'))),
@@ -3487,8 +3561,10 @@ async function pvcCropSide(src, c, W, H) {
     const vp = page.getViewport({ scale: sc }); bmp = document.createElement('canvas'); bmp.width = Math.ceil(vp.width); bmp.height = Math.ceil(vp.height);
     await page.render({ canvasContext: bmp.getContext('2d'), viewport: vp }).promise; iw = bmp.width; ih = bmp.height;
   } else { bmp = src.img; iw = bmp.naturalWidth; ih = bmp.naturalHeight; }
-  const sx = Math.max(1, Math.round(c.x * iw)), sy = Math.max(1, Math.round(c.y * ih));
-  const sw = Math.max(4, Math.min(Math.round((c.x + c.w) * iw), iw - 1) - sx), sh = Math.max(4, Math.min(Math.round((c.y + ch) * ih), ih - 1) - sy);
+  // skip a few pixels at the very border of the page/image: PDF pages often carry a hairline or a tiny tick mark there, which would otherwise be copied into the extended area
+  const tx = Math.max(3, Math.round(.005 * iw)), ty = Math.max(3, Math.round(.005 * ih));
+  const sx = Math.max(tx, Math.round(c.x * iw)), sy = Math.max(ty, Math.round(c.y * ih));
+  const sw = Math.max(4, Math.min(Math.round((c.x + c.w) * iw), iw - tx) - sx), sh = Math.max(4, Math.min(Math.round((c.y + ch) * ih), ih - ty) - sy);
   if (mode === 'stretch') { x.drawImage(bmp, sx, sy, sw, sh, 0, 0, W, H); return o; }
   const k = Math.min(W / sw, H / sh), dw = sw * k, dh = sh * k, dx = (W - dw) / 2, dy = (H - dh) / 2;
   x.drawImage(bmp, sx, sy, sw, sh, dx, dy, dw, dh);
@@ -4114,7 +4190,7 @@ function InquiryPage({ appData, currentUser, showMessage, services, customers, u
           e('td', { className: 'py-2.5 pr-3 text-gray-500' }, i.assignedName || '—'),
           e('td', { className: 'py-2.5', onClick: ev => ev.stopPropagation() }, e('div', { className: 'flex gap-1' }, i.phone && e('a', { href: 'tel:' + i.phone, className: 'text-gray-600 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded text-xs' }, 'Call'), i.phone && e('a', { href: wa(i), target: '_blank', rel: 'noopener', className: 'text-green-700 border border-green-300 hover:bg-green-50 px-2 py-1 rounded text-xs' }, 'WhatsApp'), inqOpen(i) && e('button', { onClick: () => convert(i), className: 'text-white px-2 py-1 rounded text-xs font-medium', style: { background: '#0f9d8a' } }, 'Convert'))))))))),
     admin && all.length > 0 && e('div', { className: 'grid grid-cols-1 xl:grid-cols-3 gap-4' },
-      e(Card, { title: 'Most Asked Services' }, e(ChartBox, { type: 'bar', height: 220, data: { labels: bySvc.map(x => x[0]), datasets: [{ data: bySvc.map(x => x[1]), backgroundColor: '#1565c0', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#eef1f5' }, ticks: { precision: 0, font: { size: 10 } }, border: { display: false } }, x: xaxis } } })),
+      e(Card, { title: 'Most Asked Services' }, e(ChartBox, { type: 'bar', height: 220, data: { labels: bySvc.map(x => x[0]), datasets: [{ data: bySvc.map(x => x[1]), backgroundColor: '#1565c0', borderRadius: 6 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: chartGrid() }, ticks: { precision: 0, font: { size: 10 } }, border: { display: false } }, x: xaxis } } })),
       e(Card, { title: 'Where Inquiries Come From' }, e(ChartBox, { type: 'doughnut', height: 220, data: { labels: bySrc.map(x => x[0]), datasets: [{ data: bySrc.map(x => x[1]), backgroundColor: PAL, borderWidth: 2, borderColor: chartEdge() }] }, options: { cutout: '58%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } } } } })),
       e(Card, { title: 'Why We Lost Them' }, byLost.length ? e('div', { className: 'space-y-2' }, byLost.map(([n, v]) => e('div', { key: n, className: 'flex items-center gap-2 text-xs' }, e('span', { className: 'w-40 truncate text-gray-600' }, n), e('div', { className: 'flex-1' }, e('div', { className: 'aic-bar', style: { width: Math.max(14, v / byLost[0][1] * 100) + '%', background: '#dc2626' } }, v))))) : e('p', { className: 'text-sm text-gray-400' }, 'No lost inquiries yet.'))),
     form && e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center p-3', style: { background: 'rgba(7,26,58,.5)' }, onClick: () => setForm(null) },
@@ -8389,6 +8465,76 @@ function ReceiptModal({ receipt, businessProfile, onClose }) {
   );
 }
 
+// ═══════════ SHORTCUTS & QUICK GO ═══════════
+// Keyboard shortcuts for every menu and a few quick actions, plus Quick Go (Ctrl+K): type a menu, a customer name or a mobile number and press Enter.
+// Keys are saved on this computer (localStorage), so each computer can have its own.
+const SC_KEY = 'csc_shortcuts';
+const SC_DEFAULTS = { palette: 'Ctrl+K', dashboard: 'Alt+Shift+D', tracking: 'Alt+Shift+T', crm: 'Alt+Shift+C', newcustomer: 'Alt+Shift+N', reports: 'Alt+Shift+R', queue: 'Alt+Shift+Q', inquiry: 'Alt+Shift+I', pending: 'Alt+Shift+P', banking: 'Alt+Shift+B', online: 'Alt+Shift+O', documents: 'Alt+Shift+F', tools: 'Alt+Shift+L', stock: 'Alt+Shift+K', expenses: 'Alt+Shift+E', cashclosing: 'Alt+Shift+X', daybook: 'Alt+Shift+Y', accounts: 'Alt+Shift+A', settings: 'Alt+Shift+G' };
+function scLoad() { try { const j = JSON.parse(localStorage.getItem(SC_KEY) || 'null'); return { ...SC_DEFAULTS, ...(j && typeof j === 'object' ? j : {}) }; } catch (e) { return { ...SC_DEFAULTS }; } }
+function scSave(m) { try { const d = {}; Object.keys(m).forEach(k => { if ((m[k] || '') !== (SC_DEFAULTS[k] || '')) d[k] = m[k] || ''; }); localStorage.setItem(SC_KEY, JSON.stringify(d)); } catch (e) { /* storage is not available */ } }
+const scCombo = ev => { const c = ev.code || '', k = /^Key[A-Z]$/.test(c) ? c.slice(3) : /^Digit\d$/.test(c) ? c.slice(5) : /^F\d{1,2}$/.test(c) ? c : ''; return k ? [ev.ctrlKey && 'Ctrl', ev.altKey && 'Alt', ev.shiftKey && 'Shift', ev.metaKey && 'Meta'].filter(Boolean).concat(k).join('+') : ''; };
+const scAllowed = c => /^F\d/.test(c.split('+').pop()) || /(^|\+)Alt\+/.test(c) || /^Ctrl\+Shift\+/.test(c);   // plain Ctrl+letter belongs to the browser
+// Which action each key press means. Pure so it can be tested.
+const scFind = (map, combo) => Object.keys(map).find(k => map[k] && map[k] === combo) || null;
+// Quick Go results for a typed query: menus and actions by words, customers by name / mobile / code, and "new customer" for an unknown name or number.
+function scSearch(q, actions, customers) {
+  const s = String(q || '').trim().toLowerCase(), out = [];
+  const words = s.split(/\s+/).filter(Boolean);
+  actions.forEach(a => { if (!words.length || words.every(w => a.label.toLowerCase().includes(w))) out.push({ type: 'action', id: a.id, label: a.label, run: a.run }); });
+  if (s.length >= 2) {
+    const digits = s.replace(/\D/g, '');
+    (customers || []).filter(c => (c.name || '').toLowerCase().includes(s) || (c.custCode || '').toLowerCase().includes(s) || (digits.length >= 3 && String(c.phone || '').replace(/\D/g, '').includes(digits))).slice(0, 8).forEach(c => out.push({ type: 'customer', id: 'c' + c.id, label: 'Add service · ' + c.name + (c.phone ? ' · ' + c.phone : ''), customer: c }));
+    out.push({ type: 'new', id: 'new', label: /^\d{10}$/.test(digits) && digits === s.replace(/\s/g, '') ? 'New customer with mobile ' + digits : 'New customer "' + String(q).trim() + '"', req: /^\d{10}$/.test(s.replace(/\s/g, '')) ? { phone: s.replace(/\s/g, '') } : { name: String(q).trim() } });
+  }
+  return out;
+}
+function ShortcutHost({ navItems, customers, setActiveTab, goNewCustomer, goAddService, handleRefresh, toggleFullscreen, dark }) {
+  const [map, setMap] = useState(scLoad), [pal, setPal] = useState(false), [man, setMan] = useState(false), [rec, setRec] = useState(null), [err, setErr] = useState(''), [q, setQ] = useState(''), [sel, setSel] = useState(0), [cap, setCap] = useState(capOn());
+  const actions = [...navItems.map(n => ({ id: n.id, label: 'Go to ' + n.label, run: () => setActiveTab(n.id) })), { id: 'newcustomer', label: 'New customer', run: () => goNewCustomer({}) }, { id: 'refresh', label: 'Refresh data', run: handleRefresh }, { id: 'fullscreen', label: 'Full screen on / off', run: toggleFullscreen }];
+  const ref = React.useRef(); ref.current = { map, actions, rec, pal };
+  const save = m => { setMap(m); scSave(m); };
+  React.useEffect(() => {
+    const h = ev => {
+      const r = ref.current; if (ev.isComposing) return;
+      if (r.rec) {
+        if (ev.key === 'Escape') { ev.preventDefault(); setRec(null); setErr(''); return; }
+        const c = scCombo(ev); if (!c) return; ev.preventDefault(); ev.stopPropagation();
+        if (!scAllowed(c)) return setErr('Use Alt or Ctrl+Shift with a letter or number (plain Ctrl+letter belongs to the browser).');
+        const other = scFind(r.map, c); if (other && other !== r.rec) { const lab = other === 'palette' ? 'Quick Go' : (r.actions.find(a => a.id === other) || { label: other }).label; return setErr(c + ' is already used for "' + lab + '".'); }
+        save({ ...r.map, [r.rec]: c }); setRec(null); setErr(''); return;
+      }
+      const c = scCombo(ev); if (!c) return; const id = scFind(r.map, c); if (!id) return;
+      ev.preventDefault(); ev.stopPropagation();
+      if (id === 'palette') { setQ(''); setSel(0); setPal(p => !p); return; }
+      const a = r.actions.find(x => x.id === id); if (a) a.run();
+    };
+    document.addEventListener('keydown', h, true); return () => document.removeEventListener('keydown', h, true);
+  }, []);
+  const results = pal ? scSearch(q, actions, customers) : [];
+  const runItem = it => { if (!it) return; setPal(false); if (it.type === 'action') it.run(); else if (it.type === 'customer') goAddService(it.customer); else goNewCustomer(it.req); };
+  const btn = 'p-2 rounded-lg transition-colors ' + (dark ? 'text-green-100 hover:bg-green-600' : 'text-gray-500 hover:bg-gray-100');
+  const modal = (children, onClose) => ReactDOM.createPortal(e('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 pt-16', style: { zIndex: 9999 }, onMouseDown: ev => { if (ev.target === ev.currentTarget) onClose(); } }, children), document.body);
+  return e(React.Fragment, null,
+    e('button', { onClick: () => { setQ(''); setSel(0); setPal(true); }, title: 'Quick Go (' + (map.palette || 'no key') + ')', className: btn }, e(Icon, { name: 'Search', size: 18 })),
+    e('button', { onClick: () => { setMan(true); setErr(''); setCap(capOn()); }, title: 'Shortcuts and typing settings', className: btn + ' text-lg leading-none' }, '⌨'),
+    pal && modal(e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden' },
+      e('input', { autoFocus: true, value: q, placeholder: 'Type a menu, a customer name or a mobile number…', onChange: ev => { setQ(ev.target.value); setSel(0); }, 'data-nocap': '', className: 'w-full px-5 py-4 text-base border-b outline-none',
+        onKeyDown: ev => { if (ev.key === 'ArrowDown') { ev.preventDefault(); setSel(s => Math.min(results.length - 1, s + 1)); } else if (ev.key === 'ArrowUp') { ev.preventDefault(); setSel(s => Math.max(0, s - 1)); } else if (ev.key === 'Enter') { ev.preventDefault(); runItem(results[sel]); } else if (ev.key === 'Escape') setPal(false); } }),
+      e('div', { className: 'max-h-80 overflow-y-auto py-1' }, results.length === 0 ? e('p', { className: 'px-5 py-4 text-sm text-gray-400' }, 'Nothing found.') : results.map((it, i) => e('div', { key: it.id, onMouseEnter: () => setSel(i), onClick: () => runItem(it), className: 'px-5 py-2 text-sm flex justify-between cursor-pointer ' + (i === sel ? 'bg-indigo-600 text-white' : 'text-gray-700') }, e('span', null, it.label), e('span', { className: 'text-xs opacity-70' }, it.type === 'action' && map[it.id] ? map[it.id] : '')))),
+      e('p', { className: 'px-5 py-2 text-[11px] text-gray-400 border-t' }, '↑ ↓ to choose · Enter to open · Esc to close · ' + (map.palette || '') + ' opens this anywhere')), () => setPal(false)),
+    man && modal(e('div', { className: 'bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden' },
+      e('div', { className: 'px-5 py-3 bg-indigo-600 text-white flex justify-between items-center' }, e('p', { className: 'font-bold' }, 'Shortcuts & typing'), e('button', { onClick: () => { setMan(false); setRec(null); }, className: 'text-xl leading-none px-2' }, '×')),
+      e('div', { className: 'p-5 overflow-y-auto space-y-4' },
+        e('label', { className: 'flex items-center gap-3 text-sm text-gray-800 border border-gray-200 rounded-xl p-3' }, e('input', { type: 'checkbox', checked: cap, onChange: ev => { setCap(ev.target.checked); try { localStorage.setItem(CAP_KEY, ev.target.checked ? 'on' : 'off'); } catch (e2) { /* storage unavailable */ } } }), e('span', null, e('b', null, 'Auto capital letters'), ' — first letter big, the rest small, while you type (names get a capital on every word; codes, numbers and e-mails are left alone).')),
+        err && e('p', { className: 'text-sm text-red-600' }, err),
+        e('p', { className: 'text-xs text-gray-500' }, 'Click a key box and press the new keys (Alt + letter, or Ctrl + Shift + letter). Esc cancels. These keys are saved on this computer.'),
+        e('div', { className: 'space-y-1' }, [{ id: 'palette', label: 'Quick Go (search anything)' }, ...actions].map(a => e('div', { key: a.id, className: 'flex items-center gap-2 border-b border-gray-100 py-1.5' }, e('span', { className: 'flex-1 text-sm text-gray-800' }, a.label),
+          e('button', { onClick: () => { setRec(rec === a.id ? null : a.id); setErr(''); }, className: 'min-w-[150px] px-3 py-1 rounded-lg border text-sm font-mono ' + (rec === a.id ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50') }, rec === a.id ? 'press the keys…' : (map[a.id] || 'not set')),
+          e('button', { onClick: () => save({ ...map, [a.id]: '' }), disabled: !map[a.id], className: 'text-xs text-gray-400 hover:text-red-500 disabled:opacity-30' }, 'Clear')))),
+        e('button', { onClick: () => { save({ ...SC_DEFAULTS }); setErr(''); }, className: 'text-xs text-gray-500 underline' }, 'Reset all keys to the default'))), () => { setMan(false); setRec(null); }));
+}
+// ═══════════ END SHORTCUTS & QUICK GO ═══════════
+
 function App() {
   const [appData, setAppData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -8396,9 +8542,11 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [editRequestId, setEditRequestId] = useState(null);
+  const [editRequestFull, setEditRequestFull] = useState(false);
   const [newCustomerRequest, setNewCustomerRequest] = useState(null);
   const goNewCustomer = r => { setNewCustomerRequest(r); setActiveTab('crm'); };
-  const goAddService = c => { setEditRequestId(c.id); setActiveTab('crm'); };
+  const goAddService = c => { setEditRequestFull(false); setEditRequestId(c.id); setActiveTab('crm'); };
+  const goEditCustomer = c => { setEditRequestFull(true); setEditRequestId(c.id); setActiveTab('crm'); };
   const [message, setMessage] = useState(null);
   const [printingReceipt, setPrintingReceipt] = useState(null);
   const [syncTime, setSyncTime] = useState(null);
@@ -8727,6 +8875,7 @@ function App() {
       e('header', { className: `border-b px-6 py-3 flex justify-between items-center z-10 shadow-sm transition-colors duration-300 ${isBanking ? 'bg-green-700 text-white' : isDashboard ? 'bg-purple-700 text-white' : isCashClose ? 'bg-orange-600 text-white' : 'bg-white'}` },
         e('h2', { key: activeTab, className: `hd-in text-xl font-bold ${(isBanking || isDashboard || isCashClose) ? 'text-white' : 'text-gray-800'}` }, headerTitle[activeTab] || activeTab),
         e('div', { className: 'flex items-center gap-3' },
+          e(ShortcutHost, { navItems: [...navItems, { id: 'settings', label: currentUser.role === 'admin' ? 'System Settings' : 'My Settings' }], customers, setActiveTab, goNewCustomer, goAddService, handleRefresh, toggleFullscreen, dark: isBanking }),
           e(ThemePicker, { theme, setTheme }),
           e('button', {
             onClick: handleRefresh,
@@ -8750,9 +8899,9 @@ function App() {
       e('div', { key: activeTab, className: 'pg-enter flex-1 overflow-y-auto p-6 relative' },
         activeTab === 'dashboard' && e(Dashboard, { tasks, customers, currentUser, setPrintingReceipt, expenses, onlineTransactions }),
         activeTab === 'tracking' && e(ServiceTracking, { tasks, setTasks, customers, setCustomers, appData, persist, services, showMessage, currentUser, setPrintingReceipt }),
-        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, clearEditRequest: () => setEditRequestId(null), newCustomerRequest, clearNewRequest: () => setNewCustomerRequest(null) }),
+        activeTab === 'crm' && e(CustomerCRM, { customers, setCustomers, services, tasks, setTasks, appData, persist, showMessage, currentUser, setPrintingReceipt, addAuditLog, editRequestId, editRequestFull, clearEditRequest: () => { setEditRequestId(null); setEditRequestFull(false); }, newCustomerRequest, clearNewRequest: () => setNewCustomerRequest(null) }),
         activeTab === 'reports' && e(ReportsInvoices, { tasks, setTasks, customers, setCustomers, appData, persist, businessProfile, setPrintingReceipt, currentUser }),
-        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, currentUser }),
+        activeTab === 'pending' && e(PendingDues, { tasks, setTasks, customers, appData, persist, showMessage, addAuditLog, setPrintingReceipt, goAddService, goEditCustomer, currentUser }),
         activeTab === 'accounts' && currentUser.role === 'admin' && e(SimpleAccounts, { appData, persist, currentUser, showMessage }),
         activeTab === 'banking' && e(BankingLedger, { bankTransactions, setBankTransactions, tasks, openingBalances: bankingOpeningBalances, setOpeningBalances: setBankingOpeningBalances, setOpeningBalanceFor, applyDayBook, archiveBankTransactions, addMoreHistory, setAddMoreHistory, addMoreBalance, branchDeposits, setBranchDeposits, pendingCash, setPendingCash, onlineTransactions, accountBalanceExpenses: appData.accountBalanceExpenses || [], setAccountBalanceExpenses, accountBalanceOverrides, setAccountBalanceOverrides, accountBalanceArchivedOffset, setAccountBalanceArchivedOffset, setAccountBalancePermanent, savingsAccountBalance, setSavingsAccountBalance, cscWalletBase, setCscWalletBase, cscWalletTopups, setCscWalletTopups, cscWalletExpenses, setCscWalletExpenses, savingsExpenses, setSavingsExpenses, currentUser, showMessage, businessProfile, walletColors, setWalletColors, walletInfo, setWalletInfo, simpleAccounts: bkArr(appData && appData.simpleAccounts), simpleTx: bkArr(appData && appData.simpleTx), setSimpleAccounts: (next) => persist({ ...appData, simpleAccounts: next }), moneyTransfers: bkArr(appData && appData.moneyTransfers), setMoneyTransfers: (next) => persist({ ...appData, moneyTransfers: next }) }),
         activeTab === 'online'   && e(OnlineTransaction, { onlineTransactions, setOnlineTransactions, appData, currentUser, showMessage, addAuditLog, simpleAccounts: bkArr(appData && appData.simpleAccounts), walletInfo }),
